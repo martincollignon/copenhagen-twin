@@ -1,1 +1,4 @@
 .DS_Store
+data/raw/
+__pycache__/
+.pytest_cache/
