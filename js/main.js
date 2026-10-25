@@ -106,6 +106,7 @@ async function initApp() {
   }
 
   const cameraSystem = new CameraSystem(renderer.domElement, controllerManager);
+  world.attach?.({ camera: cameraSystem.camera, domElement: renderer.domElement });
   const touchControls = new TouchControls(controllerManager);
   const soundButton = document.getElementById('btn-sound');
   const audioSystem = new CityAudioSystem({ controllerManager, trafficSystem, highwayTraffic, streetDetails }, {
@@ -633,6 +634,9 @@ async function initApp() {
   let warmedUp = false; // see the first frame below
 
   if (elFps) elFps.textContent = '60';
+
+  // Handle for the headless verification scripts and the console (not used by the engine)
+  globalThis.__twin = { scene, renderer, cameraSystem, controllerManager, lightingSystem, world };
 
   renderer.setAnimationLoop((now) => {
     const rawDt = (now - lastTime) * 0.001;

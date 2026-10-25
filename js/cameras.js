@@ -361,6 +361,15 @@ class CameraSystem {
 
     this.camera.position.copy(this.currentPos);
     this.camera.lookAt(this.currentLookAt);
+    // Fixed viewpoint for headless captures and photo comparison: { pos: [x, y, z], look: [x, y, z], fov? }
+    if (this.debugView) {
+      this.camera.position.set(...this.debugView.pos);
+      this.camera.lookAt(...this.debugView.look);
+      if (this.debugView.fov && this.camera.fov !== this.debugView.fov) {
+        this.camera.fov = this.debugView.fov;
+        this.camera.updateProjectionMatrix();
+      }
+    }
   }
 }
 

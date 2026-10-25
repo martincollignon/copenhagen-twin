@@ -16,6 +16,10 @@ class Node {
   get x() { return new Node(this.values[0]); }
   get y() { return new Node(this.values[1]); }
   get z() { return new Node(this.values[2]); }
+  get w() { return new Node(this.values[3]); }
+  get xyz() { return new Node(this.values.slice(0, 3)); }
+  add(v) { return binary(this, v, (a, b) => a + b); }
+  div(v) { return binary(this, v, (a, b) => a / b); }
   sub(v) { return binary(this, v, (a, b) => a - b); }
   mul(v) { return binary(this, v, (a, b) => a * b); }
   negate() { return this.mul(-1); }
@@ -43,7 +47,7 @@ const buildFrame = vm.runInNewContext(`(function (normalLocal, modelNormalMatrix
   return {
     normal: facadeWorldNormal, axis: facadeAlongZ,
     project(boxLocal, normalGeometry, positionWorld) { ${projection} return { alongZ, uCoord, isRoof }; },
-    interior(positionWorld, cameraPosition) { ${interior} return { dirX, dirY, dirZ }; }
+    interior(positionWorld, cameraPosition, wallTanNode = vec3(0, 0, 0)) { ${interior} return { dirX, dirY, dirZ }; }
   };
 })`, {
   THREE: { InterpolationSamplingType: { FLAT: 'flat' }, InterpolationSamplingMode: { EITHER: 'either' } },
@@ -52,6 +56,7 @@ const buildFrame = vm.runInNewContext(`(function (normalLocal, modelNormalMatrix
   abs: unary(Math.abs), sign: unary(Math.sign),
   step: (edge, v) => binary(edge, v, (a, b) => b < a ? 0 : 1),
   max: (a, b) => binary(a, b, Math.max),
+  length: v => new Node(Math.hypot(...values(v))),
   mix: (a, b, t) => binary(binary(a, t, (v, t) => v * (1 - t)), binary(b, t, (v, t) => v * t), (a, b) => a + b),
   vec3: (...v) => new Node(v.flatMap(values)),
   dot: (a, b) => new Node(values(a).reduce((sum, v, i) => sum + v * values(b)[i], 0))
@@ -124,4 +129,134 @@ test('world projection includes object rotation and the inverse scale used for n
   const length = Math.hypot(0.5, 1 / 3, 2);
   [0.5, 1 / 3, 2].forEach((v, i) => close(scaled.normal.values[i], v / length));
   assert.equal(scalar(scaled.axis), 0, 'the dominant world normal component must be selected after inverse scaling');
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// wallAttr mode: the wall frame comes from per-vertex attributes (buildings-real.js), not from the world axes.
+// ---------------------------------------------------------------------------------------------------------------
+const attrStart = source.indexOf('if (wallAttr) {', projectionStart);
+const attrEnd = source.indexOf('  const cellId', attrStart);
+assert.ok(attrStart > 0 && attrEnd > attrStart, 'the wallAttr block must exist in facadeCell');
+const attrBlock = source.slice(attrStart, attrEnd);
+const evalWall = vm.runInNewContext(`(function (attribute, facadeWorldNormal, cornerPier, boxLocalBays) {
+  let bays = float(1), bayWidth = float(1), bayIdx = float(0), gridU = float(0), inPier = float(0), uCoord = float(0);
+  let wallS = float(0), wallW = float(1), tone = float(0.5), kind = float(0), tint = null, winRatioX = null;
+  let floorH = float(3), vCoord = float(0), gridV = float(0), wallTan = vec3(0, 0, 0);
+  const wallAttr = true;
+  ${attrBlock}
+  return { bays, bayWidth, bayIdx, gridU, inPier, uCoord, wallS, wallW, tone, kind, tint, winRatioX, floorH, vCoord, gridV, wallTan };
+})`, {
+  float: v => new Node(v),
+  vec3: (...v) => new Node(v.flatMap(values)),
+  floor: unary(Math.floor), min: (a, b) => binary(a, b, Math.min), max: (a, b) => binary(a, b, Math.max),
+  step: (edge, v) => binary(edge, v, (a, b) => b < a ? 0 : 1),
+  mix: (a, b, t) => binary(binary(a, t, (v, t) => v * (1 - t)), binary(b, t, (v, t) => v * t), (a, b) => a + b),
+  normalize: v => v.normalize()
+});
+const attributes = (a) => (name) => new Node(a[name]);
+
+function wallsOf(building) {
+  const { createAccumulator, addBuilding } = geometry;
+  const acc = createAccumulator();
+  addBuilding(acc, building);
+  const w = acc.wall;
+  const walls = [];
+  for (let q = 0; q < w.position.length / 12; q++) {
+    const vertex = (i) => {
+      const k = q * 4 + i;
+      return {
+        position: w.position.slice(k * 3, k * 3 + 3), normal: w.normal.slice(k * 3, k * 3 + 3),
+        facadeUV: w.facadeUV.slice(k * 2, k * 2 + 2), facadeWall: w.facadeWall.slice(k * 4, k * 4 + 4),
+        facadeBldg: w.facadeBldg.slice(k * 4, k * 4 + 4), facadeTone: w.facadeTone.slice(k * 4, k * 4 + 4)
+      };
+    };
+    walls.push([0, 1, 2, 3].map(vertex));
+  }
+  return walls;
+}
+const rectangle = (angleDeg, cx = 100, cz = -40) => {
+  const a = angleDeg * Math.PI / 180;
+  const pts = [[-10, -6], [10, -6], [10, 6], [-10, 6]]; // x east, north up; CCW in the (x, north) plane
+  const ring = [];
+  for (const [x, n] of pts) ring.push(cx + x * Math.cos(a) - n * Math.sin(a), cz - (x * Math.sin(a) + n * Math.cos(a)));
+  return { id: 'test:rect', ring, holes: [], ground: 0, eave: 18, ridge: 18, roof: 'flat', facade: { floor_h: 3, ground_floor_h: 4, window_w: 1.2, bay_w: 3, ground_type: 'shop', tone: [0.7, 0.6, 0.5] }, conf_fields: { facade: 'inferred' } };
+};
+let geometry;
+test.before(async () => { geometry = await import('../js/building-geometry.js'); });
+
+for (const angle of [0, 15, 45, 90, 200]) {
+  test(`wallAttr: a wall at ${angle} degrees gets its window grid from its own frame`, () => {
+    const walls = wallsOf(rectangle(angle));
+    assert.equal(walls.length, 4);
+    for (const wall of walls) {
+      const [a, b] = wall;
+      const len = a.facadeWall[0];
+      const d = [(b.position[0] - a.position[0]) / len, (b.position[2] - a.position[2]) / len];
+      for (const vtx of wall) {
+        const f = evalWall(attributes(vtx), new Node(vtx.normal), 0.9);
+        // u is metres along the wall from its start, whatever the wall's world direction
+        const along = (vtx.position[0] - a.position[0]) * d[0] + (vtx.position[2] - a.position[2]) * d[1];
+        close(vtx.facadeUV[0], along);
+        // the shader's tangent is the wall direction and lies in the horizontal plane
+        close(f.wallTan.values[0], d[0]); close(f.wallTan.values[1], 0); close(f.wallTan.values[2], d[1]);
+        // outward normal is perpendicular to the wall
+        close(vtx.normal[0] * d[0] + vtx.normal[2] * d[1], 0);
+        // whole bays between the corner piers; the grid cell is about the requested 3 m
+        close(f.bays.values[0] * f.bayWidth.values[0] + 1.8, len);
+        assert.ok(Math.abs(f.bayWidth.values[0] - 3) < 3 / f.bays.values[0] + 1e-6);
+        assert.equal(f.kind.values[0], 0, 'shop ground floor');
+        close(f.vCoord.values[0], vtx.facadeUV[1]); // v is metres above the ground, not world y
+      }
+    }
+  });
+}
+
+test('wallAttr: window grid is rigid-motion invariant (same cells at the same wall positions for any rotation)', () => {
+  const reference = wallsOf(rectangle(0));
+  for (const angle of [15, 45, 133]) {
+    const rotated = wallsOf(rectangle(angle, -300, 222));
+    rotated.forEach((wall, w) => wall.forEach((vtx, i) => {
+      const r = evalWall(attributes(vtx), new Node(vtx.normal), 0.9);
+      const o = evalWall(attributes(reference[w][i]), new Node(reference[w][i].normal), 0.9);
+      for (const key of ['gridU', 'gridV', 'bayWidth', 'inPier']) close(r[key].values[0], o[key].values[0]);
+    }));
+  }
+});
+
+test('wallAttr: the ground floor is cell 0 with its own height, every storey above uses floor_h', () => {
+  const [wall] = wallsOf(rectangle(15));
+  const at = (v) => evalWall(attributes({ ...wall[0], facadeUV: [5, v] }), new Node(wall[0].normal), 0.9).gridV.values[0];
+  close(at(0), 0); close(at(4), 1); // ground_floor_h = 4
+  close(at(2), 0.5);
+  const floorH = wall[0].facadeWall[1];
+  close(at(4 + floorH * 2), 3);
+  assert.ok(Math.abs(floorH * Math.round(14 / 3) - 14) < 1e-5, 'floor height is fitted so whole storeys end at the eave');
+});
+
+test('wallAttr: walls of a concave ring and a courtyard hole all face away from the solid, with winding to match', () => {
+  // L-shaped block (CCW) with a rectangular courtyard
+  const ring = [0, 0, 30, 0, 30, -12, 12, -12, 12, -30, 0, -30];
+  const hole = [4, -4, 4, -8, 8, -8, 8, -4]; // CW seen from above
+  const building = { ...rectangle(0), id: 'test:L', ring, holes: [hole] };
+  const flatToPts = (r) => r.map((v, i) => i % 2 ? null : [v, r[i + 1]]).filter(Boolean);
+  const inside = (p) => {
+    const inRing = (pts) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) if ((pts[i][1] > p[1]) !== (pts[j][1] > p[1]) && p[0] < ((pts[j][0] - pts[i][0]) * (p[1] - pts[i][1])) / (pts[j][1] - pts[i][1]) + pts[i][0]) c = !c; return c; };
+    return inRing(flatToPts(ring)) && !inRing(flatToPts(hole));
+  };
+  const walls = wallsOf(building);
+  assert.equal(walls.length, 6 + 4);
+  for (const wall of walls) {
+    const [a, b] = wall;
+    const mid = [(a.position[0] + b.position[0]) / 2, (a.position[2] + b.position[2]) / 2];
+    const n = [a.normal[0], a.normal[2]];
+    assert.equal(inside([mid[0] + n[0] * 0.02, mid[1] + n[1] * 0.02]), false, 'in front of the wall is outside the solid');
+    assert.equal(inside([mid[0] - n[0] * 0.02, mid[1] - n[1] * 0.02]), true, 'behind the wall is inside the solid');
+    // triangle (0, 1, 2) must be counter-clockwise seen from outside
+    const e1 = [0, 1, 2].map((k) => b.position[k] - a.position[k]);
+    const e2 = [0, 1, 2].map((k) => wall[2].position[k] - a.position[k]);
+    const cross = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    assert.ok(cross[0] * a.normal[0] + cross[2] * a.normal[2] > 0, 'front face points out of the building');
+    const f = evalWall(attributes(a), new Node(a.normal), 0.9);
+    close(f.wallTan.values[0] * a.normal[0] + f.wallTan.values[2] * a.normal[2], 0);
+  }
 });

@@ -94,7 +94,7 @@ test('geodata is optional: absent data boots the empty plane, present data is ex
   const { CPH_FRAME } = await import('../js/city-config-cph.js');
   const warnings = [];
   const { loadCphGeodata } = loadModule(read('js/world-cph.js'), {
-    imports: { 'three/webgpu': {}, './city-config-cph.js': { CPH_FRAME } },
+    imports: { 'three/webgpu': {}, './city-config-cph.js': { CPH_FRAME }, './buildings-real.js': { buildRealBuildings: async () => null } },
     globals: { console: { warn: (...a) => warnings.push(a), info() {} }, globalThis: {}, document: {} }
   });
   const reply = (ok, body) => async () => ({ ok, json: async () => body });

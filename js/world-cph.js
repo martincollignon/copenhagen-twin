@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { CPH_FRAME } from './city-config-cph.js';
+import { buildRealBuildings } from './buildings-real.js';
 
 // js/world-cph.js
 // The Copenhagen world for M0: an empty ground plane in the Copenhagen frame (docs/cph-geodata-schema.md) plus an
@@ -165,16 +166,25 @@ async function buildCphWorld(scene, { markInit = () => {}, debug = '', geoUrl = 
   let debugFootprints = null;
   if (geo && debug.split(',').includes('footprints')) debugFootprints = buildDebugFootprints(scene, geo);
 
+  // M2: real buildings from the geodata (extruded footprints with the per-vertex facade frame) plus the hero glTFs
+  let buildings = null;
+  if (geo?.buildings?.length && !debug.split(',').includes('nobuildings')) {
+    buildings = await buildRealBuildings(scene, geo);
+    markInit(`buildings(${buildings.stats.buildings})`);
+  }
+
   return {
     colliders: [],
     boroughs: {},
-    cityBlocks: { update() {}, allBlocks: [], colliders: [] },
+    cityBlocks: { update: (x, z) => buildings?.update(x, z), allBlocks: [], colliders: [] },
     streetDetails: { audioSignals: [], signalClock: { value: 0 }, footprints: [], signalIntersections: [], update() {} },
     trafficSystem: nullTraffic(),
     highwayTraffic: { cars: [], update() {} },
     cullingRoots: ['CopenhagenDebugFootprints'],
     ground,
     debugFootprints,
+    buildings,
+    attach: (context) => buildings?.attach(context),
     geo,
     createMapSystem: nullMap
   };

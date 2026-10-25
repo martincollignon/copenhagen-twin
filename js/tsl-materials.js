@@ -205,7 +205,7 @@ const facadeAlongZ = varying(
  *   a lit room's tint), drapes at their mean coverage & lamps fade out, so distant towers don't twinkle in motion.
  * - Returns `vec4(roomColor, litEmit)`.
  */
-const evaluateApartmentInterior = Fn(([uCoord, vCoord, winUV, cellId, winWNode, floorHNode, seedNode, warmthNode, litProbNode, fwNode]) => {
+const evaluateApartmentInterior = Fn(([uCoord, vCoord, winUV, cellId, winWNode, floorHNode, seedNode, warmthNode, litProbNode, fwNode, wallTanNode]) => {
   const u = float(uCoord).toVar();
   const v = float(vCoord).toVar();
   const wUV = vec2(winUV).toVar();
@@ -241,7 +241,11 @@ const evaluateApartmentInterior = Fn(([uCoord, vCoord, winUV, cellId, winWNode, 
   // (+x on walls facing ±z, +z on walls facing ±x, turning with walls that follow a non-grid street)
   const rayWorld = normalize(positionWorld.sub(cameraPosition)).toVar();
   const tSign = mix(sign(facadeWorldNormal.z).negate(), sign(facadeWorldNormal.x), facadeAlongZ);
-  const dirX = dot(rayWorld, vec3(facadeWorldNormal.z.negate(), 0.0, facadeWorldNormal.x).mul(tSign)).toVar();
+  // Per-vertex-frame walls (facadeCell `wallAttr`) pass their own unit tangent (direction of increasing u); axis-aligned
+  // walls pass vec3(0) and keep the world-axis tangent
+  const legacyTan = vec3(facadeWorldNormal.z.negate(), 0.0, facadeWorldNormal.x).mul(tSign);
+  const hasTan = step(0.5, dot(wallTanNode, wallTanNode));
+  const dirX = dot(rayWorld, mix(legacyTan, wallTanNode, hasTan)).toVar();
   const dirY = rayWorld.y.toVar();
   const dirZ = max(abs(dot(rayWorld, facadeWorldNormal)), 0.05).toVar();
 
@@ -383,7 +387,7 @@ const WALL_KINDS = { shop: 0, entry: 1, rear: 2, lotLine: 3, blankStone: 4 };
  * (folded into `solid`); `wallS`, `wallW`, `wallH`, `fromTop` & `boxSeed` place things on the wall (painted signs).
  * Plain JS (not Fn) so it inlines into each node graph exactly like hand-written code.
  */
-function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0) {
+function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0, wallAttr = false) {
   // Box-local walls are told apart by the box's own normals (createFacadeBoxes instances may be turned about +y to
   // follow a non-grid street); world-space walls by the world normal
   const nWall = boxLocal ? normalGeometry : facadeWorldNormal;
@@ -401,6 +405,10 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0) {
   // Box-local wall frame: metres along the wall (from its left end, seen facing it), its width & height, metres
   // below the box's top
   let wallS = float(0.0);
+  let wallTan = vec3(0.0);
+  let tint = null; // per-building wall colour (wallAttr only)
+  let winRatioX = null; // window width / bay width (wallAttr only)
+  let floorH = floorHeight;
   let wallW = float(1.0);
   let wallH = float(1.0);
   let fromTop = float(0.0);
@@ -446,8 +454,40 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0) {
     uCoord = gridU.mul(bayWidth);
   }
 
-  const vCoord = positionWorld.y;
-  const gridV = vCoord.div(floorHeight);
+  let vCoord = positionWorld.y;
+  let gridV = vCoord.div(floorHeight);
+  if (wallAttr) {
+    // Per-vertex wall frame written by buildings-real.js, so the wall can run at any angle. facadeUV = (metres along the
+    // wall from its start, metres above the building's ground); facadeWall = (wall length, floor height, ground-floor
+    // height, bay pitch); facadeBldg = (hash 0..1, WALL_KINDS of the ground floor, inferred flag, integer seed);
+    // facadeTone = wall colour. u grows along the wall's CCW (from above) direction, so the tangent is (nz, 0, -nx).
+    const fuv = attribute('facadeUV', 'vec2');
+    const fwall = attribute('facadeWall', 'vec4');
+    const fbld = attribute('facadeBldg', 'vec4');
+    const len = fwall.x;
+    const s = fuv.x;
+    const pier = min(float(cornerPier), len.mul(0.2));
+    const inner = len.sub(pier.mul(2.0));
+    bays = max(floor(inner.div(fwall.w).add(0.5)), 1.0);
+    bayWidth = inner.div(bays);
+    bayIdx = floor(s.sub(pier).div(bayWidth));
+    gridU = s.sub(pier).div(bayWidth).add(floor(fbld.w.add(0.5)));
+    if (cornerPier > 0) inPier = float(1.0).sub(step(pier, s).mul(step(s, len.sub(pier))));
+    uCoord = gridU.mul(bayWidth);
+    wallS = s;
+    wallW = len;
+    tone = fbld.x;
+    kind = floor(fbld.y.add(0.5));
+    const ftone = attribute('facadeTone', 'vec4');
+    tint = ftone.xyz;
+    winRatioX = ftone.w;
+    floorH = fwall.y;
+    const groundH = fwall.z;
+    vCoord = fuv.y;
+    // The ground floor has its own height (cell 0); every storey above it is floor_h
+    gridV = mix(vCoord.div(groundH), float(1.0).add(vCoord.sub(groundH).div(floorH)), step(groundH, vCoord));
+    wallTan = normalize(vec3(facadeWorldNormal.z, 0.0, facadeWorldNormal.x.negate()));
+  }
   const cellId = vec2(floor(gridU), floor(gridV));
   const cellUV = vec2(fract(gridU), fract(gridV));
   const fw = vec2(fwidth(gridU), fwidth(gridV));
@@ -475,7 +515,7 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0) {
   const solid = max(max(inPier.mul(float(1.0).sub(isGroundFloor)), blank), partial);
   return {
     isRoof, uCoord, vCoord, gridV, cellId, cellUV, fw, bayWidth, isGroundFloor, solid, floor0, back, blank, door, tone,
-    wallS, wallW, wallH, fromTop, boxSeed, partial, coping
+    wallS, wallW, wallH, fromTop, boxSeed, partial, coping, wallTan, tint, winRatioX, floorH
   };
 }
 
@@ -498,10 +538,11 @@ function createCurtainWallMaterial(opts = {}) {
     warmth = 0.62,
     reflectivity = 0.92,
     seed = 1.0,
-    boxLocal = false
+    boxLocal = false,
+    wallAttr = false
   } = opts;
 
-  const cacheKey = `${glassTint}_${frameTint}_${windowWidth}_${floorHeight}_${litProbability}_${warmth}_${reflectivity}_${seed}_${boxLocal}`;
+  const cacheKey = `${glassTint}_${frameTint}_${windowWidth}_${floorHeight}_${litProbability}_${warmth}_${reflectivity}_${seed}_${boxLocal}_${wallAttr}`;
   if (_curtainWallCache.has(cacheKey)) {
     return _curtainWallCache.get(cacheKey);
   }
@@ -527,7 +568,7 @@ function createCurtainWallMaterial(opts = {}) {
 
   // The facade cell and the apartment behind each pane are built once and shared by every output below, so the
   // shader carries a single copy of them (and evaluates the interior mapping once per pixel)
-  const facade = facadeCell(uWindowWidth, uFloorHeight, boxLocal);
+  const facade = facadeCell(uWindowWidth, uFloorHeight, boxLocal, 0, wallAttr);
   const { isRoof, uCoord, vCoord, gridV, cellId, cellUV, fw, bayWidth, isGroundFloor, blank, tone, partial, coping } = facade;
   // Pane UV inside the mullions & spandrel, the 3D apartment behind it and whether the ground-floor shop is lit
   const winUV = clamp(
@@ -538,7 +579,7 @@ function createCurtainWallMaterial(opts = {}) {
     vec2(0.0),
     vec2(1.0)
   );
-  const aptRoom = evaluateApartmentInterior(uCoord, vCoord, winUV, cellId, bayWidth, uFloorHeight, uSeed, uWarmth, uLitProbability.mul(0.65), fw);
+  const aptRoom = evaluateApartmentInterior(uCoord, vCoord, winUV, cellId, bayWidth, facade.floorH, uSeed, uWarmth, uLitProbability.mul(0.65), fw, facade.wallTan);
   const shopLit = step(0.24, hash2D(cellId.add(vec2(uSeed, 19.4))));
   const floorIdx = floor(gridV);
   const isMechFloor = float(1.0).sub(step(1.0, mod(floorIdx.add(uSeed), 16.0))).mul(step(4.0, floorIdx));
@@ -697,10 +738,11 @@ function createPreWarBuildingMaterial(opts = {}) {
     crownGlowColor = 0xffe0a3,
     seed = 42.0,
     boxLocal = false,
-    cornerPier = 1.2 // solid masonry at both ends of every wall above the shopfronts (box-local mode)
+    cornerPier = 1.2, // solid masonry at both ends of every wall above the shopfronts (box-local and wallAttr modes)
+    wallAttr = false // per-vertex wall frame attributes (buildings-real.js): any wall angle, per-building facade params
   } = opts;
 
-  const cacheKey = `${stoneColor}_${trimColor}_${windowWidth}_${floorHeight}_${litProbability}_${warmth}_${crownGlowHeight}_${seed}_${boxLocal}_${cornerPier}`;
+  const cacheKey = `${stoneColor}_${trimColor}_${windowWidth}_${floorHeight}_${litProbability}_${warmth}_${crownGlowHeight}_${seed}_${boxLocal}_${cornerPier}_${wallAttr}`;
   if (_preWarCache.has(cacheKey)) {
     return _preWarCache.get(cacheKey);
   }
@@ -733,12 +775,17 @@ function createPreWarBuildingMaterial(opts = {}) {
 
   // The facade cell, the window opening and the apartment behind it are built once and shared by every output below,
   // so the shader carries a single copy of them (and evaluates the interior mapping once per pixel)
-  const facade = facadeCell(uWindowWidth, uFloorHeight, boxLocal, cornerPier);
+  const facade = facadeCell(uWindowWidth, uFloorHeight, boxLocal, cornerPier, wallAttr);
+  const stoneTint = facade.tint ?? cStone;
   const { isRoof, uCoord, vCoord, gridV, cellId, cellUV, fw, bayWidth, isGroundFloor, solid, back, blank, door, tone } = facade;
   const { wallS, wallW, wallH, fromTop, boxSeed, coping } = facade;
   const open = float(1.0).sub(solid).mul(float(1.0).sub(door)); // 0 in the corner piers, blank walls & doorways
-  const front = float(1.0).sub(back).sub(blank).max(0.0); // street fronts (band courses, sills under the band...)
-  const effHalfX = mix(float(halfWinX), float(0.11), isGroundFloor);
+  // Street fronts (band courses, sills under the band...). The Manhattan band course every 6th floor is not Copenhagen's
+  // (its top storey would be a blank stripe), so wallAttr facades have none
+  const front = facade.tint ? float(0.0) : float(1.0).sub(back).sub(blank).max(0.0);
+  // Window opening width: the style's ratio, or the building's own window_w / bay_w in wallAttr mode
+  const halfX = facade.winRatioX ? clamp(float(1.0).sub(facade.winRatioX).mul(0.5), 0.06, 0.44) : float(halfWinX);
+  const effHalfX = mix(halfX, float(0.11), isGroundFloor);
   const effHalfY = mix(float(halfWinY), float(0.10), isGroundFloor);
   // Glazing UV inside the window opening, the 3D apartment behind it and the storefront lighting
   const winUV = clamp(
@@ -749,7 +796,7 @@ function createPreWarBuildingMaterial(opts = {}) {
     vec2(0.0),
     vec2(1.0)
   );
-  const aptRoom = evaluateApartmentInterior(uCoord, vCoord, winUV, cellId, bayWidth, uFloorHeight, uSeed, uWarmth, uLitProbability.mul(0.62), fw);
+  const aptRoom = evaluateApartmentInterior(uCoord, vCoord, winUV, cellId, bayWidth, facade.floorH, uSeed, uWarmth, uLitProbability.mul(0.62), fw, facade.wallTan);
   const shopLit = step(0.24, hash2D(cellId.add(vec2(uSeed, 19.4))));
   const bulbCol = mix(cCoolWindow, cWarmWindow, step(float(1.0).sub(uWarmth), hash2D(cellId.add(vec2(uSeed.mul(1.9), 83.1)))));
   // Window AC units (~12% of upper-floor windows), none in the floor the band course covers
@@ -894,7 +941,7 @@ function createPreWarBuildingMaterial(opts = {}) {
       signPaint.assign(vec4(mix(ground, ink, max(letters, border)), cover));
     });
 
-    const wallTint = mix(mix(cStone, backTint, back), signPaint.xyz, signPaint.w);
+    const wallTint = mix(mix(stoneTint, backTint, back), signPaint.xyz, signPaint.w);
     // Trim stone on the band courses, the storefront fascia and the coping capping every wall
     const trimMix = max(isCornice.mul(0.62).add(isGroundFloor.mul(0.28)), coping.mul(0.8));
     const masonryTint = mix(wallTint, cTrim, trimMix)
@@ -956,7 +1003,7 @@ function createPreWarBuildingMaterial(opts = {}) {
 
   mat.roughnessNode = Fn(() => {
     const belt = filteredPulse(gridV.div(6.0), 0.86, 1.0, fw.y.div(6.0)).mul(front);
-    const inX = filteredPulse(cellUV.x, halfWinX, 1.0 - halfWinX, fw.x).mul(open).mul(float(1.0).sub(belt));
+    const inX = filteredPulse(cellUV.x, halfX, float(1.0).sub(halfX), fw.x).mul(open).mul(float(1.0).sub(belt));
     const inY = filteredPulse(cellUV.y, halfWinY, 1.0 - halfWinY, fw.y);
     const isWindow = inX.mul(inY).mul(float(1.0).sub(isRoof));
 
@@ -1011,7 +1058,7 @@ function createPreWarBuildingMaterial(opts = {}) {
 
   mat.emissiveNode = Fn(() => {
     // The glow stays a hair inside the glazing
-    const glowHalfX = mix(float(halfWinX + 0.015), float(0.12), isGroundFloor);
+    const glowHalfX = mix(halfX.add(0.015), float(0.12), isGroundFloor);
     const glowHalfY = mix(float(halfWinY + 0.015), float(0.11), isGroundFloor);
 
     const inX = filteredPulse(cellUV.x, glowHalfX, float(1.0).sub(glowHalfX), fw.x).mul(open);

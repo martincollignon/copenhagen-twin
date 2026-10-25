@@ -1,0 +1,361 @@
+// js/building-geometry.js
+// Pure (no three.js) geometry for the Copenhagen real buildings: polygon rings with holes extruded from `ground` to
+// `eave`, a flat roof with a low parapet or (only for plain quadrilaterals) a hipped cap, and the per-vertex facade
+// frame the wallAttr facade shaders read (tsl-materials.js facadeCell):
+//   facadeUV   (u, v)       metres along the wall from its start, metres above the building's ground
+//   facadeWall (len, floor_h, ground_floor_h, bay_w)
+//   facadeBldg (hash 0..1, WALL_KINDS of the ground floor, inferred flag, integer seed)
+//   facadeTone (r, g, b linear, window width / bay width)
+// Frame (docs/cph-geodata-schema.md): x east, z south, y up. Rings are CCW seen from above (in x / -z), holes CW, so
+// the outward normal of the wall p0 -> p1 (direction d) is (-d.z, 0, d.x) and u grows along d.
+
+const PARAPET_H = 0.45;
+const PARAPET_T = 0.22;
+const WALL_KIND = { shop: 0, entrance: 1, residential: 1, blank: 4 };
+
+// sRGB values (converted to linear when written)
+const ROOF_COLOURS = {
+  'tagpap': [0.2, 0.2, 0.22],
+  'tagpap med lille hældning': [0.2, 0.2, 0.22],
+  'tagpap med stor hældning': [0.24, 0.23, 0.24],
+  'tegl': [0.46, 0.19, 0.13],
+  'betontagsten': [0.33, 0.27, 0.24],
+  'fibercement herunder asbest': [0.46, 0.46, 0.45],
+  'fibercement uden asbest': [0.4, 0.4, 0.4],
+  'metal': [0.42, 0.46, 0.48],
+  'glas': [0.35, 0.45, 0.5],
+  'levende tage': [0.2, 0.32, 0.17],
+  'plastmaterialer': [0.4, 0.4, 0.42],
+  'andet materiale': [0.32, 0.31, 0.3]
+};
+const ROOF_DEFAULT = [0.34, 0.33, 0.32];
+
+const srgbToLinear = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+
+function hashString(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+/** Signed area of a flat [x0, z0, ...] ring in the (x, north = -z) plane: positive when CCW seen from above. */
+function ringArea(ring) {
+  let a = 0;
+  const n = ring.length / 2;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    a += ring[2 * i] * -ring[2 * j + 1] - ring[2 * j] * -ring[2 * i + 1];
+  }
+  return a / 2;
+}
+
+/** Points [[x, z], ...] with duplicates and (near-)collinear vertices removed, in the requested orientation. */
+function cleanRing(flat, ccw) {
+  let pts = [];
+  for (let i = 0; i < flat.length; i += 2) pts.push([flat[i], flat[i + 1]]);
+  const dedup = [];
+  for (const p of pts) {
+    const q = dedup[dedup.length - 1];
+    if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > 0.05) dedup.push(p);
+  }
+  if (dedup.length > 1 && Math.hypot(dedup[0][0] - dedup[dedup.length - 1][0], dedup[0][1] - dedup[dedup.length - 1][1]) <= 0.05) dedup.pop();
+  pts = dedup;
+  let changed = true;
+  while (changed && pts.length > 3) {
+    changed = false;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[(i + pts.length - 1) % pts.length];
+      const b = pts[i];
+      const c = pts[(i + 1) % pts.length];
+      const cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+      const scale = Math.hypot(b[0] - a[0], b[1] - a[1]) * Math.hypot(c[0] - b[0], c[1] - b[1]);
+      const dot = (b[0] - a[0]) * (c[0] - b[0]) + (b[1] - a[1]) * (c[1] - b[1]);
+      if (scale > 0 && Math.abs(cross) / scale < 0.0087 && dot > 0) { // < 0.5 degrees and not a spike
+        pts.splice(i, 1);
+        changed = true;
+        break;
+      }
+    }
+  }
+  if (pts.length < 3) return null;
+  const flatOut = pts.flat();
+  if ((ringArea(flatOut) > 0) !== ccw) pts.reverse();
+  return pts;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Triangulation: ear clipping after bridging each hole into the outer ring. Works in the (x, north) plane.
+// ---------------------------------------------------------------------------------------------------------------
+const cross2 = (ax, ay, bx, by, cx, cy) => (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+
+function segmentsCross(p, q, r, s) {
+  const d1 = cross2(p[0], p[1], q[0], q[1], r[0], r[1]);
+  const d2 = cross2(p[0], p[1], q[0], q[1], s[0], s[1]);
+  const d3 = cross2(r[0], r[1], s[0], s[1], p[0], p[1]);
+  const d4 = cross2(r[0], r[1], s[0], s[1], q[0], q[1]);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+/**
+ * outer: CCW [[x, n], ...]; holes: CW [[x, n], ...]. Returns { points: [[x, n], ...], indices } with CCW triangles
+ * (points may repeat the bridge vertices).
+ */
+function triangulate(outer, holes = []) {
+  let poly = outer.map((p) => p.slice());
+  const edgesOf = (ring) => ring.map((p, i) => [p, ring[(i + 1) % ring.length]]);
+  const allHoles = holes.slice().sort((a, b) => Math.max(...b.map((p) => p[0])) - Math.max(...a.map((p) => p[0])));
+  const merged = [];
+  for (const hole of allHoles) {
+    const blockers = [...edgesOf(poly), ...merged.flatMap(edgesOf)];
+    const blockersAll = [...blockers, ...edgesOf(hole)];
+    let best = null;
+    for (let hi = 0; hi < hole.length; hi++) {
+      for (let pi = 0; pi < poly.length; pi++) {
+        const d = Math.hypot(hole[hi][0] - poly[pi][0], hole[hi][1] - poly[pi][1]);
+        if (best && d >= best.d) continue;
+        const clear = blockersAll.every(([a, b]) => !segmentsCross(hole[hi], poly[pi], a, b));
+        if (!clear) continue;
+        // The bridge must also start inside the polygon: its midpoint has to lie inside the (current) outer ring
+        const mx = (hole[hi][0] + poly[pi][0]) / 2;
+        const my = (hole[hi][1] + poly[pi][1]) / 2;
+        if (!pointInRing(mx, my, outer)) continue;
+        best = { d, hi, pi };
+      }
+    }
+    if (!best) continue; // an unreachable hole is dropped rather than breaking the whole building
+    const h = [...hole.slice(best.hi), ...hole.slice(0, best.hi)];
+    poly = [...poly.slice(0, best.pi + 1), ...h.map((p) => p.slice()), h[0].slice(), poly[best.pi].slice(), ...poly.slice(best.pi + 1)];
+    merged.push(hole);
+  }
+  const n = poly.length;
+  const prev = Array.from({ length: n }, (_, i) => (i + n - 1) % n);
+  const next = Array.from({ length: n }, (_, i) => (i + 1) % n);
+  const indices = [];
+  let remaining = n;
+  let i = 0;
+  let guard = 0;
+  const isEar = (a, b, c) => {
+    const A = poly[a], B = poly[b], C = poly[c];
+    if (cross2(A[0], A[1], B[0], B[1], C[0], C[1]) <= 1e-12) return false;
+    let k = next[c];
+    while (k !== a) {
+      const P = poly[k];
+      const coincident = (P[0] === A[0] && P[1] === A[1]) || (P[0] === B[0] && P[1] === B[1]) || (P[0] === C[0] && P[1] === C[1]);
+      if (!coincident
+        && cross2(A[0], A[1], B[0], B[1], P[0], P[1]) >= 0
+        && cross2(B[0], B[1], C[0], C[1], P[0], P[1]) >= 0
+        && cross2(C[0], C[1], A[0], A[1], P[0], P[1]) >= 0) return false;
+      k = next[k];
+    }
+    return true;
+  };
+  while (remaining > 3 && guard++ < n * n + 10) {
+    const a = prev[i], c = next[i];
+    if (isEar(a, i, c)) {
+      indices.push(a, i, c);
+      next[a] = c;
+      prev[c] = a;
+      remaining--;
+      i = c;
+      guard = 0;
+    } else {
+      i = next[i];
+    }
+  }
+  if (remaining === 3) indices.push(prev[i], i, next[i]);
+  return { points: poly, indices };
+}
+
+function pointInRing(x, y, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Accumulator: wall and roof arrays shared by every building of a streaming cell.
+// ---------------------------------------------------------------------------------------------------------------
+function createAccumulator() {
+  const wall = { position: [], normal: [], facadeUV: [], facadeWall: [], facadeBldg: [], facadeTone: [], index: [] };
+  const roof = { position: [], normal: [], color: [], index: [] };
+  return { wall, roof, wallRanges: [], roofRanges: [] };
+}
+
+/**
+ * Appends one building: its roof to `acc`, its walls to `opts.wallAcc` (default `acc`; glass towers go to their own mesh).
+ * Hero buildings are skipped by the caller. Returns the numbers of triangles added.
+ */
+function addBuilding(acc, b, opts = {}) {
+  const wallAcc = opts.wallAcc || acc;
+  const outerPts = cleanRing(b.ring, true);
+  if (!outerPts) return null;
+  const holePts = (b.holes || []).map((h) => cleanRing(h, false)).filter(Boolean);
+  const ground = b.ground;
+  const eave = Math.max(b.eave, ground + 0.5);
+  const bottom = Math.min(ground, 0) - 0.1;
+  const f = b.facade || {};
+  const groundH = f.ground_floor_h || f.floor_h || 3;
+  // Fit a whole number of storeys between the ground floor and the eave (the BBR storey count and the DSM height
+  // disagree by a fraction of a floor on many buildings; the fit keeps the top row from ending in a blank band)
+  const nominalFloor = f.floor_h || 3;
+  const upper = Math.max(eave - ground - groundH, 0);
+  const floorH = upper > nominalFloor * 0.5 ? upper / Math.max(1, Math.round(upper / nominalFloor)) : nominalFloor;
+  const bayW = f.bay_w || 3;
+  const windowW = f.window_w || 1.2;
+  const tone = (f.tone || [0.7, 0.65, 0.58]).map(srgbToLinear);
+  const idHash = hashString(String(b.id));
+  const kind = WALL_KIND[f.ground_type] ?? 1;
+  const inferred = b.conf_fields?.facade === 'inferred' || f.conf === 'inferred' ? 1 : 0;
+  const roofColour = (ROOF_COLOURS[b.roof_material] || ROOF_DEFAULT).map(srgbToLinear);
+
+  const wallStart = wallAcc.wall.index.length;
+  const roofStart = acc.roof.index.length;
+  const w = wallAcc.wall;
+
+  const rings = [outerPts, ...holePts];
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const p0 = ring[i];
+      const p1 = ring[(i + 1) % ring.length];
+      const dx = p1[0] - p0[0];
+      const dz = p1[1] - p0[1];
+      const len = Math.hypot(dx, dz);
+      if (len < 0.05) continue;
+      const nx = -dz / len;
+      const nz = dx / len;
+      const base = w.position.length / 3;
+      const v0 = bottom - ground;
+      const v1 = eave - ground;
+      const corners = [[p0, 0, bottom, v0], [p1, len, bottom, v0], [p1, len, eave, v1], [p0, 0, eave, v1]];
+      for (const [p, u, y, v] of corners) {
+        w.position.push(p[0], y, p[1]);
+        w.normal.push(nx, 0, nz);
+        w.facadeUV.push(u, v);
+        w.facadeWall.push(len, floorH, groundH, bayW);
+        w.facadeBldg.push((idHash % 1000) / 1000, kind, inferred, idHash % 997);
+        w.facadeTone.push(tone[0], tone[1], tone[2], Math.min(Math.max(windowW / bayW, 0.12), 0.85));
+      }
+      w.index.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+  }
+
+  addRoof(acc.roof, b, outerPts, holePts, eave, roofColour);
+
+  wallAcc.wallRanges.push({ id: b.id, start: wallStart, end: w.index.length });
+  acc.roofRanges.push({ id: b.id, start: roofStart, end: acc.roof.index.length });
+  return { wallTriangles: (w.index.length - wallStart) / 3, roofTriangles: (acc.roof.index.length - roofStart) / 3 };
+}
+
+function pushRoofVertex(r, x, y, z, nx, ny, nz, colour) {
+  r.position.push(x, y, z);
+  r.normal.push(nx, ny, nz);
+  r.color.push(colour[0], colour[1], colour[2]);
+  return r.position.length / 3 - 1;
+}
+
+// Miter-inset copy of a ring (edges move by t towards the building's solid, i.e. to the left of travel for CCW rings)
+function insetRing(ring, t) {
+  const n = ring.length;
+  const normals = ring.map((p, i) => {
+    const q = ring[(i + 1) % n];
+    const dx = q[0] - p[0], dz = q[1] - p[1];
+    const len = Math.hypot(dx, dz) || 1;
+    return [-dz / len, dx / len]; // outward from the solid
+  });
+  return ring.map((p, i) => {
+    const a = normals[(i + n - 1) % n];
+    const c = normals[i];
+    const d = 1 + a[0] * c[0] + a[1] * c[1];
+    const k = Math.min(t / Math.max(d, 0.35), t * 2.5);
+    return [p[0] - (a[0] + c[0]) * k, p[1] - (a[1] + c[1]) * k];
+  });
+}
+
+function addRoof(r, b, outer, holes, eave, colour) {
+  const hipped = holes.length === 0 && outer.length === 4 && b.roof !== 'flat' && b.ridge > eave + 1.5;
+  if (hipped) {
+    addHippedRoof(r, outer, eave, Math.min(b.ridge - eave, 6.5), colour);
+    return;
+  }
+  const rings = [outer, ...holes];
+  const top = eave + PARAPET_H;
+  const insets = rings.map((ring) => insetRing(ring, PARAPET_T));
+  rings.forEach((ring, ri) => {
+    const inner = insets[ri];
+    const n = ring.length;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const dx = ring[j][0] - ring[i][0], dz = ring[j][1] - ring[i][1];
+      const len = Math.hypot(dx, dz);
+      if (len < 0.05) continue;
+      const nx = -dz / len, nz = dx / len;
+      // Outer face (flush with the facade), top, inner face
+      let a = pushRoofVertex(r, ring[i][0], eave, ring[i][1], nx, 0, nz, colour);
+      let c = pushRoofVertex(r, ring[j][0], eave, ring[j][1], nx, 0, nz, colour);
+      let d = pushRoofVertex(r, ring[j][0], top, ring[j][1], nx, 0, nz, colour);
+      let e = pushRoofVertex(r, ring[i][0], top, ring[i][1], nx, 0, nz, colour);
+      r.index.push(a, c, d, a, d, e);
+      a = pushRoofVertex(r, ring[i][0], top, ring[i][1], 0, 1, 0, colour);
+      c = pushRoofVertex(r, ring[j][0], top, ring[j][1], 0, 1, 0, colour);
+      d = pushRoofVertex(r, inner[j][0], top, inner[j][1], 0, 1, 0, colour);
+      e = pushRoofVertex(r, inner[i][0], top, inner[i][1], 0, 1, 0, colour);
+      r.index.push(a, c, d, a, d, e);
+      // Inner face looks into the roof (towards the solid), against the outward wall direction
+      a = pushRoofVertex(r, inner[i][0], top, inner[i][1], -nx, 0, -nz, colour);
+      c = pushRoofVertex(r, inner[j][0], top, inner[j][1], -nx, 0, -nz, colour);
+      d = pushRoofVertex(r, inner[j][0], eave, inner[j][1], -nx, 0, -nz, colour);
+      e = pushRoofVertex(r, inner[i][0], eave, inner[i][1], -nx, 0, -nz, colour);
+      r.index.push(a, d, e, a, c, d);
+    }
+  });
+  // Roof deck inside the parapet, at eave level, slightly darker than the parapet
+  const deck = colour.map((c) => c * 0.85);
+  const tri = triangulate(insets[0].map(([x, z]) => [x, -z]), insets.slice(1).map((h) => h.map(([x, z]) => [x, -z])));
+  const base = r.position.length / 3;
+  for (const [x, n] of tri.points) pushRoofVertex(r, x, eave, -n, 0, 1, 0, deck);
+  for (const k of tri.indices) r.index.push(base + k);
+}
+
+function addHippedRoof(r, ring, eave, rise, colour) {
+  const len = (a, c) => Math.hypot(c[0] - a[0], c[1] - a[1]);
+  const long0 = len(ring[0], ring[1]) + len(ring[2], ring[3]);
+  const long1 = len(ring[1], ring[2]) + len(ring[3], ring[0]);
+  const k = long0 >= long1 ? 0 : 1;
+  const [c0, c1, c2, c3] = [0, 1, 2, 3].map((j) => ring[(k + j) % 4]);
+  const longLen = (len(c0, c1) + len(c3, c2)) / 2;
+  const shortLen = (len(c1, c2) + len(c0, c3)) / 2;
+  const a = Math.min(shortLen / (2 * longLen), 0.5);
+  const h = Math.min(rise, shortLen * 0.55);
+  const P = (s, t) => [
+    (1 - t) * ((1 - s) * c0[0] + s * c1[0]) + t * ((1 - s) * c3[0] + s * c2[0]),
+    (1 - t) * ((1 - s) * c0[1] + s * c1[1]) + t * ((1 - s) * c3[1] + s * c2[1])
+  ];
+  const r0 = P(a, 0.5);
+  const r1 = P(1 - a, 0.5);
+  const faces = [
+    [[c0, eave], [c1, eave], [r1, eave + h], [r0, eave + h]],
+    [[c1, eave], [c2, eave], [r1, eave + h]],
+    [[c2, eave], [c3, eave], [r0, eave + h], [r1, eave + h]],
+    [[c3, eave], [c0, eave], [r0, eave + h]]
+  ];
+  for (const face of faces) {
+    const p = face.map(([q, y]) => [q[0], y, q[1]]);
+    const u = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]];
+    const v = [p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]];
+    let nx = u[1] * v[2] - u[2] * v[1], ny = u[2] * v[0] - u[0] * v[2], nz = u[0] * v[1] - u[1] * v[0];
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nx /= l; ny /= l; nz /= l;
+    const base = pushRoofVertex(r, p[0][0], p[0][1], p[0][2], nx, ny, nz, colour);
+    for (let i = 1; i < p.length; i++) pushRoofVertex(r, p[i][0], p[i][1], p[i][2], nx, ny, nz, colour);
+    for (let i = 1; i < p.length - 1; i++) r.index.push(base, base + i, base + i + 1);
+  }
+}
+
+export {
+  PARAPET_H, WALL_KIND, ROOF_COLOURS,
+  hashString, ringArea, cleanRing, triangulate, createAccumulator, addBuilding, insetRing
+};
