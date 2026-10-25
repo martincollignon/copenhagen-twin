@@ -60,7 +60,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&amp;family=Overpass:wght@600;700&amp;display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261025-cph" />
+  <link rel="stylesheet" href="./css/style.css?v=20261025-cargo-bike" />
 </head>
 <body>
   <!-- Icon sprite (24 × 24 stroke icons, drawn in currentColor) -->
@@ -164,6 +164,10 @@
   <!-- Bottom-Center: Third-Person Mode Switcher & Controls Guide -->
   <footer class="hud hud-bottom-center">
     <div id="hud-controls-hint" class="controls-hint"></div>
+    <div id="bike-type-switch" class="bike-type-switch" role="group" aria-label="Bike type" hidden>
+      <button class="bike-type-btn active" data-bike-type="cyclist" type="button" aria-pressed="true">City bike</button>
+      <button class="bike-type-btn" data-bike-type="cargobike" type="button" aria-pressed="false">Cargo bike</button>
+    </div>
     <nav id="mode-switch" class="panel mode-switch" aria-label="Third-Person Navigation Mode">
       <span class="mode-indicator" aria-hidden="true"></span>
       <button id="mode-person" class="mode-btn" data-mode="person" type="button" title="Person [1]">
@@ -172,7 +176,7 @@
       <button id="mode-car" class="mode-btn active" data-mode="car" type="button" title="Car [2]">
         <svg class="icon" aria-hidden="true"><use href="#i-car"/></svg><span class="mode-label">Drive</span><kbd>2</kbd>
       </button>
-      <button id="mode-cyclist" class="mode-btn" data-mode="cyclist" type="button" title="Cyclist [3]">
+      <button id="mode-cyclist" class="mode-btn" data-mode="cyclist" type="button" title="Cycle [3]">
         <svg class="icon" aria-hidden="true"><use href="#i-bike"/></svg><span class="mode-label">Cycle</span><kbd>3</kbd>
       </button>
       <button id="mode-helicopter" class="mode-btn" data-mode="helicopter" type="button" title="Helicopter [4]">

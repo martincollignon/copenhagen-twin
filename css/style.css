@@ -727,6 +727,28 @@ body.hud-minimized .icon-show {
   margin-left: 4px;
 }
 
+.bike-type-switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.bike-type-switch[hidden] { display: none; }
+
+.bike-type-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.bike-type-btn:hover { background: var(--hover); color: var(--text); }
+.bike-type-btn.active { color: var(--accent); background: rgba(255, 194, 26, 0.12); }
+
 .mode-switch {
   position: relative;
   display: flex;
@@ -1097,6 +1119,7 @@ body.touch-enabled .tool-label { display: none; }
 body.touch-enabled .hud-bottom-center { bottom: max(var(--edge), env(safe-area-inset-bottom)); }
 body.touch-enabled .mode-label { display: block; font-size: 10px; }
 body.touch-enabled .mode-btn { width: 62px; height: 48px; padding: 0; flex-direction: column; justify-content: center; gap: 3px; }
+body.touch-enabled .bike-type-btn { min-height: 44px; padding: 0 14px; }
 body.touch-enabled .hud-bottom-right { top: calc(max(var(--edge), env(safe-area-inset-top)) + 62px); right: max(var(--edge), env(safe-area-inset-right)); bottom: auto; }
 body.touch-enabled .cluster { width: 230px; }
 body.touch-enabled .camera-switch { border: 0; }
