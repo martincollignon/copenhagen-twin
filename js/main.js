@@ -75,7 +75,7 @@ async function initApp() {
   const { trafficSystem } = world;
   const allColliders = world.colliders;
 
-  // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
+  // 4. Initialize Third-Person Controllers (Person, Car, both Bikes, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
   // Reuse teleport placement so saved players return at rest, close to their last positions.
   try {
@@ -195,6 +195,9 @@ async function initApp() {
   const teleportButtons = document.querySelectorAll('[data-teleport]');
   const hudToggleBtn = document.getElementById('btn-toggle-hud');
   const modeSwitch = document.getElementById('mode-switch');
+  const bikeTypeSwitch = document.getElementById('bike-type-switch');
+  const bikeTypeButtons = bikeTypeSwitch ? [...bikeTypeSwitch.querySelectorAll('[data-bike-type]')] : [];
+  let lastBikeMode = controllerManager.activeMode === 'cargobike' ? 'cargobike' : 'cyclist';
   touchControls.onAvailabilityChange = placeModeIndicator;
 
   const elFps = document.getElementById('hud-fps');
@@ -208,7 +211,9 @@ async function initApp() {
   const gamepadControls = new GamepadControls(controllerManager, cameraSystem, {
     onCycleMode: (step) => {
       const modes = ['person', 'car', 'cyclist', 'helicopter'];
-      selectMode(modes[(modes.indexOf(controllerManager.activeMode) + step + modes.length) % modes.length]);
+      const activeMode = controllerManager.activeMode === 'cargobike' ? 'cyclist' : controllerManager.activeMode;
+      const nextMode = modes[(modes.indexOf(activeMode) + step + modes.length) % modes.length];
+      selectMode(nextMode === 'cyclist' ? lastBikeMode : nextMode);
     },
     onCycleCamera: cycleCamera
   });
@@ -220,8 +225,8 @@ async function initApp() {
     cyclist: [[['W', 'S'], 'Pedal / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Sprint'], [['Drag'], 'Orbit']],
     helicopter: [[['W', 'S'], 'Pitch'], [['A', 'D'], 'Yaw'], [['Space', 'E'], 'Ascend'], [['Q', 'C'], 'Descend'], [['Shift'], 'Boost']]
   };
-  // Boosted top speeds in km/h (controllers.js caps them at 8.2, 36, 19 & 52 m/s): full scale of the speed meter
-  const topSpeedKmh = { person: 30, car: 130, cyclist: 68, helicopter: 187 };
+  // Top speeds in km/h set the full scale of the speed meter for each active vehicle.
+  const topSpeedKmh = { person: 30, car: 130, cyclist: 25, cargobike: 25, helicopter: 187 };
 
   function renderControlHints(mode) {
     if (!elControlsHint) return;
@@ -251,17 +256,28 @@ async function initApp() {
   }
 
   function selectMode(mode) {
+    if (mode === 'cyclist' && lastBikeMode === 'cargobike') mode = lastBikeMode;
     controllerManager.setMode(mode);
-    touchControls.setMode(controllerManager.activeMode);
+    const activeMode = controllerManager.activeMode;
+    const bikeActive = activeMode === 'cyclist' || activeMode === 'cargobike';
+    if (bikeActive) lastBikeMode = activeMode;
+    const primaryMode = activeMode === 'cargobike' ? 'cyclist' : activeMode;
+    touchControls.setMode(activeMode);
     gamepadControls.reset();
     modeButtons.forEach((btn) => {
-      btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
+      btn.classList.toggle('active', btn.getAttribute('data-mode') === primaryMode);
     });
-    document.body.dataset.mode = mode;
+    if (bikeTypeSwitch) bikeTypeSwitch.hidden = !bikeActive;
+    bikeTypeButtons.forEach((btn) => {
+      const selected = btn.getAttribute('data-bike-type') === activeMode;
+      btn.classList.toggle('active', selected);
+      btn.setAttribute('aria-pressed', String(selected));
+    });
+    document.body.dataset.mode = primaryMode;
     placeModeIndicator();
     const ent = controllerManager.getActiveEntity();
     if (elMode) elMode.textContent = ent.label;
-    renderControlHints(mode);
+    renderControlHints(primaryMode);
 
     // If currently on a static scenic camera, switch to 3rd-Person Chase so user sees their selected character/vehicle
     const currentCam = cameraSystem.getActivePreset();
@@ -335,6 +351,13 @@ async function initApp() {
   modeButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
       selectMode(btn.getAttribute('data-mode'));
+    });
+  });
+
+  bikeTypeButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      lastBikeMode = btn.getAttribute('data-bike-type');
+      selectMode(lastBikeMode);
     });
   });
 
@@ -700,7 +723,9 @@ async function initApp() {
         elFps.className = currentFps >= 50 ? 'fps-ok' : currentFps >= 30 ? 'fps-warn' : 'fps-bad';
       }
       if (elSpeed) elSpeed.textContent = String(kmh);
-      if (elSpeedMeter) elSpeedMeter.style.transform = `scaleX(${Math.min(1, kmh / (topSpeedKmh[mode] || 130))})`;
+      const bikeBoosting = (mode === 'cyclist' || mode === 'cargobike') && controllerManager.keys.boost;
+      const speedCap = bikeBoosting ? 30 : topSpeedKmh[mode] || 130;
+      if (elSpeedMeter) elSpeedMeter.style.transform = `scaleX(${Math.min(1, kmh / speedCap)})`;
       document.body.classList.toggle('is-boosting', controllerManager.keys.boost && kmh > 0);
       if (elAltitude) elAltitude.textContent = altM.toLocaleString('en-US');
       // The street corner of the player on the follow cameras, of the camera itself on the scenic ones

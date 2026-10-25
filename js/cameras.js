@@ -209,7 +209,9 @@ class CameraSystem {
           entity.position.z - Math.cos(totalYaw) * horizDist
         );
 
-        const lookUpBias = entity.type === 'helicopter' ? 0.2 : (entity.type === 'car' ? 0.52 : 1.55);
+        const lookUpBias = entity.type === 'helicopter' ? 0.2
+          : entity.type === 'car' ? 0.52
+            : entity.type === 'cargobike' ? 1.2 : 1.55;
         desiredLook.set(
           entity.position.x + Math.sin(entity.heading) * 5.2,
           entity.position.y + entity.cameraTargetOffset.y + lookUpBias,
@@ -219,8 +221,12 @@ class CameraSystem {
       }
 
       case 'action': {
-        const sideOffset = entity.type === 'car' ? 2.65 : (entity.type === 'helicopter' ? 4.2 : 0.95);
-        const backDist = (entity.type === 'car' ? 3.6 : (entity.type === 'helicopter' ? 8.5 : 2.8)) + speedLag;
+        const sideOffset = entity.type === 'car' ? 2.65
+          : entity.type === 'helicopter' ? 4.2
+            : entity.type === 'cargobike' ? 1.3 : 0.95;
+        const backDist = (entity.type === 'car' ? 3.6
+          : entity.type === 'helicopter' ? 8.5
+            : entity.type === 'cargobike' ? 4.1 : 2.8) + speedLag;
         const lowY = entity.type === 'helicopter' ? entity.position.y + 1.2 : entity.position.y + 0.92;
 
         desiredPos.set(
@@ -228,10 +234,11 @@ class CameraSystem {
           Math.max(0.55, lowY),
           entity.position.z - Math.cos(entity.heading) * backDist - Math.sin(entity.heading) * sideOffset
         );
+        const lookAhead = entity.type === 'cargobike' ? 4.2 : 3.2;
         desiredLook.set(
-          entity.position.x + Math.sin(entity.heading) * 3.2,
-          entity.position.y + 1.05,
-          entity.position.z + Math.cos(entity.heading) * 3.2
+          entity.position.x + Math.sin(entity.heading) * lookAhead,
+          entity.position.y + (entity.type === 'cargobike' ? 1.25 : 1.05),
+          entity.position.z + Math.cos(entity.heading) * lookAhead
         );
         break;
       }
@@ -245,6 +252,9 @@ class CameraSystem {
         } else if (entity.type === 'cyclist') {
           fwdOffset = 0.35;
           eyeY = 1.55;
+        } else if (entity.type === 'cargobike') {
+          fwdOffset = -0.42;
+          eyeY = 1.68;
         } else if (entity.type === 'helicopter') {
           fwdOffset = 1.65;
           eyeY = 1.65;
