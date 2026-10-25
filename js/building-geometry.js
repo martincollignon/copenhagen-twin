@@ -8,6 +8,8 @@
 //   facadeTone (r, g, b linear, window width / bay width)
 // Frame (docs/cph-geodata-schema.md): x east, z south, y up. Rings are CCW seen from above (in x / -z), holes CW, so
 // the outward normal of the wall p0 -> p1 (direction d) is (-d.z, 0, d.x) and u grows along d.
+// With a LoD2 record (opts.lod2, js/lod2-geometry.js) the roof is the roofer mesh and each wall ends at its roofer eave.
+import { lod2EdgeTops, lod2RoofTriangles, lod2WallPieces } from './lod2-geometry.js';
 
 const PARAPET_H = 0.45;
 const PARAPET_T = 0.22;
@@ -185,9 +187,17 @@ function createAccumulator() {
   return { wall, roof, wallRanges: [], roofRanges: [] };
 }
 
+/** Linear roof colour: the observed nadir tone when the appearance pass saw the roof, else the BBR roof material. */
+function roofColourFor(b) {
+  const seen = b.observed?.roof;
+  if (seen?.conf === 'observed' && Array.isArray(seen.tone) && seen.tone.length === 3) return seen.tone.map(srgbToLinear);
+  return (ROOF_COLOURS[b.roof_material] || ROOF_DEFAULT).map(srgbToLinear);
+}
+
 /**
  * Appends one building: its roof to `acc`, its walls to `opts.wallAcc` (default `acc`; glass towers go to their own mesh).
- * Hero buildings are skipped by the caller. Returns the numbers of triangles added.
+ * `opts.lod2` (a parsed record, see lod2-geometry.js) swaps the flat roof for the roofer LoD2.2 roof and ends each wall at
+ * its roofer eave. Hero buildings are skipped by the caller. Returns the numbers of triangles added.
  */
 function addBuilding(acc, b, opts = {}) {
   const wallAcc = opts.wallAcc || acc;
@@ -210,15 +220,19 @@ function addBuilding(acc, b, opts = {}) {
   const idHash = hashString(String(b.id));
   const kind = WALL_KIND[f.ground_type] ?? 1;
   const inferred = b.conf_fields?.facade === 'inferred' || f.conf === 'inferred' ? 1 : 0;
-  const roofColour = (ROOF_COLOURS[b.roof_material] || ROOF_DEFAULT).map(srgbToLinear);
+  const roofColour = roofColourFor(b);
 
   const wallStart = wallAcc.wall.index.length;
   const roofStart = acc.roof.index.length;
   const w = wallAcc.wall;
 
   const rings = [outerPts, ...holePts];
+  const lod2 = opts.lod2 || null;
+  const lod = lod2 ? lod2EdgeTops(lod2, b, rings, eave, ground + 1.0) : null;
+  let edgeNo = -1;
   for (const ring of rings) {
     for (let i = 0; i < ring.length; i++) {
+      edgeNo++;
       const p0 = ring[i];
       const p1 = ring[(i + 1) % ring.length];
       const dx = p1[0] - p0[0];
@@ -228,9 +242,10 @@ function addBuilding(acc, b, opts = {}) {
       const nx = -dz / len;
       const nz = dx / len;
       const base = w.position.length / 3;
+      const top = lod ? lod.tops[edgeNo] : eave;
       const v0 = bottom - ground;
-      const v1 = eave - ground;
-      const corners = [[p0, 0, bottom, v0], [p1, len, bottom, v0], [p1, len, eave, v1], [p0, 0, eave, v1]];
+      const v1 = top - ground;
+      const corners = [[p0, 0, bottom, v0], [p1, len, bottom, v0], [p1, len, top, v1], [p0, 0, top, v1]];
       for (const [p, u, y, v] of corners) {
         w.position.push(p[0], y, p[1]);
         w.normal.push(nx, 0, nz);
@@ -243,11 +258,61 @@ function addBuilding(acc, b, opts = {}) {
     }
   }
 
-  addRoof(acc.roof, b, outerPts, holePts, eave, roofColour);
+  if (lod2) {
+    // Roofer outer walls above each edge's eave (gables, steps) and inner step walls, as plain masonry in the edge's frame
+    const edgeFrames = [];
+    rings.forEach((ring) => ring.forEach((p, i) => { const q = ring[(i + 1) % ring.length]; edgeFrames.push([p, q]); }));
+    for (const { edge, tri } of lod2WallPieces(lod2, lod)) {
+      const [e0, e1] = edge >= 0 ? edgeFrames[edge] : [null, null];
+      let dxw, dzw;
+      if (e0) { dxw = e1[0] - e0[0]; dzw = e1[1] - e0[1]; } else {
+        const a = tri[0], c = tri[1], d = tri[2];
+        const nxv = (c[1] - a[1]) * (d[2] - a[2]) - (c[2] - a[2]) * (d[1] - a[1]);
+        const nzv = (c[0] - a[0]) * (d[1] - a[1]) - (c[1] - a[1]) * (d[0] - a[0]);
+        dxw = nzv; dzw = -nxv; // tangent of a wall whose horizontal normal is (nxv, nzv): d = (nz, -nx)
+      }
+      const dl = Math.hypot(dxw, dzw) || 1;
+      const tx = dxw / dl, tz = dzw / dl;
+      const org = e0 || [tri[0][0], tri[0][2]];
+      const ux = tri[1][0] - tri[0][0], uy = tri[1][1] - tri[0][1], uz = tri[1][2] - tri[0][2];
+      const vx = tri[2][0] - tri[0][0], vy = tri[2][1] - tri[0][1], vz = tri[2][2] - tri[0][2];
+      let fx = uy * vz - uz * vy, fy = uz * vx - ux * vz, fz = ux * vy - uy * vx;
+      const fl = Math.hypot(fx, fy, fz) || 1;
+      fx /= fl; fy /= fl; fz /= fl;
+      const base = w.position.length / 3;
+      for (const q of tri) {
+        w.position.push(q[0], q[1], q[2]);
+        w.normal.push(fx, fy, fz);
+        w.facadeUV.push((q[0] - org[0]) * tx + (q[2] - org[1]) * tz, q[1] - ground);
+        w.facadeWall.push(e0 ? Math.hypot(dxw, dzw) : 10, floorH, groundH, bayW);
+        w.facadeBldg.push((idHash % 1000) / 1000, WALL_KIND.blank, inferred, idHash % 997);
+        w.facadeTone.push(tone[0], tone[1], tone[2], Math.min(Math.max(windowW / bayW, 0.12), 0.85));
+      }
+      w.index.push(base, base + 1, base + 2);
+    }
+    addLod2Roof(acc.roof, lod2, roofColour);
+  } else {
+    addRoof(acc.roof, b, outerPts, holePts, eave, roofColour);
+  }
 
   wallAcc.wallRanges.push({ id: b.id, start: wallStart, end: w.index.length });
   acc.roofRanges.push({ id: b.id, start: roofStart, end: acc.roof.index.length });
   return { wallTriangles: (w.index.length - wallStart) / 3, roofTriangles: (acc.roof.index.length - roofStart) / 3 };
+}
+
+/** The roofer roof surfaces with flat per-triangle normals (a pitched roof is faceted). */
+function addLod2Roof(r, rec, colour) {
+  for (const tri of lod2RoofTriangles(rec)) {
+    const ux = tri[1][0] - tri[0][0], uy = tri[1][1] - tri[0][1], uz = tri[1][2] - tri[0][2];
+    const vx = tri[2][0] - tri[0][0], vy = tri[2][1] - tri[0][1], vz = tri[2][2] - tri[0][2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const l = Math.hypot(nx, ny, nz);
+    if (l < 1e-9) continue;
+    nx /= l; ny /= l; nz /= l;
+    const base = r.position.length / 3;
+    for (const q of tri) pushRoofVertex(r, q[0], q[1], q[2], nx, ny, nz, colour);
+    r.index.push(base, base + 1, base + 2);
+  }
 }
 
 function pushRoofVertex(r, x, y, z, nx, ny, nz, colour) {

@@ -1,6 +1,7 @@
 .DS_Store
-data/raw/
-__pycache__/
 .pytest_cache/
+.venv/
+__pycache__/
 data/heroes/
+data/raw/
 data/tex/

@@ -1,0 +1,16 @@
+[project]
+name = "cph-lod2"
+version = "0.1.0"
+description = "LoD2 roof pipeline for the Copenhagen twin (DHM Punktsky -> roofer -> twin-local meshes)"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26", "mapbox-earcut>=1.0.1"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

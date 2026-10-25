@@ -121,7 +121,7 @@ async function loadHero(hero, { fetchImpl = globalThis.fetch } = {}) {
   return group;
 }
 
-function describeBuilding(b) {
+function describeBuilding(b, lod2Info = null) {
   const metres = (v) => `${v.toFixed(1)} m`;
   const f = b.facade || {};
   const conf = b.conf_fields || {};
@@ -141,6 +141,7 @@ function describeBuilding(b) {
     conf: b.conf,
     confFields: conf,
     src: b.src,
+    roofSource: lod2Info?.conf === 'measured' ? `LoD2.2 from the ${lod2Info.scan_date} point cloud${lod2Info.roof_type ? ` (${lod2Info.roof_type})` : ''}` : (lod2Info?.reason ? `flat extrusion (${lod2Info.reason})` : null),
     heightText: Number.isFinite(b.eave) ? `${metres(b.eave - b.ground)} to eave${b.ridge > b.eave + 0.3 ? `, ${metres(b.ridge - b.ground)} to ridge` : ''}` : 'unknown'
   };
 }
@@ -176,6 +177,7 @@ function createInfoPanel() {
         row('Storeys', e(info.storeys), c.storeys),
         row('Height', e(info.heightText), c.eave),
         row('Roof', `${e(info.roof)} / ${e(info.roofMaterial)}`, c.roof),
+        info.roofSource ? row('Roof geometry', e(info.roofSource), info.roofSource.startsWith('LoD2') ? 'measured' : 'inferred') : '',
         row('Wall', e(info.wallMaterial), c.wall_material),
         row('Facade', `floor ${e(f.floor_h)} m, bay ${e(f.bay_w)} m, ${e(f.ground_type)}`, c.facade ?? 'inferred'),
         row('Record', e(info.conf)),
@@ -187,7 +189,7 @@ function createInfoPanel() {
   };
 }
 
-async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoPanel = true } = {}) {
+async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoPanel = true, lod2 = null } = {}) {
   const buildings = geo.buildings || [];
   const heroIds = new Set((geo.heroes || []).map((h) => h.building_id));
   const byId = new Map(buildings.map((b) => [b.id, b]));
@@ -214,12 +216,24 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
   const glassAcc = createAccumulator();
   let triangles = 0;
 
+  // LoD2 roofs (tools/lod2): every building with a measured roofer record gets its pitched roof; the rest keep the flat
+  // extrusion. The join is by building id, so the geodata compiler never needs to know about LoD2.
+  const lod2Records = new Map();
+  if (lod2) {
+    await lod2.prefetch();
+    for (const b of buildings) {
+      if (heroIds.has(b.id)) continue;
+      const rec = await lod2.ready(b.id);
+      if (rec) lod2Records.set(b.id, rec);
+    }
+  }
+
   const leafNodes = collectLeaves(tree);
   for (const leaf of leafNodes) {
     const acc = createAccumulator();
     for (const { b } of leaf.items) {
       const glassy = b.wall_material === 'glas';
-      const added = addBuilding(acc, b, glassy ? { wallAcc: glassAcc } : {});
+      const added = addBuilding(acc, b, { ...(glassy ? { wallAcc: glassAcc } : {}), ...(lod2Records.has(b.id) ? { lod2: lod2Records.get(b.id) } : {}) });
       if (added) triangles += added.wallTriangles + added.roofTriangles;
     }
     const group = new THREE.Group();
@@ -320,7 +334,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
   function showBuilding(id, isPinned = false) {
     const b = byId.get(id);
     if (!b || !panel) return null;
-    const info = describeBuilding(b);
+    const info = describeBuilding(b, lod2?.entry(id));
     panel.show(info, isPinned);
     return info;
   }
@@ -351,7 +365,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
   }
 
   const stats = {
-    buildings: buildings.length - heroIds.size, heroes: heroStatus, cells: leaves.length, triangles,
+    buildings: buildings.length - heroIds.size, heroes: heroStatus, cells: leaves.length, triangles, lod2: lod2Records.size,
     meshes: pickables.length + heroGroups.reduce((n, g) => n + g.children[0].children.length, 0)
   };
 

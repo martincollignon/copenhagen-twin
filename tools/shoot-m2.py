@@ -10,6 +10,7 @@ ap.add_argument('--query', default='')
 ap.add_argument('--verify', action='store_true', help='cleanup check: boots, asserts the HUD and the console, and captures docs/cleanup shots')
 ap.add_argument('--surfaces', action='store_true', help='M4 ground-surface close-ups (pavement, cycle tracks, junction, square, aerial) into --out')
 ap.add_argument('--fixes', action='store_true', help='M4 surface-fix close-ups (side-street mouth, facade sett strip, pedestrian feet, gravel polygon) into --out')
+ap.add_argument('--lod2', action='store_true', help='M4 LoD2 roofs: before (?debug=nolod2, flat extrusions) and after shots of pitched roofs into --out (default docs/m4-lod2)')
 ap.add_argument('--perf', action='store_true', help='unthrottled frame timing instead of captures')
 args = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -103,6 +104,55 @@ def fix_views():
     out['gravel-polygon'] = ([gx + 14, 22, gz + 14], [gx, 0, gz], 55)
     out['gravel-polygon-close'] = ([gx + 6, 6, gz + 6], [gx, 0, gz], 60)
     return out
+def lod2_views():
+    """Camera setups for the LoD2 roof shots, derived from the road geometry of the named streets."""
+    import math
+    def street(name):
+        rs = [r for r in GEO['roads'] if r.get('name') == name]
+        r = max(rs, key=lambda r: len(r['pts']))
+        p = r['pts']; k = (len(p) // 4) * 2  # a vertex near the middle
+        k = min(max(k, 2), len(p) - 4)
+        dx, dz = p[k + 2] - p[k - 2], p[k + 3] - p[k - 1]
+        l = math.hypot(dx, dz) or 1
+        return p[k], p[k + 1], dx / l, dz / l
+    out = {'overview': ([-420, 330, 380], [20, 0, -20], 50), 'overview-close': ([-140, 150, 210], [-60, 8, 40], 55)}
+    for name, key in (('Ravnsborggade', 'ravnsborggade'), ('Blågårdsgade', 'blagardsgade'), ('Ravnsborg Tværgade', 'ravnsborg-tvaergade')):
+        mx, mz, ux, uz = street(name)
+        out[f'{key}-aerial'] = ([mx - ux * 55, 38, mz - uz * 55], [mx + ux * 12, 8, mz + uz * 12], 58)
+        out[f'{key}-street'] = ([mx - ux * 26, 1.7, mz - uz * 26], [mx + ux * 20, 13, mz + uz * 20], 66)
+        out[f'{key}-rooftops'] = ([mx - ux * 18 + uz * 6, 22, mz - uz * 18 - ux * 6], [mx + ux * 10, 9, mz + uz * 10], 60)
+    mx, mz, ux, uz = street('Nørre Søgade')
+    for tag, sgn in (('a', 1), ('b', -1)):
+        out[f'norre-sogade-{tag}'] = ([mx + uz * 42 * sgn, 24, mz - ux * 42 * sgn], [mx - uz * 8 * sgn, 11, mz + ux * 8 * sgn], 58)
+        out[f'norre-sogade-{tag}-street'] = ([mx + uz * 20 * sgn - ux * 14, 1.7, mz - ux * 20 * sgn - uz * 14], [mx - uz * 12 * sgn + ux * 6, 13, mz + ux * 12 * sgn + uz * 6], 66)
+    # close oblique shots of one pitched, multi-plane roof near each street (picked from data/lod2/index.json)
+    try:
+        index = json.load(open(os.path.join(root, 'data/lod2/index.json')))['buildings']
+    except OSError:
+        index = {}
+    byid = {b['id']: b for b in GEO['buildings']}
+    def area(r):
+        n = len(r) // 2
+        return abs(sum(r[2*i] * r[(2*i+3) % len(r)] - r[(2*i+2) % len(r)] * r[2*i+1] for i in range(n))) / 2
+    def cen(r): return sum(r[0::2]) / (len(r) // 2), sum(r[1::2]) / (len(r) // 2)
+    for name, key in (('Ravnsborggade', 'ravnsborggade'), ('Blågårdsgade', 'blagardsgade'), ('Nørre Søgade', 'norre-sogade'), ('Sankt Hans Gade', 'sankt-hans-gade')):
+        mx, mz, ux, uz = street(name)
+        cands = []
+        for bid, e in index.items():
+            b = byid.get(bid)
+            if not b or e.get('roof_type') != 'slanted' or (e.get('planes') or 0) < 5 or 'offset' not in e: continue
+            a = area(b['ring'])
+            if not 120 < a < 900: continue
+            cx, cz = cen(b['ring'])
+            cands.append((math.hypot(cx - mx, cz - mz), bid, cx, cz))
+        if not cands: continue
+        _, bid, cx, cz = min(cands)
+        b = byid[bid]
+        dx, dz = mx - cx, mz - cz
+        dl = math.hypot(dx, dz) or 1
+        out[f'pitched-{key}'] = ([cx + dx / dl * 48, b['eave'] + 26, cz + dz / dl * 48], [cx, b['eave'] + 1, cz], 55)
+        out[f'pitched-{key}-low'] = ([cx + dx / dl * 34, 1.7, cz + dz / dl * 34], [cx, b['eave'] + 4, cz], 66)
+    return out
 try:
     with sync_playwright() as p:
         browser = p.chromium.launch(args=['--enable-unsafe-webgpu', '--use-angle=metal', '--ignore-gpu-blocklist'] + (['--disable-frame-rate-limit', '--disable-gpu-vsync'] if args.perf else []))
@@ -117,6 +167,23 @@ try:
         def shot(name):
             page.wait_for_timeout(2500)
             page.screenshot(path=f'{args.out}/{name}.png')
+        if args.lod2:
+            out_dir = args.out if args.out != 'docs/m2' else 'docs/m4-lod2'
+            os.makedirs(out_dir, exist_ok=True)
+            views = lod2_views()
+            for variant, dbg in (('after', ''), ('before', 'nolod2')):
+                page.goto(f'http://127.0.0.1:{port}/index.html?debug={dbg}')
+                page.wait_for_function('globalThis.__twin && globalThis.__twin.world', timeout=120000)
+                page.wait_for_timeout(4000)
+                print(variant, json.dumps(page.evaluate('() => globalThis.__twin.world.buildings && globalThis.__twin.world.buildings.stats'), default=str))
+                for name, v in views.items():
+                    view(*v); page.wait_for_timeout(2500)
+                    page.screenshot(path=f'{out_dir}/{name}-{variant}.png')
+                    print('shot', name, variant)
+            errs = [l for l in logs if l.startswith(('error', 'pageerror', 'warning'))]
+            print('\n'.join(errs[:20]))
+            browser.close()
+            raise SystemExit(0)
         if args.fixes:
             os.makedirs(args.out, exist_ok=True)
             for name, v in fix_views().items():

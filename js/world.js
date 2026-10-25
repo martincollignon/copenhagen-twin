@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { CPH_FRAME } from './city-config.js';
 import { buildRealBuildings } from './buildings-real.js';
+import { loadLod2 } from './lod2-geometry.js';
 import { createTrafficSystem } from './traffic.js';
 import { buildCphRoadSurfaces } from './road-surfaces-cph.js';
 import { createCyclistSystem } from './cyclists.js';
@@ -274,7 +275,9 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   // M2: real buildings from the geodata (extruded footprints with the per-vertex facade frame) plus the hero glTFs
   let buildings = null;
   if (geo?.buildings?.length && !debug.split(',').includes('nobuildings')) {
-    buildings = await buildRealBuildings(scene, geo);
+    // Optional LoD2 roofs (tools/lod2 -> data/lod2); `?debug=nolod2` keeps the flat extrusions for before/after shots
+    const lod2 = debug.split(',').includes('nolod2') ? null : await loadLod2();
+    buildings = await buildRealBuildings(scene, geo, { lod2 });
     markInit(`buildings(${buildings.stats.buildings})`);
   }
 
