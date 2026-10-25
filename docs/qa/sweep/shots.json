@@ -1,0 +1,506 @@
+[
+ {
+  "file": "01-streets.jpg",
+  "label": "Nørre Søgade 30%",
+  "pos": [
+   38.7,
+   1.7,
+   -52.9
+  ],
+  "look": [
+   51.3,
+   3.0,
+   -80.1
+  ]
+ },
+ {
+  "file": "02-streets.jpg",
+  "label": "Nørre Søgade 70%",
+  "pos": [
+   112.3,
+   1.7,
+   -210.0
+  ],
+  "look": [
+   125.2,
+   3.0,
+   -237.1
+  ]
+ },
+ {
+  "file": "03-streets.jpg",
+  "label": "Dronning Louises Bro 50%",
+  "pos": [
+   99.6,
+   1.7,
+   -481.0
+  ],
+  "look": [
+   74.1,
+   3.0,
+   -496.8
+  ]
+ },
+ {
+  "file": "04-streets.jpg",
+  "label": "Nørrebrogade 35%",
+  "pos": [
+   -208.0,
+   1.7,
+   -662.9
+  ],
+  "look": [
+   -233.6,
+   3.0,
+   -678.6
+  ]
+ },
+ {
+  "file": "05-streets.jpg",
+  "label": "Nørrebrogade 80%",
+  "pos": [
+   -233.8,
+   1.7,
+   -678.7
+  ],
+  "look": [
+   -259.7,
+   3.0,
+   -693.9
+  ]
+ },
+ {
+  "file": "06-streets.jpg",
+  "label": "Ravnsborggade 50%",
+  "pos": [
+   -17.4,
+   1.7,
+   -680.1
+  ],
+  "look": [
+   -32.7,
+   3.0,
+   -654.3
+  ]
+ },
+ {
+  "file": "07-streets.jpg",
+  "label": "Blågårdsgade 50%",
+  "pos": [
+   -333.0,
+   1.7,
+   -253.6
+  ],
+  "look": [
+   -317.5,
+   3.0,
+   -279.3
+  ]
+ },
+ {
+  "file": "08-streets.jpg",
+  "label": "Sankt Hans Gade 50%",
+  "pos": [
+   147.8,
+   1.7,
+   -739.4
+  ],
+  "look": [
+   171.5,
+   3.0,
+   -721.0
+  ]
+ },
+ {
+  "file": "09-streets.jpg",
+  "label": "Nørre Farimagsgade 50%",
+  "pos": [
+   202.9,
+   1.7,
+   105.0
+  ],
+  "look": [
+   192.7,
+   3.0,
+   133.3
+  ]
+ },
+ {
+  "file": "10-streets.jpg",
+  "label": "H.C. Andersens Boulevard 50%",
+  "pos": [
+   330.0,
+   1.7,
+   619.7
+  ],
+  "look": [
+   346.5,
+   3.0,
+   644.8
+  ]
+ },
+ {
+  "file": "11-lake.jpg",
+  "label": "Lake path 8%",
+  "pos": [
+   -27.3,
+   1.7,
+   -409.4
+  ],
+  "look": [
+   -38.1,
+   1.0,
+   -386.9
+  ]
+ },
+ {
+  "file": "12-lake.jpg",
+  "label": "Lake path 28%",
+  "pos": [
+   -227.5,
+   1.7,
+   9.5
+  ],
+  "look": [
+   -238.4,
+   1.0,
+   32.0
+  ]
+ },
+ {
+  "file": "13-lake.jpg",
+  "label": "Lake path 45%",
+  "pos": [
+   15.6,
+   1.7,
+   -52.1
+  ],
+  "look": [
+   26.1,
+   1.0,
+   -74.8
+  ]
+ },
+ {
+  "file": "14-lake.jpg",
+  "label": "Lake path 62%",
+  "pos": [
+   151.1,
+   1.7,
+   -411.4
+  ],
+  "look": [
+   157.3,
+   1.0,
+   -435.6
+  ]
+ },
+ {
+  "file": "15-lake.jpg",
+  "label": "Lake path 85%",
+  "pos": [
+   299.7,
+   1.7,
+   -753.0
+  ],
+  "look": [
+   274.7,
+   1.0,
+   -753.0
+  ]
+ },
+ {
+  "file": "16-squares.jpg",
+  "label": "Square gravel (52377 m2) 308,147",
+  "pos": [
+   322.2,
+   1.7,
+   147.2
+  ],
+  "look": [
+   308.2,
+   1.2,
+   147.2
+  ]
+ },
+ {
+  "file": "17-squares.jpg",
+  "label": "Square cobbles (25645 m2) 497,704",
+  "pos": [
+   497.4,
+   1.7,
+   718.1
+  ],
+  "look": [
+   497.4,
+   1.2,
+   704.1
+  ]
+ },
+ {
+  "file": "18-squares.jpg",
+  "label": "Square cobbles (23390 m2) 225,375",
+  "pos": [
+   224.9,
+   1.7,
+   388.8
+  ],
+  "look": [
+   224.9,
+   1.2,
+   374.8
+  ]
+ },
+ {
+  "file": "19-squares.jpg",
+  "label": "Square cobbles (14819 m2) 424,-71",
+  "pos": [
+   424.0,
+   1.7,
+   -57.2
+  ],
+  "look": [
+   424.0,
+   1.2,
+   -71.2
+  ]
+ },
+ {
+  "file": "20-squares.jpg",
+  "label": "Square Blågårds Plads (0 m2) -315,-448",
+  "pos": [
+   -314.6,
+   1.7,
+   -434.0
+  ],
+  "look": [
+   -314.6,
+   1.2,
+   -448.0
+  ]
+ },
+ {
+  "file": "21-worst.jpg",
+  "label": "Worst #1: road-through-bld, bld-carriageway, wire-through-building",
+  "pos": [
+   -731.6,
+   1.7,
+   -453.1
+  ],
+  "look": [
+   -736.2,
+   1.2,
+   -464.2
+  ]
+ },
+ {
+  "file": "22-worst.jpg",
+  "label": "Worst #2: bld-water",
+  "pos": [
+   -26.9,
+   1.7,
+   -418.9
+  ],
+  "look": [
+   -15.8,
+   1.2,
+   -414.3
+  ]
+ },
+ {
+  "file": "23-worst.jpg",
+  "label": "Worst #3: water-carriageway, bld-ground-range, bld-ground-vs-flat-plane",
+  "pos": [
+   389.4,
+   1.7,
+   -17.4
+  ],
+  "look": [
+   384.8,
+   1.2,
+   -28.5
+  ]
+ },
+ {
+  "file": "24-worst.jpg",
+  "label": "Worst #4: wire-through-building, bld-bld-overlap, on-carriageway:bins",
+  "pos": [
+   629.9,
+   1.7,
+   -106.6
+  ],
+  "look": [
+   618.8,
+   1.2,
+   -102.0
+  ]
+ },
+ {
+  "file": "25-worst.jpg",
+  "label": "Worst #5: car-on-pavement, bld-cycletrack, overlap:bikes+cars",
+  "pos": [
+   4.4,
+   1.7,
+   336.5
+  ],
+  "look": [
+   12.9,
+   1.2,
+   345.0
+  ]
+ },
+ {
+  "file": "26-worst.jpg",
+  "label": "Worst #6: car-in-moving-lane, on-carriageway:bikes, on-carriageway:cars",
+  "pos": [
+   -162.8,
+   1.7,
+   -495.7
+  ],
+  "look": [
+   -154.3,
+   1.2,
+   -487.2
+  ]
+ },
+ {
+  "file": "27-worst.jpg",
+  "label": "Worst #7: on-cycletrack:cars, on-carriageway:trees",
+  "pos": [
+   498.5,
+   1.7,
+   79.6
+  ],
+  "look": [
+   503.1,
+   1.2,
+   90.7
+  ]
+ },
+ {
+  "file": "28-worst.jpg",
+  "label": "Worst #8: in-water:trees, overlap:benches+bins, tree-giant",
+  "pos": [
+   361.5,
+   1.7,
+   97.5
+  ],
+  "look": [
+   361.5,
+   1.2,
+   85.5
+  ]
+ },
+ {
+  "file": "29-worst.jpg",
+  "label": "Worst #9: shelter-conflict, on-carriageway:bins, on-carriageway:flags",
+  "pos": [
+   122.6,
+   1.7,
+   324.3
+  ],
+  "look": [
+   114.1,
+   1.2,
+   315.8
+  ]
+ },
+ {
+  "file": "30-worst.jpg",
+  "label": "Worst #10: bld-bld-overlap, bld-carriageway, on-carriageway:stands",
+  "pos": [
+   594.7,
+   1.7,
+   56.9
+  ],
+  "look": [
+   606.7,
+   1.2,
+   56.9
+  ]
+ },
+ {
+  "file": "31-aerial.jpg",
+  "label": "Aerial SW",
+  "pos": [
+   -420,
+   330,
+   380
+  ],
+  "look": [
+   20,
+   0,
+   -20
+  ]
+ },
+ {
+  "file": "32-aerial.jpg",
+  "label": "Aerial NE",
+  "pos": [
+   440,
+   300,
+   -420
+  ],
+  "look": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "file": "33-aerial.jpg",
+  "label": "Aerial N lakes",
+  "pos": [
+   0,
+   260,
+   -700
+  ],
+  "look": [
+   20,
+   0,
+   -300
+  ]
+ },
+ {
+  "file": "34-aerial.jpg",
+  "label": "Aerial S",
+  "pos": [
+   -80,
+   250,
+   700
+  ],
+  "look": [
+   20,
+   0,
+   300
+  ]
+ },
+ {
+  "file": "35-aerial.jpg",
+  "label": "Aerial lakes low",
+  "pos": [
+   -150,
+   90,
+   -330
+  ],
+  "look": [
+   50,
+   0,
+   -460
+  ]
+ },
+ {
+  "file": "36-aerial.jpg",
+  "label": "Aerial Nørrebro low",
+  "pos": [
+   -300,
+   100,
+   -300
+  ],
+  "look": [
+   -100,
+   0,
+   -520
+  ]
+ }
+]

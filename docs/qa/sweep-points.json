@@ -1,0 +1,638 @@
+{
+ "streets": [
+  {
+   "label": "Nørre Søgade 30%",
+   "pos": [
+    38.7,
+    1.7,
+    -52.9
+   ],
+   "look": [
+    51.3,
+    3.0,
+    -80.1
+   ],
+   "fov": 66
+  },
+  {
+   "label": "Nørre Søgade 70%",
+   "pos": [
+    112.3,
+    1.7,
+    -210.0
+   ],
+   "look": [
+    125.2,
+    3.0,
+    -237.1
+   ],
+   "fov": 66
+  },
+  {
+   "label": "Dronning Louises Bro 50%",
+   "pos": [
+    99.6,
+    1.7,
+    -481.0
+   ],
+   "look": [
+    74.1,
+    3.0,
+    -496.8
+   ],
+   "fov": 66
+  },
+  {
+   "label": "Nørrebrogade 35%",
+   "pos": [
+    -208.0,
+    1.7,
+    -662.9
+   ],
+   "look": [
+    -233.6,
+    3.0,
+    -678.6
+   ],
+   "fov": 66
+  },
+  {
+   "label": "Nørrebrogade 80%",
+   "pos": [
+    -233.8,
+    1.7,
+    -678.7
+   ],
+   "look": [
+    -259.7,
+    3.0,
+    -693.9
+   ],
+   "fov": 66
+  },
+  {
+   "label": "Ravnsborggade 50%",
+   "pos": [
+    -17.4,
+    1.7,
+    -680.1
+   ],
+   "look": [
+    -32.7,
+    3.0,
+    -654.3
+   ],
+   "fov": 66
+  },
+  {
+   "label": "Blågårdsgade 50%",
+   "pos": [
+    -333.0,
+    1.7,
+    -253.6
+   ],
+   "look": [
+    -317.5,
+    3.0,
+    -279.3
+   ],
+   "fov": 66
+  },
+  {
+   "label": "Sankt Hans Gade 50%",
+   "pos": [
+    147.8,
+    1.7,
+    -739.4
+   ],
+   "look": [
+    171.5,
+    3.0,
+    -721.0
+   ],
+   "fov": 66
+  },
+  {
+   "label": "Nørre Farimagsgade 50%",
+   "pos": [
+    202.9,
+    1.7,
+    105.0
+   ],
+   "look": [
+    192.7,
+    3.0,
+    133.3
+   ],
+   "fov": 66
+  },
+  {
+   "label": "H.C. Andersens Boulevard 50%",
+   "pos": [
+    330.0,
+    1.7,
+    619.7
+   ],
+   "look": [
+    346.5,
+    3.0,
+    644.8
+   ],
+   "fov": 66
+  }
+ ],
+ "lake": [
+  {
+   "label": "Lake path 8%",
+   "pos": [
+    -27.3,
+    1.7,
+    -409.4
+   ],
+   "look": [
+    -38.1,
+    1.0,
+    -386.9
+   ],
+   "fov": 68
+  },
+  {
+   "label": "Lake path 28%",
+   "pos": [
+    -227.5,
+    1.7,
+    9.5
+   ],
+   "look": [
+    -238.4,
+    1.0,
+    32.0
+   ],
+   "fov": 68
+  },
+  {
+   "label": "Lake path 45%",
+   "pos": [
+    15.6,
+    1.7,
+    -52.1
+   ],
+   "look": [
+    26.1,
+    1.0,
+    -74.8
+   ],
+   "fov": 68
+  },
+  {
+   "label": "Lake path 62%",
+   "pos": [
+    151.1,
+    1.7,
+    -411.4
+   ],
+   "look": [
+    157.3,
+    1.0,
+    -435.6
+   ],
+   "fov": 68
+  },
+  {
+   "label": "Lake path 85%",
+   "pos": [
+    299.7,
+    1.7,
+    -753.0
+   ],
+   "look": [
+    274.7,
+    1.0,
+    -753.0
+   ],
+   "fov": 68
+  }
+ ],
+ "squares": [
+  {
+   "label": "Square gravel (52377 m2) 308,147",
+   "pos": [
+    322.2,
+    1.7,
+    147.2
+   ],
+   "look": [
+    308.2,
+    1.2,
+    147.2
+   ],
+   "fov": 68
+  },
+  {
+   "label": "Square cobbles (25645 m2) 497,704",
+   "pos": [
+    497.4,
+    1.7,
+    718.1
+   ],
+   "look": [
+    497.4,
+    1.2,
+    704.1
+   ],
+   "fov": 68
+  },
+  {
+   "label": "Square cobbles (23390 m2) 225,375",
+   "pos": [
+    224.9,
+    1.7,
+    388.8
+   ],
+   "look": [
+    224.9,
+    1.2,
+    374.8
+   ],
+   "fov": 68
+  },
+  {
+   "label": "Square cobbles (14819 m2) 424,-71",
+   "pos": [
+    424.0,
+    1.7,
+    -57.2
+   ],
+   "look": [
+    424.0,
+    1.2,
+    -71.2
+   ],
+   "fov": 68
+  },
+  {
+   "label": "Square Blågårds Plads (0 m2) -315,-448",
+   "pos": [
+    -314.6,
+    1.7,
+    -434.0
+   ],
+   "look": [
+    -314.6,
+    1.2,
+    -448.0
+   ],
+   "fov": 68
+  }
+ ],
+ "worst": [
+  {
+   "label": "Worst #1: road-through-bld, bld-carriageway, wire-through-building",
+   "pos": [
+    -731.6,
+    1.7,
+    -453.1
+   ],
+   "look": [
+    -736.2,
+    1.2,
+    -464.2
+   ],
+   "fov": 68,
+   "detail": {
+    "x": -736.184474777247,
+    "z": -464.1785918424139,
+    "score": 160.64,
+    "checks": [
+     "road-through-bld",
+     "bld-carriageway",
+     "wire-through-building"
+    ],
+    "what": "Struenseegade: 161 m2 of the carriageway inside buildings",
+    "id": "osm:way/156945517"
+   }
+  },
+  {
+   "label": "Worst #2: bld-water",
+   "pos": [
+    -26.9,
+    1.7,
+    -418.9
+   ],
+   "look": [
+    -15.8,
+    1.2,
+    -414.3
+   ],
+   "fov": 68,
+   "detail": {
+    "x": -15.806586961839546,
+    "z": -414.28999999999996,
+    "score": 25.3,
+    "checks": [
+     "bld-water"
+    ],
+    "what": "25 m2 in lake",
+    "id": "gdk:1216086107"
+   }
+  },
+  {
+   "label": "Worst #3: water-carriageway, bld-ground-range, bld-ground-vs-flat-plane",
+   "pos": [
+    389.4,
+    1.7,
+    -17.4
+   ],
+   "look": [
+    384.8,
+    1.2,
+    -28.5
+   ],
+   "fov": 68,
+   "detail": {
+    "x": 384.8124948849078,
+    "z": -28.4724059608575,
+    "score": 18.65,
+    "checks": [
+     "water-carriageway",
+     "bld-ground-range",
+     "bld-ground-vs-flat-plane",
+     "mast-height-high"
+    ],
+    "what": "19 m2 over open water",
+    "id": "osm:way/160726988"
+   }
+  },
+  {
+   "label": "Worst #4: wire-through-building, bld-bld-overlap, on-carriageway:bins",
+   "pos": [
+    629.9,
+    1.7,
+    -106.6
+   ],
+   "look": [
+    618.8,
+    1.2,
+    -102.0
+   ],
+   "fov": 68,
+   "detail": {
+    "x": 618.8340000000001,
+    "z": -102.043,
+    "score": 28.32,
+    "checks": [
+     "wire-through-building",
+     "bld-bld-overlap",
+     "on-carriageway:bins",
+     "on-cycletrack:flags"
+    ],
+    "what": "28.3 m of the span inside a building (eave 8.5 > wire 8.2)",
+    "id": "lamp[1217]"
+   }
+  },
+  {
+   "label": "Worst #5: car-on-pavement, bld-cycletrack, overlap:bikes+cars",
+   "pos": [
+    4.4,
+    1.7,
+    336.5
+   ],
+   "look": [
+    12.9,
+    1.2,
+    345.0
+   ],
+   "fov": 68,
+   "detail": {
+    "x": 12.852466644667981,
+    "z": 345.0240060778085,
+    "score": 1.0,
+    "checks": [
+     "car-on-pavement",
+     "bld-cycletrack",
+     "overlap:bikes+cars",
+     "rack-giant"
+    ],
+    "what": "100% on pavement",
+    "id": "car[1674] par"
+   }
+  },
+  {
+   "label": "Worst #6: car-in-moving-lane, on-carriageway:bikes, on-carriageway:cars",
+   "pos": [
+    -162.8,
+    1.7,
+    -495.7
+   ],
+   "look": [
+    -154.3,
+    1.2,
+    -487.2
+   ],
+   "fov": 68,
+   "detail": {
+    "x": -154.34421124581138,
+    "z": -487.20692105333774,
+    "score": 1.0,
+    "checks": [
+     "car-in-moving-lane",
+     "on-carriageway:bikes",
+     "on-carriageway:cars",
+     "overlap:bins+bins"
+    ],
+    "what": "100% inside the moving-lane corridor (Baggesensgade)",
+    "id": "car[18] par"
+   }
+  },
+  {
+   "label": "Worst #7: on-cycletrack:cars, on-carriageway:trees",
+   "pos": [
+    498.5,
+    1.7,
+    79.6
+   ],
+   "look": [
+    503.1,
+    1.2,
+    90.7
+   ],
+   "fov": 68,
+   "detail": {
+    "x": 503.06546447624874,
+    "z": 90.72875997777193,
+    "score": 1.0,
+    "checks": [
+     "on-cycletrack:cars",
+     "on-carriageway:trees"
+    ],
+    "what": "100% of footprint",
+    "id": "cars[1888]"
+   }
+  },
+  {
+   "label": "Worst #8: in-water:trees, overlap:benches+bins, tree-giant",
+   "pos": [
+    361.5,
+    1.7,
+    97.5
+   ],
+   "look": [
+    361.5,
+    1.2,
+    85.5
+   ],
+   "fov": 68,
+   "detail": {
+    "x": 361.5,
+    "z": 85.5,
+    "score": 10.35,
+    "checks": [
+     "in-water:trees",
+     "overlap:benches+bins",
+     "tree-giant"
+    ],
+    "what": "10.4 m from shore",
+    "id": "trees[4812]"
+   }
+  },
+  {
+   "label": "Worst #9: shelter-conflict, on-carriageway:bins, on-carriageway:flags",
+   "pos": [
+    122.6,
+    1.7,
+    324.3
+   ],
+   "look": [
+    114.1,
+    1.2,
+    315.8
+   ],
+   "fov": 68,
+   "detail": {
+    "x": 114.08856911676756,
+    "z": 315.76845571201187,
+    "score": 1.0,
+    "checks": [
+     "shelter-conflict",
+     "on-carriageway:bins",
+     "on-carriageway:flags",
+     "on-carriageway:lamp-poles"
+    ],
+    "what": "0% in building, 100% on carriageway, 0% on cycle track",
+    "id": "shelter[0]"
+   }
+  },
+  {
+   "label": "Worst #10: bld-bld-overlap, bld-carriageway, on-carriageway:stands",
+   "pos": [
+    594.7,
+    1.7,
+    56.9
+   ],
+   "look": [
+    606.7,
+    1.2,
+    56.9
+   ],
+   "fov": 68,
+   "detail": {
+    "x": 606.6732567216286,
+    "z": 56.864999999999995,
+    "score": 428.61,
+    "checks": [
+     "bld-bld-overlap",
+     "bld-carriageway",
+     "on-carriageway:stands"
+    ],
+    "what": "429 m2 (100% of smaller), eave 22.0/21.9",
+    "id": "gdk:1241233804 x gdk:1064714047"
+   }
+  }
+ ],
+ "aerial": [
+  {
+   "label": "Aerial SW",
+   "pos": [
+    -420,
+    330,
+    380
+   ],
+   "look": [
+    20,
+    0,
+    -20
+   ],
+   "fov": 50
+  },
+  {
+   "label": "Aerial NE",
+   "pos": [
+    440,
+    300,
+    -420
+   ],
+   "look": [
+    0,
+    0,
+    0
+   ],
+   "fov": 52
+  },
+  {
+   "label": "Aerial N lakes",
+   "pos": [
+    0,
+    260,
+    -700
+   ],
+   "look": [
+    20,
+    0,
+    -300
+   ],
+   "fov": 52
+  },
+  {
+   "label": "Aerial S",
+   "pos": [
+    -80,
+    250,
+    700
+   ],
+   "look": [
+    20,
+    0,
+    300
+   ],
+   "fov": 52
+  },
+  {
+   "label": "Aerial lakes low",
+   "pos": [
+    -150,
+    90,
+    -330
+   ],
+   "look": [
+    50,
+    0,
+    -460
+   ],
+   "fov": 58
+  },
+  {
+   "label": "Aerial Nørrebro low",
+   "pos": [
+    -300,
+    100,
+    -300
+   ],
+   "look": [
+    -100,
+    0,
+    -520
+   ],
+   "fov": 58
+  }
+ ]
+}

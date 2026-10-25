@@ -14,6 +14,7 @@ ap.add_argument('--lod2', action='store_true', help='M4 LoD2 roofs: before (?deb
 ap.add_argument('--colours', action='store_true', help='M4 observed colours: before (?debug=noobserved) / after / ?tex=1 shots and fps into --out (default docs/m4-colours)')
 ap.add_argument('--water', action='store_true', help='M4 lakes + calibrated facade colours: Peblinge Soe from Dronning Louises Bro day/night, lake path, Norre Sogade facades and aerial before/after into --out (default docs/m4-water-colour)')
 ap.add_argument('--furniture', action='store_true', help='M4 street furniture: Nørre Søgade day+night (wire lamps), parked cars, lake-path trees, a bus stop; fps and draw calls (default out docs/m4-furniture)')
+ap.add_argument('--audit-sweep', action='store_true', help='QA audit: ~30 eye-level and 6 aerial shots at the points in docs/qa/sweep-points.json (tools/audit/audit.py) into docs/qa/sweep + contact sheets')
 ap.add_argument('--perf', action='store_true', help='unthrottled frame timing instead of captures')
 args = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -293,13 +294,56 @@ try:
         logs = []
         page.on('console', lambda m: logs.append(f'{m.type}: {m.text}'))
         page.on('pageerror', lambda e: logs.append(f'pageerror: {e}'))
-        page.goto(f'http://127.0.0.1:{port}/index.html?{("hooks&" + args.query.lstrip("&")) if args.furniture else args.query.lstrip("&")}')
+        page.goto(f'http://127.0.0.1:{port}/index.html?{("hooks&" + args.query.lstrip("&")) if (args.furniture or args.audit_sweep) else args.query.lstrip("&")}')
         page.wait_for_function('globalThis.__twin && globalThis.__twin.world', timeout=120000)
         page.wait_for_timeout(4000)
         view = lambda pos, look, fov=60: page.evaluate('([p,l,f]) => { globalThis.__twin.cameraSystem.debugView = {pos:p, look:l, fov:f}; }', [pos, look, fov])
         def shot(name):
             page.wait_for_timeout(2500)
             page.screenshot(path=f'{args.out}/{name}.png')
+        if args.audit_sweep:
+            out_dir = args.out if args.out != 'docs/m2' else 'docs/qa/sweep'
+            os.makedirs(out_dir, exist_ok=True)
+            pts = json.load(open(os.path.join(root, 'docs/qa/sweep-points.json')))
+            free = lambda pos, look, fov=60: page.evaluate('([p,l,f]) => { globalThis.__twin.freeCam = {pos:p, target:l, fov:f}; }', [pos, look, fov])
+            page.evaluate("(id) => document.querySelector(`[data-time=\"${id}\"]`).click()", 'midday')
+            page.wait_for_timeout(2500)
+            shots = []
+            n = 0
+            for group in ('streets', 'lake', 'squares', 'worst', 'aerial'):
+                for p_ in pts[group]:
+                    n += 1
+                    name = f'{n:02d}-{group}'
+                    free(p_['pos'], p_['look'], p_['fov'])
+                    page.wait_for_timeout(5500)  # furniture rebuild + LoD2/texture streaming
+                    page.screenshot(path=f'{out_dir}/{name}.jpg', type='jpeg', quality=84)
+                    shots.append({'file': f'{name}.jpg', 'label': p_['label'], 'pos': p_['pos'], 'look': p_['look']})
+                    print('shot', name, p_['label'], p_['pos'])
+            json.dump(shots, open(f'{out_dir}/shots.json', 'w'), indent=1, ensure_ascii=False)
+            errs = [l for l in logs if l.startswith(('error', 'pageerror'))]
+            print('\n'.join(errs[:20]))
+            browser.close()
+            try:
+                from PIL import Image, ImageDraw, ImageFont
+                font = None
+                for f in ('/System/Library/Fonts/Helvetica.ttc', '/System/Library/Fonts/Supplemental/Arial.ttf'):
+                    try: font = ImageFont.truetype(f, 22); break
+                    except OSError: pass
+                W, H = 800, 500
+                for sheet in range(0, len(shots), 6):
+                    img = Image.new('RGB', (W * 3, H * 2 + 0), (20, 20, 20))
+                    for k, s_ in enumerate(shots[sheet:sheet + 6]):
+                        im = Image.open(f'{out_dir}/{s_["file"]}').convert('RGB').resize((W, H))
+                        d = ImageDraw.Draw(im)
+                        txt = f'{s_["file"][:2]} {s_["label"]}  cam ({s_["pos"][0]:.0f}, {s_["pos"][1]:.0f}, {s_["pos"][2]:.0f}) -> ({s_["look"][0]:.0f}, {s_["look"][2]:.0f})'
+                        d.rectangle([0, 0, W, 34], fill=(0, 0, 0))
+                        d.text((8, 5), txt[:78], fill=(255, 255, 255), font=font)
+                        img.paste(im, ((k % 3) * W, (k // 3) * H))
+                    img.save(f'{out_dir}/contact-{sheet // 6 + 1}.png')
+                    print('sheet', sheet // 6 + 1)
+            except ImportError:
+                print('pillow missing: run with --with pillow for the contact sheets')
+            raise SystemExit(0)
         if args.water:
             out_dir = args.out if args.out != 'docs/m2' else 'docs/m4-water-colour'
             os.makedirs(out_dir, exist_ok=True)
