@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mapObservedEdges, roofSurface, texturedWalls, describeAppearance, wallSource, srgbToLinear } from '../js/appearance.js';
+import { mapObservedEdges, roofSurface, texturedWalls, describeAppearance, wallSource, srgbToLinear, albedoFromLinear, setCalibration, wallRgb } from '../js/appearance.js';
 import { createAccumulator, addBuilding, cleanRing } from '../js/building-geometry.js';
 import { loadLod2, parseLod2Record, lod2RoofTriangles, roofFragmentMask } from '../js/lod2-geometry.js';
 
 const lin = (c) => c.map(srgbToLinear);
+const alb = (c) => c.map((v) => albedoFromLinear(srgbToLinear(v))); // observed wall tones are shown as albedo
 const r5 = (a) => a.map((v) => +v.toFixed(5));
 // 20 x 10 block (CCW seen from above in x / -z), ground 0, eave 9; a collinear vertex splits the south wall into two raw edges
 const RING = [0, 0, 8, 0, 20, 0, 20, -10, 0, -10];
@@ -34,12 +35,12 @@ test('edge to tone: raw edges merged by cleanRing map to the longest raw edge, h
   assert.equal(rs[0].length, 4, 'collinear vertex merged');
   const m = mapObservedEdges(b, rs);
   assert.equal(m.edges.length, 8);
-  assert.deepEqual(m.edges[0].tone, lin(GREEN), 'south = longer 12 m raw edge');
-  assert.deepEqual(m.edges[1].tone, lin(BLUE));
-  assert.deepEqual(m.edges[2].tone, lin([0.2, 0.2, 0.2]));
-  assert.deepEqual(m.edges[3].tone, lin([0.9, 0.9, 0.9]));
+  assert.deepEqual(m.edges[0].tone, alb(GREEN), 'south = longer 12 m raw edge');
+  assert.deepEqual(m.edges[1].tone, alb(BLUE));
+  assert.deepEqual(m.edges[2].tone, alb([0.2, 0.2, 0.2]));
+  assert.deepEqual(m.edges[3].tone, alb([0.9, 0.9, 0.9]));
   // hole edge 0 is the inferred fallback tone, other hole edges have no entry and take the building median
-  assert.deepEqual(m.edges[4].tone, lin([0.3, 0.6, 0.3]));
+  assert.deepEqual(m.edges[4].tone, alb([0.3, 0.6, 0.3]));
   assert.equal(m.edges[4].wall.conf, 'inferred');
   assert.deepEqual(m.edges[5].tone, m.buildingTone);
 });
@@ -52,7 +53,7 @@ test('edge to tone survives a reversed ring (raw CW outer ring) without shifting
   const rawTone = new Map([[lineOf(0, 0, 0, -10), RED], [lineOf(0, -10, 20, -10), GREEN], [lineOf(20, -10, 20, 0), BLUE], [lineOf(20, 0, 0, 0), [0.2, 0.2, 0.2]]]);
   rs[0].forEach((p, i) => {
     const q = rs[0][(i + 1) % rs[0].length];
-    assert.deepEqual(m.edges[i].tone, lin(rawTone.get(lineOf(p[0], p[1], q[0], q[1]))), `edge ${i}`);
+    assert.deepEqual(m.edges[i].tone, alb(rawTone.get(lineOf(p[0], p[1], q[0], q[1]))), `edge ${i}`);
     assert.equal(m.edges[i].flip, true);
   });
 });
@@ -63,7 +64,7 @@ test('edge to tone: a hole dropped by cleanRing does not shift the following hol
   const rs = [cleanRing(b.ring, true), ...b.holes.map((h) => cleanRing(h, false)).filter(Boolean)];
   const m = mapObservedEdges(b, rs);
   // HOLE edge 2 runs (9,-7) -> (9,-3): cleaned hole edge 2 sits at flat index 4 + 2
-  assert.deepEqual(m.edges[4 + 2].tone, lin([0.6, 0.6, 0.1]));
+  assert.deepEqual(m.edges[4 + 2].tone, alb([0.6, 0.6, 0.1]));
 });
 
 test('addBuilding writes the observed tone per wall vertex, window ratio untouched', () => {
@@ -71,7 +72,7 @@ test('addBuilding writes the observed tone per wall vertex, window ratio untouch
   const acc = createAccumulator();
   addBuilding(acc, b);
   const tone = acc.wall.facadeTone;
-  assert.deepEqual(r5(tone.slice(0, 3)), r5(lin(GREEN)));
+  assert.deepEqual(r5(tone.slice(0, 3)), r5(alb(GREEN)));
   assert.ok(tone[3] > 0.12 && tone[3] < 0.85);
   const off = createAccumulator();
   addBuilding(off, b, { observed: false });
@@ -109,7 +110,7 @@ test('LoD2 truncated walls: gable pieces take the tone of their own edge', () =>
   const nv = acc.wall.position.length / 3;
   assert.ok(nv > 16, 'gable piece present');
   const t = acc.wall.facadeTone;
-  for (let k = 16; k < nv; k++) assert.deepEqual(r5([t[4 * k], t[4 * k + 1], t[4 * k + 2]]), r5(lin(GREEN)));
+  for (let k = 16; k < nv; k++) assert.deepEqual(r5([t[4 * k], t[4 * k + 1], t[4 * k + 2]]), r5(alb(GREEN)));
 });
 
 test('roof surface by type hint, observed tone feeds the roof colour', () => {
@@ -191,4 +192,24 @@ test('graceful without data/tex: no atlas -> no photo candidates; missing LoD2/t
   const added = addBuilding(createAccumulator(), b, { quads });
   assert.equal(texturedWalls(b, quads, added.mapping), null);
   assert.equal(await loadLod2('./data/none', async () => { throw new Error('offline'); }), null);
+});
+
+test('albedo: monotonic, scaled below the knee, never pure white', () => {
+  let prev = -1;
+  for (let v = 0; v <= 1.0001; v += 0.05) {
+    const a = albedoFromLinear(v);
+    assert.ok(a >= prev);
+    prev = a;
+  }
+  assert.ok(Math.abs(albedoFromLinear(0.2) - 0.2 * 0.72) < 1e-9);
+  assert.ok(albedoFromLinear(1) < 0.6);
+});
+
+test('calibrated tone_cal is used when present and ?debug=nocal restores the raw tone', () => {
+  const w = { tone: [0.5, 0.5, 0.5], tone_cal: [0.6, 0.5, 0.4] };
+  assert.deepEqual(wallRgb(w), [0.6, 0.5, 0.4]);
+  setCalibration(false);
+  assert.deepEqual(wallRgb(w), [0.5, 0.5, 0.5]);
+  setCalibration(true);
+  assert.deepEqual(wallRgb({ tone: [0.1, 0.2, 0.3] }), [0.1, 0.2, 0.3]);
 });

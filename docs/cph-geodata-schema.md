@@ -121,3 +121,16 @@ Roof (`observed.roof`):
 Atlas wall entries gain `sunlit`, `year` and `wb_applied` (the strip got the same per-channel gain that maps the photographed wall median to the white-balanced `tone`). Textures use the best, sunlit if any, view of each wall.
 
 Top-level `appearance`: `version: "appearance/2"`, `views_by_year`.
+
+### Calibrated wall tones (`appearance-cal/1`)
+
+`tools/cph-geodata/appearance_calibrate.py` adds, per `observed.walls[]` entry: `tone_cal` (sRGB 0-1, calibrated colour), `cal`
+(`own | neighbours | global | building | none`: how a shadow-sourced wall was matched to sunlit light) and `cal_brick: true` when the brick
+rule turned a pinkish BBR `mursten` wall into red-brown or yellow brick. `appearance.calibration` holds the run summary. See `data/appearance.calibration.md`.
+
+### `data/cph-lakes.json` (`cph-lakes/1`)
+
+Derived by `tools/cph-geodata/lakes.py` from `water` plus the parkregister "Soerne" polygons (`parkregister.161*`), which are the open
+water of Sortedams/Peblinge/Sankt Joergens Soe: `lakes` (disjoint outlines, bridge strips included), `bridges` (strips closed over a
+bridge deck, with `open_edges` onto the water), `ponds` (< 1500 m2) and `surface_cuts` (ground-surface polygons cut by the lakes).
+The engine sinks the water 0.8 m below the ground, builds granite walls and cuts the ground plane (`js/lakes-cph.js`, `js/water-cph.js`).

@@ -12,6 +12,24 @@ const srgbToLinear = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) **
 const toLinear = (rgb) => rgb.map(srgbToLinear);
 const isRgb = (t) => Array.isArray(t) && t.length === 3 && t.every(Number.isFinite);
 
+// Calibrated wall tones (tools/cph-geodata/appearance_calibrate.py adds `tone_cal`): used when present. `?debug=nocal`
+// (setCalibration(false)) shows the raw photogrammetric tones for before/after comparisons.
+let useCalibrated = true;
+const setCalibration = (on) => { useCalibrated = !!on; };
+const wallRgb = (w) => (useCalibrated && isRgb(w.tone_cal) ? w.tone_cal : w.tone);
+
+// The observed tone is what a camera recorded under sun and sky, not a reflectance: lit by the engine's sun it would be
+// lit twice. Photo exposure puts white plaster at ~0.9 sRGB (0.79 linear); real plaster reflects ~0.65, brick 0.2-0.35.
+// So the albedo is the linear tone scaled by ALBEDO_GAIN with a soft shoulder above ALBEDO_KNEE (no pure white walls).
+const ALBEDO_GAIN = 0.72;
+const ALBEDO_KNEE = 0.4;
+const ALBEDO_MAX = 0.58;
+function albedoFromLinear(v) {
+  const x = v * ALBEDO_GAIN;
+  return x <= ALBEDO_KNEE ? x : ALBEDO_KNEE + (ALBEDO_MAX - ALBEDO_KNEE) * (1 - Math.exp(-(x - ALBEDO_KNEE) / (ALBEDO_MAX - ALBEDO_KNEE)));
+}
+const observedAlbedo = (rgb) => toLinear(rgb).map(albedoFromLinear);
+
 const MATCH_DIST = 0.12; // metres between a raw edge midpoint and the cleaned edge that covers it
 const MIN_PARALLEL = 0.5; // |cos| between raw and cleaned edge directions
 
@@ -47,7 +65,7 @@ function median(values) {
 /** Building-level linear wall tone: median of the observed walls, else the preset `facade.tone`, else a neutral plaster. */
 function buildingTone(b) {
   const seen = (b.observed?.walls || []).filter((w) => isRgb(w.tone) && w.conf !== 'inferred');
-  if (seen.length) return [0, 1, 2].map((k) => srgbToLinear(median(seen.map((w) => w.tone[k]))));
+  if (seen.length) return [0, 1, 2].map((k) => albedoFromLinear(srgbToLinear(median(seen.map((w) => wallRgb(w)[k])))));
   return toLinear(isRgb(b.facade?.tone) ? b.facade.tone : [0.7, 0.65, 0.58]);
 }
 
@@ -89,7 +107,7 @@ function mapObservedEdges(b, cleanedRings) {
     if (best < 0 || rl <= edges[best].rawLen) continue;
     const c = cleaned[best];
     const cos = ((raw.x1 - raw.x0) * (c.x1 - c.x0) + (raw.z1 - raw.z0) * (c.z1 - c.z0)) / (rl * c.len);
-    edges[best] = { tone: toLinear(wall.tone), wall, raw, flip: cos < 0, rawLen: rl };
+    edges[best] = { tone: observedAlbedo(wallRgb(wall)), wall, raw, flip: cos < 0, rawLen: rl };
   }
   return { edges, buildingTone: base, hasObserved: true };
 }
@@ -239,7 +257,7 @@ function describeAppearance(b, surface, point, { textured = false } = {}) {
     const near = nearestRawEdge(b, point.x, point.z);
     const wall = near && (b.observed?.walls || []).find((w) => w.ring === near.ringKey && w.edge === near.edge);
     const src = wallSource(wall || null);
-    src.tone = wall?.tone ?? null;
+    src.tone = wall ? wallRgb(wall) : null;
     src.edge = near ? `${near.ringKey === 0 ? '' : `${near.ringKey} `}edge ${near.edge}` : null;
     src.photo = textured && usableStrip(atlasWalls(b).get(wallKey(wall?.ring, wall?.edge)), wall);
     out.wall = src;
@@ -248,6 +266,6 @@ function describeAppearance(b, surface, point, { textured = false } = {}) {
 }
 
 export {
-  srgbToLinear, rawRingEdges, buildingTone, mapObservedEdges, roofSurface, atlasWalls, usableStrip, texturedWalls,
+  srgbToLinear, setCalibration, wallRgb, albedoFromLinear, rawRingEdges, buildingTone, mapObservedEdges, roofSurface, atlasWalls, usableStrip, texturedWalls,
   wallSource, roofSource, describeAppearance, nearestRawEdge, ROOF_SURFACE, TEX_MAX_FILLED
 };

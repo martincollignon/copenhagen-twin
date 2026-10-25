@@ -20,6 +20,8 @@ python3 -m http.server           # then open http://localhost:8000/
 
 Useful query parameters: `?debug=footprints` draws the geodata's buildings, water and parks as flat polygons, `?debug=nobuildings` and `?debug=noroads` skip those layers, `?hooks` exposes the running scene as `globalThis.__twin` for headless checks.
 
+`?water=simple` drops the planar reflection pass of the lakes (sky reflection only), `?debug=nowater` shows the plain ground, `?debug=nocal` the uncalibrated facade tones.
+
 Tests (Node 20+, no dependencies):
 
 ```sh

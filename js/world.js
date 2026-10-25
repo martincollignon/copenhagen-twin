@@ -7,6 +7,9 @@ import { buildCphRoadSurfaces } from './road-surfaces-cph.js';
 import { createCyclistSystem } from './cyclists.js';
 import { buildSignalHeads } from './signal-heads-cph.js';
 import { createWalkSpace } from './walk-space-cph.js';
+import { buildLakes } from './water-cph.js';
+import { setCalibration } from './appearance.js';
+import { applySurfaceCuts } from './lakes-cph.js';
 
 // js/world.js
 // The Copenhagen world: a ground plane in the Copenhagen frame (docs/cph-geodata-schema.md) plus data/cph-geodata.json,
@@ -16,6 +19,7 @@ import { createWalkSpace } from './walk-space-cph.js';
 
 const CPH_GEODATA_URL = './data/cph-geodata.json';
 const CPH_SURFACES_URL = './data/cph-surfaces.json';
+const CPH_LAKES_URL = './data/cph-lakes.json';
 
 /** Optional ground-surface register and road markings (tools/cph-geodata/surfaces.py); null when absent. */
 async function loadCphSurfaces(url = CPH_SURFACES_URL, fetchImpl = globalThis.fetch) {
@@ -26,6 +30,19 @@ async function loadCphSurfaces(url = CPH_SURFACES_URL, fetchImpl = globalThis.fe
     return doc?.version?.startsWith('cph-surfaces/') ? doc : null;
   } catch (error) {
     console.info('[cph] no surfaces loaded:', error?.message || error);
+    return null;
+  }
+}
+
+/** Optional lake document (tools/cph-geodata/lakes.py): lake outlines, bridge strips and surface cuts; null when absent. */
+async function loadCphLakes(url = CPH_LAKES_URL, fetchImpl = globalThis.fetch) {
+  try {
+    const response = await fetchImpl(url, { cache: 'no-cache' });
+    if (!response.ok) return null;
+    const doc = await response.json();
+    return doc?.version?.startsWith('cph-lakes/') ? doc : null;
+  } catch (error) {
+    console.info('[cph] no lakes loaded:', error?.message || error);
     return null;
   }
 }
@@ -77,14 +94,17 @@ function groundTexture() {
   return texture;
 }
 
-function buildGround(scene) {
-  const SIZE = 8000;
+const GROUND_SIZE = 8000;
+
+function groundMaterial() {
   const texture = groundTexture();
-  texture.repeat.set(SIZE / 25, SIZE / 25);
-  const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(SIZE, SIZE).rotateX(-Math.PI / 2),
-    new THREE.MeshStandardNodeMaterial({ map: texture, roughness: 0.95, metalness: 0 })
-  );
+  texture.repeat.set(GROUND_SIZE / 25, GROUND_SIZE / 25);
+  return new THREE.MeshStandardNodeMaterial({ map: texture, roughness: 0.95, metalness: 0 });
+}
+
+function buildGround(scene) {
+  const SIZE = GROUND_SIZE;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE).rotateX(-Math.PI / 2), groundMaterial());
   mesh.name = 'CopenhagenGround';
   mesh.receiveShadow = true;
   mesh.frustumCulled = false;
@@ -261,13 +281,25 @@ function createLocator(geo) {
   };
 }
 
-async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH_GEODATA_URL } = {}) {
-  const ground = buildGround(scene);
-  markInit('ground');
-
+async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH_GEODATA_URL, water = '' } = {}) {
+  setCalibration(!debug.split(',').includes('nocal'));
   const geo = await loadCphGeodata(geoUrl);
   globalThis.CPH_GEO = geo;
   markInit(geo ? 'geodata' : 'geodata(absent)');
+
+  // Lakes (the Soerne): the ground plane is cut open over the water, so the plain plane is only built without them
+  const lakesDoc = geo && !debug.split(',').includes('nowater') ? await loadCphLakes() : null;
+  let lakes = null;
+  let ground;
+  if (lakesDoc?.lakes?.length) {
+    lakes = buildLakes(scene, lakesDoc, { groundMaterial: groundMaterial(), size: GROUND_SIZE, bbox: geo.frame?.bbox || CPH_FRAME.bbox, planar: water !== 'simple' });
+    scene.add(lakes.ground);
+    ground = lakes.ground;
+    markInit(`lakes(${lakes.stats.lakes})`);
+  } else {
+    ground = buildGround(scene);
+  }
+  markInit('ground');
 
   let debugFootprints = null;
   if (geo && debug.split(',').includes('footprints')) debugFootprints = buildDebugFootprints(scene, geo);
@@ -283,13 +315,13 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
 
   let traffic = null;
   if (geo?.roadGraph && !debug.split(',').includes('noroads')) {
-    traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: await loadCphSurfaces() });
+    traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: applySurfaceCuts(await loadCphSurfaces(), lakesDoc?.surface_cuts) });
   }
 
   return {
     colliders: [],
     // the player's surroundings: buildings stream in around the camera
-    update: (x, z) => buildings?.update(x, z),
+    update: (x, z) => { buildings?.update(x, z); lakes?.update(x, z); },
     audioSignals: [],
     locationLabel: createLocator(geo),
     trafficSystem: traffic ? traffic.traffic : nullTraffic(),
@@ -299,9 +331,10 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     ground,
     debugFootprints,
     buildings,
-    attach: (context) => buildings?.attach(context),
+    attach: (context) => { buildings?.attach(context); lakes?.attach(context); },
+    lakes,
     geo
   };
 }
 
-export { CPH_GEODATA_URL, CPH_SURFACES_URL, loadCphGeodata, loadCphSurfaces, buildWorld };
+export { CPH_GEODATA_URL, CPH_SURFACES_URL, CPH_LAKES_URL, loadCphGeodata, loadCphSurfaces, loadCphLakes, buildWorld };
