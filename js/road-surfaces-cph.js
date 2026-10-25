@@ -9,7 +9,8 @@
 import { carriagewayWidth } from './road-width-cph.js';
 import { triangulatePolygon } from './polygon-cph.js';
 import { buildPavementBuckets, createSurfaceIndex } from './pavement-cph.js';
-import { createHeightGrid } from './ground-height-cph.js';
+import { createHeightGrid, composeHeightField } from './ground-height-cph.js';
+import { densifyPts, drapePositions } from './terrain-cph.js';
 import { computeMouthLayouts, subtractIntervals } from './junction-mouths-cph.js';
 
 // Heights (m): carriageway -> (10 cm kerb) -> cycle track -> (8 cm kerb) -> pavement
@@ -20,10 +21,12 @@ const CYCLE_W = 2.2;
 const LANE_W = 3.0;
 const LINE_W = 0.12;
 const JUNCTION_TRIM = 7; // m of cycle track before a junction that is painted blue (the crossing)
+const DRAPE_STEP = 6; // m: ribbons are split to this length when they follow terrain
 const RENDERED_MARKINGS = new Set(['white', 'crossing', 'arrow', 'symbol', 'bay', 'bump', 'bluecycle']);
 
 class Layer {
-  constructor() { this.pos = []; this.idx = []; this.uv = []; }
+  // `terrain`: the ground model the layer is draped on (js/terrain-cph.js); y values given to the builders are offsets above it
+  constructor(terrain = null) { this.pos = []; this.idx = []; this.uv = []; this.terrain = terrain && !terrain.flat ? terrain : null; }
   quad(a, b, c, d, y, uvs) { // four (x, z) corners in order, optional four (u, v) pairs
     const o = this.pos.length / 3;
     for (const p of [a, b, c, d]) this.pos.push(p[0], y, p[1]);
@@ -47,7 +50,7 @@ class Layer {
     this.idx.push(o, o + 1, o + 2, o, o + 2, o + 3);
   }
   get vertexCount() { return this.pos.length / 3; }
-  arrays() { return { position: new Float32Array(this.pos), kuv: new Float32Array(this.uv), index: new Uint32Array(this.idx) }; }
+  arrays() { return { position: drapePositions(new Float32Array(this.pos), this.terrain), kuv: new Float32Array(this.uv), index: new Uint32Array(this.idx) }; }
 }
 
 // Per-vertex unit normals of a polyline (right-hand side positive offset: right of travel with z south is (-dz, dx))
@@ -100,6 +103,7 @@ export function slicePts(pts, s0, s1) {
 
 // Strip between lateral offsets o0..o1 (right positive) along the polyline; uv = (arc length + u0, offset + vShift)
 function ribbon(layer, pts, o0, o1, y, { u0 = 0, vShift = 0 } = {}) {
+  if (layer.terrain) pts = densifyPts(pts, DRAPE_STEP); // long quads would cut across the terrain
   const n = pts.length / 2;
   if (n < 2) return;
   const nr = rightNormals(pts);
@@ -114,6 +118,7 @@ function ribbon(layer, pts, o0, o1, y, { u0 = 0, vShift = 0 } = {}) {
 
 // Vertical face at lateral offset o along the polyline between heights y0 and y1
 function wallStrip(layer, pts, o, y0, y1, u0 = 0) {
+  if (layer.terrain) pts = densifyPts(pts, DRAPE_STEP);
   const n = pts.length / 2;
   if (n < 2) return;
   const nr = rightNormals(pts);
@@ -266,7 +271,7 @@ export function mouthLayouts(geo) {
  * Pavement + register-ground triangles (see pavement-cph.js), with the cycle tracks cut out of the pavement.
  * @returns {Map<string, object>} bucket per material class
  */
-export function buildGroundBuckets(geo, surfacesDoc) {
+export function buildGroundBuckets(geo, surfacesDoc, terrain = null) {
   const cycles = cycleTrackIndex(geo);
   return buildPavementBuckets(geo, surfacesDoc, {
     roads: vehicularRoads(geo),
@@ -274,7 +279,8 @@ export function buildGroundBuckets(geo, surfacesDoc) {
     groundY: SURFACE_Y.ground,
     skip: (x, z) => cycles.near(x, z, -0.3),
     nearCycle: (x, z) => cycles.near(x, z, 6),
-    extraPavement: [...mouthLayouts(geo).values()].flat().flatMap((m) => m.plateaus)
+    extraPavement: [...mouthLayouts(geo).values()].flat().flatMap((m) => m.plateaus),
+    terrain
   });
 }
 
@@ -282,7 +288,7 @@ export function buildGroundBuckets(geo, surfacesDoc) {
  * Walking height of the surface model above (SURFACE_Y: carriageway, cycle track, pavement, ramps) as a 0.5 m grid.
  * @returns {{ heightAt: (x: number, z: number) => number }}
  */
-export function buildGroundHeightField(geo, surfaces = null) {
+export function buildGroundHeightField(geo, surfaces = null, terrain = null) {
   let x0 = Infinity;
   let z0 = Infinity;
   let x1 = -Infinity;
@@ -293,7 +299,7 @@ export function buildGroundHeightField(geo, surfaces = null) {
       for (let i = 0; i + 1 < a.length; i += 2) { x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]); z0 = Math.min(z0, a[i + 1]); z1 = Math.max(z1, a[i + 1]); }
     }
   }
-  if (!Number.isFinite(x0)) return { heightAt: () => 0 };
+  if (!Number.isFinite(x0)) return composeHeightField(terrain, { heightAt: () => 0 });
   const grid = createHeightGrid({ bbox: [x0 - 20, z0 - 20, x1 + 20, z1 + 20], cell: 0.5 });
   for (const s of surfaces?.surfaces || []) if (s.ring && s.cls !== 'grass') grid.polygon(s.ring, SURFACE_Y.ground, s.holes || []);
   for (const r of geo.roads || []) if (VEHICULAR.has(r.class) && r.pts?.length >= 4) grid.ribbon(r.pts, -carriagewayWidth(r) / 2, carriagewayWidth(r) / 2, SURFACE_Y.asphalt);
@@ -312,21 +318,21 @@ export function buildGroundHeightField(geo, surfaces = null) {
       for (const q of m.plateaus) grid.polygon(q, SURFACE_Y.sidewalk);
     }
   }
-  return grid;
+  return composeHeightField(terrain, grid);
 }
 
 /**
  * @param {object} geo cph-geodata
- * @param {{ surfaces?: object|null, pavement?: boolean }} [opts] surfaces = data/cph-surfaces.json (markings);
- *   pavement = pavements are built elsewhere (omit the flat sidewalk layer)
+ * @param {{ surfaces?: object|null, pavement?: boolean, terrain?: object|null }} [opts] surfaces = data/cph-surfaces.json (markings);
+ *   pavement = pavements are built elsewhere (omit the flat sidewalk layer); terrain = js/terrain-cph.js (layers are draped on it)
  */
-export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false } = {}) {
-  const asphalt = new Layer();
-  const kerb = new Layer();
-  const sidewalk = new Layer();
-  const cycle = new Layer();
-  const paint = new Layer();
-  const blue = new Layer();
+export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false, terrain = null } = {}) {
+  const asphalt = new Layer(terrain);
+  const kerb = new Layer(terrain);
+  const sidewalk = new Layer(terrain);
+  const cycle = new Layer(terrain);
+  const paint = new Layer(terrain);
+  const blue = new Layer(terrain);
 
   // Real KK markings: which roads already have lane paint, and where blue crossings are
   const marks = (surfaces?.markings || []).filter((m) => RENDERED_MARKINGS.has(m.kind) && m.ring && m.ring.length >= 6);
@@ -477,11 +483,11 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false 
   return layers;
 }
 
-export async function buildCphRoadSurfaces(scene, geo, { surfaces = null } = {}) {
+export async function buildCphRoadSurfaces(scene, geo, { surfaces = null, terrain = null } = {}) {
   const THREE = await import('three/webgpu');
   const { createRoadSurfaceMaterials } = await import('./surface-materials-cph.js');
   const materials = createRoadSurfaceMaterials(THREE);
-  const layers = buildRoadSurfaceArrays(geo, { surfaces, pavement: true });
+  const layers = buildRoadSurfaceArrays(geo, { surfaces, pavement: true, terrain });
   const group = new THREE.Group();
   group.name = 'CopenhagenRoadSurfaces';
   const stats = { pavementTriangles: 0, markings: surfaces?.markings?.length || 0 };
@@ -508,7 +514,7 @@ export async function buildCphRoadSurfaces(scene, geo, { surfaces = null } = {})
   }
 
   // pavements and register ground: one mesh per material class, non-indexed (each triangle has its own frame)
-  const buckets = buildGroundBuckets(geo, surfaces);
+  const buckets = buildGroundBuckets(geo, surfaces, terrain);
   for (const [key, bucket] of buckets) {
     if (!bucket.vertexCount) continue;
     const cls = key.replace('ground:', '');
@@ -519,5 +525,5 @@ export async function buildCphRoadSurfaces(scene, geo, { surfaces = null } = {})
     stats.pavementTriangles += bucket.vertexCount / 3;
   }
   scene.add(group);
-  return { group, stats, groundHeight: buildGroundHeightField(geo, surfaces) };
+  return { group, stats, groundHeight: buildGroundHeightField(geo, surfaces, terrain), terrain };
 }

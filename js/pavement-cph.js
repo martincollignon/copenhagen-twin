@@ -8,6 +8,7 @@
 
 import { triangulatePolygon, pointInRing, ringArea, ringPerimeter } from './polygon-cph.js';
 import { createKerbFrame } from './walk-space-cph.js';
+import { drapePositions } from './terrain-cph.js';
 
 export const PAVEMENT_CLASSES = ['kbh_fortov', 'raadhus', 'cobbles', 'setts', 'gravel', 'other'];
 const PLAZA_MIN_AREA = 300; // m2
@@ -160,7 +161,7 @@ export function facadeStrips(sidewalks, edgeIndex, { width = STRIP_W, near = STR
 }
 
 class Bucket {
-  constructor() { this.position = []; this.kuv = []; this.seed = []; }
+  constructor(terrain = null) { this.position = []; this.kuv = []; this.seed = []; this.terrain = terrain && !terrain.flat ? terrain : null; }
   get vertexCount() { return this.position.length / 3; }
   tri(t, uvs, y, seed) {
     for (let k = 0; k < 3; k++) {
@@ -170,7 +171,7 @@ class Bucket {
     }
   }
   arrays() {
-    return { position: new Float32Array(this.position), kuv: new Float32Array(this.kuv), seed: new Float32Array(this.seed) };
+    return { position: drapePositions(new Float32Array(this.position), this.terrain), kuv: new Float32Array(this.kuv), seed: new Float32Array(this.seed) };
   }
 }
 
@@ -180,7 +181,7 @@ const hash01 = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; retu
  * Tessellate one ring into kerb-framed triangles and push them into `buckets` (keyed by class).
  * `classOf(x, z)` returns the class for a triangle centroid; `skip(x, z)` drops triangles (e.g. under a cycle track).
  */
-export function tessellateFramed(ring, { holes, frame, y, seed, classOf, skip, maxEdge, buckets, keyPrefix = '' }) {
+export function tessellateFramed(ring, { holes, frame, y, seed, classOf, skip, maxEdge, buckets, keyPrefix = '', terrain = null }) {
   const out = [];
   const { pts, idx } = triangulatePolygon(ring, holes);
   for (let i = 0; i < idx.length; i += 3) {
@@ -206,7 +207,7 @@ export function tessellateFramed(ring, { holes, frame, y, seed, classOf, skip, m
       uvs = [0, 1, 2].map((k) => [t[2 * k], t[2 * k + 1]]); // no carriageway nearby: world-aligned
     }
     const key = keyPrefix + cls;
-    if (!buckets.has(key)) buckets.set(key, new Bucket());
+    if (!buckets.has(key)) buckets.set(key, new Bucket(terrain));
     buckets.get(key).tri(t, uvs, y, seed);
     kept++;
   }
@@ -220,17 +221,18 @@ export function tessellateFramed(ring, { holes, frame, y, seed, classOf, skip, m
  * @param {{ roads: Array, y: number, groundY: number, skip?: Function, nearCycle?: Function }} opts
  * @returns {Map<string, Bucket>} keys: '<cls>' (pavement, at y) and 'ground:<cls>' (register polygons, at groundY)
  */
-export function buildPavementBuckets(geo, surfacesDoc, { roads, y, groundY, skip, nearCycle, extraPavement = [] }) {
+export function buildPavementBuckets(geo, surfacesDoc, { roads, y, groundY, skip, nearCycle, extraPavement = [], terrain = null }) {
   const frame = createKerbFrame(roads);
   const index = createSurfaceIndex(surfacesDoc?.surfaces);
   const buckets = new Map();
   const maxEdge = (x, z) => (nearCycle && nearCycle(x, z) ? 2.5 : 6);
+  const groundEdge = terrain && !terrain.flat ? 6 : 12; // register polygons follow the terrain: shorter edges
   let i = 0;
   for (const s of geo.sidewalks || []) {
     if (!s.ring || s.ring.length < 6) continue;
     const fallback = sidewalkClass(s.ring);
     tessellateFramed(s.ring, {
-      frame, y, seed: hash01(++i), skip, maxEdge, buckets,
+      frame, y, seed: hash01(++i), skip, maxEdge, buckets, terrain,
       classOf: (x, z) => {
         const c = index.classAt(x, z);
         return c && c !== 'other' && c !== 'grass' && c !== 'asphalt_road' ? c : fallback;
@@ -239,11 +241,11 @@ export function buildPavementBuckets(geo, surfacesDoc, { roads, y, groundY, skip
   }
   // the sett strip along the building line, just above the slabs
   for (const quad of facadeStrips(geo.sidewalks, createBuildingEdgeIndex(geo.buildings))) {
-    tessellateFramed(quad, { frame, y: y + 0.003, seed: hash01(++i), skip, maxEdge: () => 6, buckets, classOf: () => 'setts' });
+    tessellateFramed(quad, { frame, y: y + 0.003, seed: hash01(++i), skip, maxEdge: () => 6, buckets, terrain, classOf: () => 'setts' });
   }
   // raised side-street crossings (junction-mouths-cph.js): pavement slabs bridging the gaps in the KK sidewalk polygons
   for (const q of extraPavement) {
-    tessellateFramed(q, { frame, y, seed: hash01(++i), buckets, maxEdge: () => 6, classOf: () => 'kbh_fortov' });
+    tessellateFramed(q, { frame, y, seed: hash01(++i), buckets, terrain, maxEdge: () => 6, classOf: () => 'kbh_fortov' });
   }
   // register polygons that are not pavements (park paths, squares, gravel); drawn just above the ground plane
   for (const s of surfacesDoc?.surfaces || []) {
@@ -251,8 +253,8 @@ export function buildPavementBuckets(geo, surfacesDoc, { roads, y, groundY, skip
     // holes (lawns inside a path network) are carved out by the triangulation
     tessellateFramed(s.ring, {
       holes: s.holes,
-      frame, y: s.src?.[0]?.startsWith('osm') ? groundY - 0.004 : groundY, seed: hash01(++i), buckets, keyPrefix: 'ground:',
-      maxEdge: () => 12,
+      frame, y: s.src?.[0]?.startsWith('osm') ? groundY - 0.004 : groundY, seed: hash01(++i), buckets, keyPrefix: 'ground:', terrain,
+      maxEdge: () => groundEdge,
       classOf: () => s.cls
     });
   }

@@ -10,6 +10,11 @@ import { carriagewayWidth } from '../../js/road-width-cph.js';
 import { vehicularRoads, buildGroundHeightField, cycleTrackIndex } from '../../js/road-surfaces-cph.js';
 import { buildFurniturePlan } from '../../js/street-furniture-data.js';
 
+// The terrain / layout modules are optional so this dump can also measure an older engine (the "before" numbers).
+const optional = (p) => import(p).catch(() => null);
+const terrainMod = await optional('../../js/terrain-cph.js');
+const layoutMod = await optional('../../js/layout-cph.js');
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const out = process.argv[2] || resolve(root, 'tools/audit/out/layout.json');
 const read = (p) => JSON.parse(readFileSync(resolve(root, p), 'utf8'));
@@ -20,8 +25,11 @@ const furniture = read('data/cph-furniture.json');
 const VEH = new Set(['primary', 'secondary', 'residential', 'service']);
 const cycleSides = (r) => ({ left: r.cycleTrack === 'left' || r.cycleTrack === 'both', right: r.cycleTrack === 'right' || r.cycleTrack === 'both' });
 
+const terrainDoc = terrainMod ? (() => { try { return read('data/cph-terrain.json'); } catch { return null; } })() : null;
+const terrain = terrainMod && terrainDoc ? terrainMod.createTerrain(terrainDoc) : null;
+if (terrain && layoutMod) layoutMod.applyTerrainGround(geo, terrain);
 const t0 = Date.now();
-const ground = buildGroundHeightField(geo, surfaces);
+const ground = buildGroundHeightField(geo, surfaces, terrain);
 console.error('ground field', Date.now() - t0, 'ms');
 
 const roads = [];
@@ -34,10 +42,49 @@ for (const r of geo.roads) {
   });
 }
 
+// lake walls: height of the wall top over the water at every shore vertex (js/lakes-cph.js), measured level per lake
+let lakeWalls = null;
+if (terrain && !terrain.flat) {
+  const { buildLakeArrays } = await import('../../js/lakes-cph.js');
+  const arrays = buildLakeArrays(read('data/cph-lakes.json'), { terrain });
+  lakeWalls = { level: arrays.level, freeboards: arrays.freeboards.map((f) => ({ id: f.id, x: +f.x.toFixed(1), z: +f.z.toFixed(1), free: +f.free.toFixed(2) })) };
+}
+
 const plan = buildFurniturePlan(furniture, ground, { seed: 1 });
 const slim = (list, keys) => list.map((i) => Object.fromEntries(keys.map((k) => [k, i[k]])));
 const base = ['x', 'z', 'y', 'yaw'];
+// Buildings as the engine stands them: `ground`, and the height of the street (walking surface) just outside the outline
+const medianOf = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : 0; };
+const buildingsOut = geo.buildings.map((b) => {
+  const r = b.ring;
+  const n = r.length / 2;
+  const street = [];
+  const terr = [];
+  let cx = 0;
+  let cz = 0;
+  for (let i = 0; i < n; i++) { cx += r[2 * i] / n; cz += r[2 * i + 1] / n; }
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const dx = r[2 * j] - r[2 * i];
+    const dz = r[2 * j + 1] - r[2 * i + 1];
+    const L = Math.hypot(dx, dz);
+    if (L < 1) continue;
+    // a point 1.2 m out from the edge midpoint, on the side away from the centroid
+    let nx = -dz / L;
+    let nz = dx / L;
+    const mx = (r[2 * i] + r[2 * j]) / 2;
+    const mz = (r[2 * i + 1] + r[2 * j + 1]) / 2;
+    if ((mx - cx) * nx + (mz - cz) * nz < 0) { nx = -nx; nz = -nz; }
+    street.push(ground.heightAt(mx + nx * 1.2, mz + nz * 1.2));
+    terr.push(ground.terrainAt ? ground.terrainAt(mx, mz) : 0);
+  }
+  return { id: b.id, ground: b.ground, eave: b.eave, street: medianOf(street), terrain: medianOf(terr) };
+});
+
 const layout = {
+  terrain: terrain && !terrain.flat ? { min: terrainDoc.min, max: terrainDoc.max, lakes: terrainDoc.lakes } : null,
+  buildings: buildingsOut,
+  lakeWalls,
   roads,
   plan: {
     trees: slim(plan.trees, ['x', 'z', 'y', 'genus', 'height', 'crownR']),

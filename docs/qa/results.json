@@ -72,78 +72,6 @@
   ]
  },
  {
-  "id": "bld-ground-vs-flat-plane",
-  "layer": "buildings",
-  "title": "|ground| > 1 m: the building is placed on real terrain, but the roads, pavements, lakes and plane are flat (y 0.02-0.2)",
-  "count": 1190,
-  "total": 2517,
-  "pct": 47.28,
-  "severity": "high",
-  "note": "1090 buildings have ground > +1 m (ground floor and entrances float above the street, the facade rows start `ground` m above the pavement), 100 have ground < -1 m (sunk). Percentiles 5/50/95: -0.88 / 0.62 / 2.67",
-  "examples": [
-   {
-    "id": "gdk:1064780389",
-    "x": 82.6,
-    "z": 679.9,
-    "metric": "ground -6.23 m"
-   },
-   {
-    "id": "gdk:1064780705",
-    "x": 118.4,
-    "z": 544.9,
-    "metric": "ground -6.12 m"
-   },
-   {
-    "id": "gdk:1114558373",
-    "x": 81.9,
-    "z": 743.0,
-    "metric": "ground -5.50 m"
-   },
-   {
-    "id": "gdk:1064712951",
-    "x": 333.5,
-    "z": 168.9,
-    "metric": "ground +4.18 m"
-   },
-   {
-    "id": "gdk:1064716172",
-    "x": -500.4,
-    "z": -752.9,
-    "metric": "ground +4.02 m"
-   },
-   {
-    "id": "gdk:1064714133",
-    "x": 374.0,
-    "z": -53.9,
-    "metric": "ground +4.01 m"
-   },
-   {
-    "id": "gdk:1064716464",
-    "x": -637.8,
-    "z": -762.4,
-    "metric": "ground +3.86 m"
-   },
-   {
-    "id": "gdk:1064802214",
-    "x": -473.5,
-    "z": -751.2,
-    "metric": "ground +3.86 m"
-   },
-   {
-    "id": "gdk:1064812240",
-    "x": -602.5,
-    "z": -743.5,
-    "metric": "ground +3.82 m"
-   },
-   {
-    "id": "gdk:1064716463",
-    "x": -590.9,
-    "z": -735.8,
-    "metric": "ground +3.73 m"
-   }
-  ]
- },
- {
   "id": "on-cycletrack:cars",
   "layer": "cars",
   "title": "cars on a cycle track (>= 25% of footprint)",
@@ -512,78 +440,6 @@
     "x": -204.5,
     "z": 529.0,
     "metric": "8.48 m2 (97% of smaller)"
-   }
-  ]
- },
- {
-  "id": "bld-ground-step-neighbours",
-  "layer": "buildings",
-  "title": "Touching buildings whose `ground` differs by > 1.5 m (stepped base along one frontage)",
-  "count": 239,
-  "total": 2517,
-  "pct": 9.5,
-  "severity": "high",
-  "note": "a continuous Copenhagen block front gets a staircase of base lines / floating ground floors",
-  "examples": [
-   {
-    "id": "gdk:1064780389 / gdk:1107312288",
-    "x": 81.6,
-    "z": 696.6,
-    "metric": "party-wall neighbours' ground differ 6.2 m"
-   },
-   {
-    "id": "gdk:1064780389 / gdk:1107312287",
-    "x": 81.1,
-    "z": 712.6,
-    "metric": "party-wall neighbours' ground differ 6.2 m"
-   },
-   {
-    "id": "gdk:1064812240 / gdk:1233983965",
-    "x": -600.4,
-    "z": -740.5,
-    "metric": "party-wall neighbours' ground differ 3.8 m"
-   },
-   {
-    "id": "gdk:1064716463 / gdk:1233983965",
-    "x": -598.5,
-    "z": -739.3,
-    "metric": "party-wall neighbours' ground differ 3.7 m"
-   },
-   {
-    "id": "gdk:1064716174 / gdk:1064803837",
-    "x": -405.9,
-    "z": -746.9,
-    "metric": "party-wall neighbours' ground differ 3.5 m"
-   },
-   {
-    "id": "gdk:1064714034 / gdk:1064813344",
-    "x": 568.7,
-    "z": 12.5,
-    "metric": "party-wall neighbours' ground differ 3.4 m"
-   },
-   {
-    "id": "gdk:1064805491 / gdk:1064813344",
-    "x": 563.6,
-    "z": 14.3,
-    "metric": "party-wall neighbours' ground differ 3.4 m"
-   },
-   {
-    "id": "gdk:1064813344 / gdk:1227520193",
-    "x": 564.6,
-    "z": 31.4,
-    "metric": "party-wall neighbours' ground differ 3.4 m"
-   },
-   {
-    "id": "gdk:1064802216 / gdk:1088168692",
-    "x": -380.6,
-    "z": -715.4,
-    "metric": "party-wall neighbours' ground differ 3.4 m"
-   },
-   {
-    "id": "gdk:1064716175 / gdk:1064803837",
-    "x": -405.2,
-    "z": -746.8,
-    "metric": "party-wall neighbours' ground differ 3.3 m"
    }
   ]
  },
@@ -1428,6 +1284,150 @@
   ]
  },
  {
+  "id": "bld-ground-vs-street",
+  "layer": "buildings",
+  "title": "Building `ground` differs from the walking height just outside its outline by > 0.5 m (floating / sunken ground floor)",
+  "count": 18,
+  "total": 2517,
+  "pct": 0.72,
+  "severity": "high",
+  "note": "10 float more than 0.5 m above the street they face, 8 are sunk. Percentiles 5/50/95 of ground - street: -0.17 / -0.02 / 0.04. (Replaces bld-ground-vs-flat-plane and bld-ground-range, which compared the terrain `ground` with the flat plane y = 0.)",
+  "examples": [
+   {
+    "id": "gdk:1114558373",
+    "x": 81.9,
+    "z": 743.0,
+    "metric": "ground -1.12 vs street -5.81 (+4.69 m)"
+   },
+   {
+    "id": "gdk:1107312569",
+    "x": 603.8,
+    "z": -87.0,
+    "metric": "ground +3.15 vs street +0.00 (+3.15 m)"
+   },
+   {
+    "id": "gdk:1107312570",
+    "x": 618.8,
+    "z": -90.5,
+    "metric": "ground +3.01 vs street +0.00 (+3.01 m)"
+   },
+   {
+    "id": "gdk:1064804878",
+    "x": 503.0,
+    "z": 123.2,
+    "metric": "ground +2.69 vs street +0.00 (+2.69 m)"
+   },
+   {
+    "id": "gdk:1107317699",
+    "x": 668.9,
+    "z": -152.5,
+    "metric": "ground +2.35 vs street +0.00 (+2.35 m)"
+   },
+   {
+    "id": "gdk:1064713314",
+    "x": 188.7,
+    "z": 591.9,
+    "metric": "ground -1.72 vs street +0.00 (-1.72 m)"
+   },
+   {
+    "id": "gdk:1064714269",
+    "x": 419.7,
+    "z": -8.4,
+    "metric": "ground +1.35 vs street +0.00 (+1.35 m)"
+   },
+   {
+    "id": "gdk:1064809760",
+    "x": 28.2,
+    "z": 612.4,
+    "metric": "ground +2.78 vs street +1.56 (+1.22 m)"
+   },
+   {
+    "id": "gdk:1114653087",
+    "x": 714.9,
+    "z": 514.6,
+    "metric": "ground -1.07 vs street +0.00 (-1.07 m)"
+   },
+   {
+    "id": "gdk:1064780700",
+    "x": 142.3,
+    "z": 415.8,
+    "metric": "ground +1.03 vs street +0.00 (+1.03 m)"
+   }
+  ]
+ },
+ {
+  "id": "bld-ground-terrain",
+  "layer": "buildings",
+  "title": "Building `ground` differs from the terrain model along its outline by > 0.5 m",
+  "count": 15,
+  "total": 2517,
+  "pct": 0.6,
+  "severity": "high",
+  "note": "ground min -6.35 max 4.22 median 1.14: one height model for buildings, roads, lakes and props means these agree",
+  "examples": [
+   {
+    "id": "gdk:1114558373",
+    "x": 81.9,
+    "z": 743.0,
+    "metric": "ground -1.12 vs terrain along outline -5.24"
+   },
+   {
+    "id": "gdk:1107312569",
+    "x": 603.8,
+    "z": -87.0,
+    "metric": "ground +3.15 vs terrain along outline +0.00"
+   },
+   {
+    "id": "gdk:1107312570",
+    "x": 618.8,
+    "z": -90.5,
+    "metric": "ground +3.01 vs terrain along outline +0.00"
+   },
+   {
+    "id": "gdk:1064804878",
+    "x": 503.0,
+    "z": 123.2,
+    "metric": "ground +2.69 vs terrain along outline +0.00"
+   },
+   {
+    "id": "gdk:1107317699",
+    "x": 668.9,
+    "z": -152.5,
+    "metric": "ground +2.35 vs terrain along outline +0.00"
+   },
+   {
+    "id": "gdk:1064713314",
+    "x": 188.7,
+    "z": 591.9,
+    "metric": "ground -1.72 vs terrain along outline +0.00"
+   },
+   {
+    "id": "gdk:1064714269",
+    "x": 419.7,
+    "z": -8.4,
+    "metric": "ground +1.35 vs terrain along outline +0.00"
+   },
+   {
+    "id": "gdk:1064809760",
+    "x": 28.2,
+    "z": 612.4,
+    "metric": "ground +2.78 vs terrain along outline +1.59"
+   },
+   {
+    "id": "gdk:1114653087",
+    "x": 714.9,
+    "z": 514.6,
+    "metric": "ground -1.07 vs terrain along outline +0.00"
+   },
+   {
+    "id": "gdk:1064780700",
+    "x": 142.3,
+    "z": 415.8,
+    "metric": "ground +1.03 vs terrain along outline +0.00"
+   }
+  ]
+ },
+ {
   "id": "in-building-partial:benches",
   "layer": "benches",
   "title": "benches straddles a facade (25-90% of footprint inside a building)",
@@ -1599,35 +1599,29 @@
   "id": "wire-through-building",
   "layer": "lamps",
   "title": "Wire span crosses a building volume (> 1 m inside the footprint shrunk by 0.4 m, eave above the wire)",
-  "count": 4,
+  "count": 3,
   "total": 1239,
-  "pct": 0.32,
+  "pct": 0.24,
   "severity": "high",
   "note": "the span is facade-to-facade `inferred` across the street, or the 2018 line crosses a courtyard; pendant and wire pass through a house",
   "examples": [
    {
-    "id": "lamp[1217]",
-    "x": 618.8,
-    "z": -102.0,
-    "metric": "28.3 m of the span inside a building (eave 8.5 > wire 8.2)"
-   },
-   {
     "id": "lamp[1237]",
     "x": 149.5,
     "z": -260.3,
-    "metric": "17.1 m of the span inside a building (eave 19.8 > wire 8.4)"
+    "metric": "17.1 m of the span inside a building (eave 19.8 > wire 9.1)"
    },
    {
     "id": "lamp[1238]",
     "x": 176.2,
     "z": -279.1,
-    "metric": "13.4 m of the span inside a building (eave 19.9 > wire 8.2)"
+    "metric": "13.4 m of the span inside a building (eave 19.9 > wire 9.0)"
    },
    {
     "id": "lamp[72]",
     "x": -728.1,
     "z": -458.1,
-    "metric": "10.4 m of the span inside a building (eave 12.0 > wire 8.8)"
+    "metric": "10.4 m of the span inside a building (eave 12.0 > wire 9.9)"
    }
   ]
  },
@@ -1694,6 +1688,48 @@
     "x": 712.7,
     "z": 512.7,
     "metric": "32% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "bld-ground-step-neighbours",
+  "layer": "buildings",
+  "title": "Touching buildings whose `ground` differs by > 1.5 m (stepped base along one frontage)",
+  "count": 5,
+  "total": 2517,
+  "pct": 0.2,
+  "severity": "high",
+  "note": "a continuous Copenhagen block front gets a staircase of base lines / floating ground floors",
+  "examples": [
+   {
+    "id": "gdk:1064780389 / gdk:1114558373",
+    "x": 81.2,
+    "z": 734.8,
+    "metric": "party-wall neighbours' ground differ 5.1 m"
+   },
+   {
+    "id": "gdk:1064713599 / gdk:1064809760",
+    "x": 25.1,
+    "z": 596.3,
+    "metric": "party-wall neighbours' ground differ 2.6 m"
+   },
+   {
+    "id": "gdk:1064809760 / gdk:1214389223",
+    "x": 33.1,
+    "z": 637.9,
+    "metric": "party-wall neighbours' ground differ 2.6 m"
+   },
+   {
+    "id": "gdk:1064710550 / gdk:1064813295",
+    "x": 530.5,
+    "z": -700.9,
+    "metric": "party-wall neighbours' ground differ 1.6 m"
+   },
+   {
+    "id": "gdk:1064713317 / gdk:1064809760",
+    "x": 32.4,
+    "z": 634.0,
+    "metric": "party-wall neighbours' ground differ 1.6 m"
    }
   ]
  },
@@ -1937,78 +1973,6 @@
     "x": 438.6,
     "z": 133.9,
     "metric": "anchors 35.1 / 46.6 m from any facade"
-   }
-  ]
- },
- {
-  "id": "bld-ground-range",
-  "layer": "buildings",
-  "title": "Building `ground` outside [-0.2, 0.5] m (pavement is 0.2, carriageway 0.02, plane 0)",
-  "count": 1682,
-  "total": 2517,
-  "pct": 66.83,
-  "severity": "med",
-  "note": "ground min -6.23 max 4.18 median 0.62; a ground below 0 sinks the walls into the plane, above 0.5 floats the skirt",
-  "examples": [
-   {
-    "id": "gdk:1064780389",
-    "x": 82.6,
-    "z": 679.9,
-    "metric": "ground -6.23"
-   },
-   {
-    "id": "gdk:1064780705",
-    "x": 118.4,
-    "z": 544.9,
-    "metric": "ground -6.12"
-   },
-   {
-    "id": "gdk:1114558373",
-    "x": 81.9,
-    "z": 743.0,
-    "metric": "ground -5.50"
-   },
-   {
-    "id": "gdk:1064712951",
-    "x": 333.5,
-    "z": 168.9,
-    "metric": "ground 4.18"
-   },
-   {
-    "id": "gdk:1064716172",
-    "x": -500.4,
-    "z": -752.9,
-    "metric": "ground 4.02"
-   },
-   {
-    "id": "gdk:1064714133",
-    "x": 374.0,
-    "z": -53.9,
-    "metric": "ground 4.01"
-   },
-   {
-    "id": "gdk:1064716464",
-    "x": -637.8,
-    "z": -762.4,
-    "metric": "ground 3.86"
-   },
-   {
-    "id": "gdk:1064802214",
-    "x": -473.5,
-    "z": -751.2,
-    "metric": "ground 3.86"
-   },
-   {
-    "id": "gdk:1064812240",
-    "x": -602.5,
-    "z": -743.5,
-    "metric": "ground 3.82"
-   },
-   {
-    "id": "gdk:1064716463",
-    "x": -590.9,
-    "z": -735.8,
-    "metric": "ground 3.73"
    }
   ]
  },
@@ -2649,6 +2613,78 @@
   ]
  },
  {
+  "id": "bld-height-sanity",
+  "layer": "buildings",
+  "title": "Height implausible: > 60 m, < 2.5 m, or > 6.5 / < 2.0 m per storey",
+  "count": 429,
+  "total": 2517,
+  "pct": 17.04,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "gdk:1064712326",
+    "x": 708.2,
+    "z": 318.0,
+    "metric": "h 24.9 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064710530",
+    "x": -307.6,
+    "z": -48.4,
+    "metric": "h 24.2 m, 2 storeys, measured"
+   },
+   {
+    "id": "gdk:1213434780",
+    "x": -83.5,
+    "z": 795.1,
+    "metric": "h 23.7 m, 19 storeys, measured"
+   },
+   {
+    "id": "gdk:1064714062",
+    "x": 631.1,
+    "z": -232.9,
+    "metric": "h 22.1 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064714130",
+    "x": 579.5,
+    "z": -150.0,
+    "metric": "h 21.6 m, 12 storeys, measured"
+   },
+   {
+    "id": "gdk:1064813456",
+    "x": 649.2,
+    "z": -45.8,
+    "metric": "h 20.6 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064714568",
+    "x": 178.6,
+    "z": -22.2,
+    "metric": "h 20.1 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064714265",
+    "x": 700.6,
+    "z": -679.4,
+    "metric": "h 20.0 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064713699",
+    "x": -591.4,
+    "z": -474.1,
+    "metric": "h 19.8 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064713815",
+    "x": 429.8,
+    "z": -418.2,
+    "metric": "h 17.9 m, 2 storeys, measured"
+   }
+  ]
+ },
+ {
   "id": "on-carriageway:meters",
   "layer": "meters",
   "title": "meters on the capped carriageway (>= 25% of footprint)",
@@ -3017,78 +3053,6 @@
     "x": 114.1,
     "z": 321.6,
     "metric": "100% of footprint"
-   }
-  ]
- },
- {
-  "id": "bld-height-sanity",
-  "layer": "buildings",
-  "title": "Height implausible: > 60 m, < 2.5 m, or > 6.5 / < 2.0 m per storey",
-  "count": 298,
-  "total": 2517,
-  "pct": 11.84,
-  "severity": "med",
-  "note": "",
-  "examples": [
-   {
-    "id": "gdk:1064712326",
-    "x": 708.2,
-    "z": 318.0,
-    "metric": "h 24.6 m, 3 storeys, measured"
-   },
-   {
-    "id": "gdk:1064710530",
-    "x": -307.6,
-    "z": -48.4,
-    "metric": "h 24.1 m, 2 storeys, measured"
-   },
-   {
-    "id": "gdk:1213434780",
-    "x": -83.5,
-    "z": 795.1,
-    "metric": "h 23.6 m, 19 storeys, measured"
-   },
-   {
-    "id": "gdk:1064714062",
-    "x": 631.1,
-    "z": -232.9,
-    "metric": "h 22.1 m, 3 storeys, measured"
-   },
-   {
-    "id": "gdk:1064714130",
-    "x": 579.5,
-    "z": -150.0,
-    "metric": "h 21.5 m, 12 storeys, measured"
-   },
-   {
-    "id": "gdk:1064813456",
-    "x": 649.2,
-    "z": -45.8,
-    "metric": "h 20.3 m, 3 storeys, measured"
-   },
-   {
-    "id": "gdk:1064714568",
-    "x": 178.6,
-    "z": -22.2,
-    "metric": "h 20.1 m, 3 storeys, measured"
-   },
-   {
-    "id": "gdk:1064714265",
-    "x": 700.6,
-    "z": -679.4,
-    "metric": "h 19.9 m, 3 storeys, measured"
-   },
-   {
-    "id": "gdk:1064713699",
-    "x": -591.4,
-    "z": -474.1,
-    "metric": "h 19.8 m, 3 storeys, measured"
-   },
-   {
-    "id": "gdk:1213781523",
-    "x": -578.9,
-    "z": -436.7,
-    "metric": "h 19.5 m, 3 storeys, measured"
    }
   ]
  },
@@ -3603,6 +3567,78 @@
   ]
  },
  {
+  "id": "ground-jump-centreline",
+  "layer": "ground height",
+  "title": "Height step > 0.15 m ALONG a carriageway centreline",
+  "count": 216,
+  "total": 4655,
+  "pct": 4.64,
+  "severity": "med",
+  "note": "cars/cyclists/pedestrians read this field: a step on the roadway = a pavement/cycle/surface slab covering the asphalt there",
+  "examples": [
+   {
+    "id": "osm:way/160726988",
+    "x": 379.5,
+    "z": -31.0,
+    "metric": "Israels Plads centreline dh +0.23"
+   },
+   {
+    "id": "osm:way/160726988",
+    "x": 380.4,
+    "z": -30.6,
+    "metric": "Israels Plads centreline dh +0.21"
+   },
+   {
+    "id": "osm:way/150918586",
+    "x": -355.3,
+    "z": 293.7,
+    "metric": " centreline dh -0.20"
+   },
+   {
+    "id": "osm:way/160726988",
+    "x": 378.6,
+    "z": -31.4,
+    "metric": "Israels Plads centreline dh +0.20"
+   },
+   {
+    "id": "osm:way/160726988",
+    "x": 381.3,
+    "z": -30.1,
+    "metric": "Israels Plads centreline dh +0.20"
+   },
+   {
+    "id": "osm:way/150919854",
+    "x": -636.3,
+    "z": 312.7,
+    "metric": " centreline dh -0.19"
+   },
+   {
+    "id": "osm:way/305430258",
+    "x": 549.3,
+    "z": 1.2,
+    "metric": " centreline dh +0.19"
+   },
+   {
+    "id": "osm:way/437649576",
+    "x": 492.8,
+    "z": 208.2,
+    "metric": "Sankt Petri Passage centreline dh -0.19"
+   },
+   {
+    "id": "osm:way/160726988",
+    "x": 377.7,
+    "z": -31.9,
+    "metric": "Israels Plads centreline dh +0.19"
+   },
+   {
+    "id": "osm:way/160726988",
+    "x": 366.0,
+    "z": -37.5,
+    "metric": "Israels Plads centreline dh -0.19"
+   }
+  ]
+ },
+ {
   "id": "on-cycletrack:monuments",
   "layer": "monuments",
   "title": "monuments on a cycle track (>= 25% of footprint)",
@@ -3633,74 +3669,74 @@
   ]
  },
  {
-  "id": "ground-jump-centreline",
-  "layer": "ground height",
-  "title": "Height step > 0.15 m ALONG a carriageway centreline",
-  "count": 183,
-  "total": 4655,
-  "pct": 3.93,
+  "id": "lake-wall-too-tall",
+  "layer": "water",
+  "title": "Lake wall more than 2.0 m above the water at a shore vertex (8 m spacing)",
+  "count": 62,
+  "total": 1631,
+  "pct": 3.8,
   "severity": "med",
-  "note": "cars/cyclists/pedestrians read this field: a step on the roadway = a pavement/cycle/surface slab covering the asphalt there",
+  "note": "free-board p5/p50/p95 0.30 / 0.82 / 1.75 m; the water level is the measured DTM level of each lake, the wall top follows the terrain at the shore",
   "examples": [
    {
-    "id": "osm:way/115912300",
-    "x": -640.6,
-    "z": -490.6,
-    "metric": " centreline dh +0.18"
+    "id": "lake:0",
+    "x": 151.4,
+    "z": -428.0,
+    "metric": "wall 3.96 m above the water"
    },
    {
-    "id": "osm:way/150878857",
-    "x": -453.2,
-    "z": 191.0,
-    "metric": " centreline dh +0.18"
+    "id": "lake:0",
+    "x": 46.4,
+    "z": -491.6,
+    "metric": "wall 3.12 m above the water"
    },
    {
-    "id": "osm:way/150894943",
-    "x": -610.3,
-    "z": -25.5,
-    "metric": "Steenwinkelsvej centreline dh -0.18"
+    "id": "lake:3",
+    "x": 284.8,
+    "z": 192.6,
+    "metric": "wall 3.11 m above the water"
    },
    {
-    "id": "osm:way/1073231248",
-    "x": 222.4,
-    "z": -315.3,
-    "metric": " centreline dh +0.18"
+    "id": "lake:3",
+    "x": 260.9,
+    "z": 199.0,
+    "metric": "wall 2.88 m above the water"
    },
    {
-    "id": "osm:way/1378864838",
-    "x": 688.7,
-    "z": 174.6,
-    "metric": " centreline dh +0.18"
+    "id": "lake:3",
+    "x": 260.9,
+    "z": 194.9,
+    "metric": "wall 2.79 m above the water"
    },
    {
-    "id": "osm:way/150917376",
-    "x": -357.3,
-    "z": 442.8,
-    "metric": " centreline dh +0.18"
+    "id": "lake:3",
+    "x": 287.5,
+    "z": 167.4,
+    "metric": "wall 2.72 m above the water"
    },
    {
-    "id": "osm:way/1378864835",
-    "x": 666.9,
-    "z": 292.8,
-    "metric": " centreline dh +0.18"
+    "id": "lake:3",
+    "x": 260.4,
+    "z": 193.1,
+    "metric": "wall 2.69 m above the water"
    },
    {
-    "id": "osm:way/150896583",
-    "x": -468.0,
-    "z": -119.2,
-    "metric": " centreline dh -0.18"
+    "id": "lake:0",
+    "x": 60.3,
+    "z": -513.8,
+    "metric": "wall 2.67 m above the water"
    },
    {
-    "id": "osm:way/1446346983",
-    "x": -553.7,
-    "z": -359.8,
-    "metric": " centreline dh +0.18"
+    "id": "lake:3",
+    "x": 291.0,
+    "z": 213.5,
+    "metric": "wall 2.57 m above the water"
    },
    {
-    "id": "osm:way/437649576",
-    "x": 492.8,
-    "z": 208.2,
-    "metric": "Sankt Petri Passage centreline dh -0.18"
+    "id": "lake:0",
+    "x": 158.0,
+    "z": -438.2,
+    "metric": "wall 2.52 m above the water"
    }
   ]
  },
@@ -4133,6 +4169,78 @@
     "x": -54.3,
     "z": 761.4,
     "metric": "roof top 23.7 vs eave 4.0"
+   }
+  ]
+ },
+ {
+  "id": "ground-jump-gt25cm",
+  "layer": "ground height",
+  "title": "Walking-height field steps by > 0.25 m over 1 m (carriageway edge/centre probes)",
+  "count": 147,
+  "total": 4655,
+  "pct": 3.16,
+  "severity": "med",
+  "note": "1465 steps > 0.15 m total, 216 on carriageway centrelines (should be 0: asphalt is flat at 0.02). Kerb steps are 0.10-0.18 m by design",
+  "examples": [
+   {
+    "id": "osm:way/27206697",
+    "x": 128.9,
+    "z": 589.7,
+    "metric": "Hammerichsgade offset -9.95 dh +1.37"
+   },
+   {
+    "id": "osm:way/69974781",
+    "x": 108.0,
+    "z": 577.7,
+    "metric": "Vandværksviadukten offset -11.5 dh +1.24"
+   },
+   {
+    "id": "osm:way/27206697",
+    "x": 128.6,
+    "z": 590.6,
+    "metric": "Hammerichsgade offset -9.95 dh +1.09"
+   },
+   {
+    "id": "osm:way/69974781",
+    "x": 107.2,
+    "z": 577.2,
+    "metric": "Vandværksviadukten offset -11.5 dh +0.98"
+   },
+   {
+    "id": "osm:way/69974781",
+    "x": 98.2,
+    "z": 571.6,
+    "metric": "Vandværksviadukten offset -11.5 dh +0.85"
+   },
+   {
+    "id": "osm:way/27206697",
+    "x": 112.9,
+    "z": 716.0,
+    "metric": "Hammerichsgade offset -9.95 dh -0.80"
+   },
+   {
+    "id": "osm:way/69974781",
+    "x": 114.8,
+    "z": 582.0,
+    "metric": "Vandværksviadukten offset -11.5 dh +0.80"
+   },
+   {
+    "id": "osm:way/144226567",
+    "x": 26.1,
+    "z": 40.1,
+    "metric": " offset 5 dh -0.74"
+   },
+   {
+    "id": "osm:way/69974781",
+    "x": 103.3,
+    "z": 574.8,
+    "metric": "Vandværksviadukten offset -11.5 dh -0.73"
+   },
+   {
+    "id": "osm:way/27206697",
+    "x": 129.2,
+    "z": 588.7,
+    "metric": "Hammerichsgade offset -9.95 dh +0.72"
    }
   ]
  },
@@ -5495,17 +5603,6 @@
   "pct": 0.0,
   "severity": "med",
   "note": "0 are inside open water",
-  "examples": []
- },
- {
-  "id": "ground-jump-gt25cm",
-  "layer": "ground height",
-  "title": "Walking-height field steps by > 0.25 m over 1 m (carriageway edge/centre probes)",
-  "count": 0,
-  "total": 4655,
-  "pct": 0.0,
-  "severity": "med",
-  "note": "1063 steps > 0.15 m total, 183 on carriageway centrelines (should be 0: asphalt is flat at 0.02). Kerb steps are 0.10-0.18 m by design",
   "examples": []
  },
  {

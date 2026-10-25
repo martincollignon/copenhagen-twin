@@ -8,7 +8,7 @@ import { vehiclePhase } from './signal-plan.js';
 
 const COLORS = { green: new THREE.Color(0x2ee66a), amber: new THREE.Color(0xffb020), red: new THREE.Color(0xff2a2a) };
 
-export function buildSignalHeads(scene, signalNodes) {
+export function buildSignalHeads(scene, signalNodes, { groundHeight = null } = {}) {
   const approaches = [];
   for (const n of signalNodes) {
     for (const arm of n.arms || []) {
@@ -35,7 +35,7 @@ export function buildSignalHeads(scene, signalNodes) {
   const up = new THREE.Vector3(0, 1, 0);
   approaches.forEach((a, i) => {
     q.setFromAxisAngle(up, a.yaw);
-    m.compose(new THREE.Vector3(a.x, 0.15, a.z), q, new THREE.Vector3(1, 1, 1));
+    m.compose(new THREE.Vector3(a.x, 0.15 + (groundHeight ? groundHeight.terrainAt(a.x, a.z) : 0), a.z), q, new THREE.Vector3(1, 1, 1));
     poles.setMatrixAt(i, m);
     boxes.setMatrixAt(i, m);
     lamps.setMatrixAt(i, m);

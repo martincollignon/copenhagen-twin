@@ -1,7 +1,8 @@
 // js/ground-height-cph.js
 // Walking height of the Copenhagen ground surface model (pure, headless-testable). The street surfaces are layered
-// geometry (carriageway 0.02 m, cycle track 0.12 m, pavement 0.20 m, ramps between them); this rasterises that model
-// into a 0.5 m height grid so pedestrians, cyclists and the player on foot or bike stand on what they see.
+// geometry on top of the terrain (carriageway +0.02 m, cycle track +0.12 m, pavement +0.20 m, ramps between them); this
+// rasterises those layer OFFSETS into a 0.5 m grid so pedestrians, cyclists and the player on foot or bike stand on what
+// they see. `composeHeightField` adds the terrain (js/terrain-cph.js, the one ground model of the scene).
 // Frame: x east, z south. heightAt() is bilinear, so a kerb is a ~0.5 m ramp instead of a one-frame jump.
 
 export function createHeightGrid({ bbox, cell = 0.5 }) {
@@ -88,5 +89,24 @@ export function createHeightGrid({ bbox, cell = 0.5 }) {
       return (top * (1 - tz) + bot * tz) / 1000;
     },
     data
+  };
+}
+
+/**
+ * The scene's ground model: terrain + street-surface offsets.
+ *   heightAt(x, z)    walking surface (terrain + the layer offset: pavement 0.2, carriageway 0.02, ...)
+ *   terrainAt(x, z)   bare terrain (what cars and buses rest on, give or take the 0.02 m asphalt)
+ *   offsetAt(x, z)    the layer offset alone
+ * @param {{ heightAt: Function, flat?: boolean }|null} terrain
+ * @param {{ heightAt: Function }} offsets grid from createHeightGrid (or any object with heightAt)
+ */
+export function composeHeightField(terrain, offsets) {
+  const t = terrain && !terrain.flat ? terrain : null;
+  return {
+    ...offsets,
+    terrain: t,
+    offsetAt: (x, z) => offsets.heightAt(x, z),
+    terrainAt: (x, z) => (t ? t.heightAt(x, z) : 0),
+    heightAt: (x, z) => (t ? t.heightAt(x, z) : 0) + offsets.heightAt(x, z)
   };
 }

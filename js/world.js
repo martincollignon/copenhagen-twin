@@ -11,6 +11,8 @@ import { buildLakes } from './water-cph.js';
 import { setCalibration } from './appearance.js';
 import { applySurfaceCuts } from './lakes-cph.js';
 import { loadCphFurniture } from './street-furniture-data.js';
+import { loadCphTerrain, createTerrain, buildTerrainMeshArrays } from './terrain-cph.js';
+import { applyTerrainGround } from './layout-cph.js';
 import { createStreetFurniture } from './street-furniture-cph.js';
 
 // js/world.js
@@ -104,9 +106,19 @@ function groundMaterial() {
   return new THREE.MeshStandardNodeMaterial({ map: texture, roughness: 0.95, metalness: 0 });
 }
 
-function buildGround(scene) {
+function buildGround(scene, terrain = null) {
   const SIZE = GROUND_SIZE;
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE).rotateX(-Math.PI / 2), groundMaterial());
+  let geometry = new THREE.PlaneGeometry(SIZE, SIZE).rotateX(-Math.PI / 2);
+  if (terrain && !terrain.flat) {
+    // no lakes: the terrain mesh without cut cells
+    const a = buildTerrainMeshArrays(terrain, { cut: { cell: 4, half: 750, skip: [], pieces: [] }, frame: [{ ring: [-4000, -4000, 4000, -4000, 4000, 4000, -4000, 4000], holes: [[-750, -750, 750, -750, 750, 750, -750, 750]] }], uvSize: SIZE });
+    geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(a.position, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(a.normal, 3));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(a.uv, 2));
+    geometry.setIndex(new THREE.BufferAttribute(a.index, 1));
+  }
+  const mesh = new THREE.Mesh(geometry, groundMaterial());
   mesh.name = 'CopenhagenGround';
   mesh.receiveShadow = true;
   mesh.frustumCulled = false;
@@ -189,8 +201,8 @@ const nullTraffic = () => ({
 });
 
 // Road surfaces, the drivable network, traffic, pedestrians, cyclists and signal heads from the geodata
-async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null }) {
-  const surfaces = await buildCphRoadSurfaces(scene, geo, { surfaces: surfacesDoc });
+async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null, terrain = null }) {
+  const surfaces = await buildCphRoadSurfaces(scene, geo, { surfaces: surfacesDoc, terrain });
   markInit('roadSurfaces');
   const walk = createWalkSpace(geo);
   let cyclists = null;
@@ -213,7 +225,7 @@ async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null }) {
   const signalNodes = traffic.network.nodes.filter((n) => n.signal);
   cyclists = createCyclistSystem(scene, geo, signalNodes, { groundHeight: surfaces.groundHeight });
   markInit('cyclists');
-  const heads = buildSignalHeads(scene, signalNodes);
+  const heads = buildSignalHeads(scene, signalNodes, { groundHeight: surfaces.groundHeight });
   markInit('signalHeads');
   const trafficUpdate = traffic.update;
   traffic.update = (dt, elapsed, focusPos, playerEntity, activeMode, camera) => {
@@ -289,17 +301,24 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   globalThis.CPH_GEO = geo;
   markInit(geo ? 'geodata' : 'geodata(absent)');
 
+  // ONE ground height model (data/cph-terrain.json, DHM terrain): buildings, roads, pavements, lakes, furniture, cars and
+  // pedestrians all take their ground from it. `?debug=flat` boots on the old flat plane (y = 0) for comparisons.
+  const terrain = createTerrain(geo && !debug.split(',').includes('flat') ? await loadCphTerrain() : null);
+  if (geo && !terrain.flat) applyTerrainGround(geo, terrain);
+  globalThis.CPH_TERRAIN = terrain;
+  markInit(terrain.flat ? 'terrain(flat)' : `terrain(${terrain.doc.min}..${terrain.doc.max} m)`);
+
   // Lakes (the Soerne): the ground plane is cut open over the water, so the plain plane is only built without them
   const lakesDoc = geo && !debug.split(',').includes('nowater') ? await loadCphLakes() : null;
   let lakes = null;
   let ground;
   if (lakesDoc?.lakes?.length) {
-    lakes = buildLakes(scene, lakesDoc, { groundMaterial: groundMaterial(), size: GROUND_SIZE, bbox: geo.frame?.bbox || CPH_FRAME.bbox, planar: water !== 'simple' });
+    lakes = buildLakes(scene, lakesDoc, { groundMaterial: groundMaterial(), size: GROUND_SIZE, bbox: geo.frame?.bbox || CPH_FRAME.bbox, planar: water !== 'simple', terrain });
     scene.add(lakes.ground);
     ground = lakes.ground;
     markInit(`lakes(${lakes.stats.lakes})`);
   } else {
-    ground = buildGround(scene);
+    ground = buildGround(scene, terrain);
   }
   markInit('ground');
 
@@ -311,13 +330,13 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   if (geo?.buildings?.length && !debug.split(',').includes('nobuildings')) {
     // Optional LoD2 roofs (tools/lod2 -> data/lod2); `?debug=nolod2` keeps the flat extrusions for before/after shots
     const lod2 = debug.split(',').includes('nolod2') ? null : await loadLod2();
-    buildings = await buildRealBuildings(scene, geo, { lod2, observed: !debug.split(',').includes('noobserved') });
+    buildings = await buildRealBuildings(scene, geo, { lod2, observed: !debug.split(',').includes('noobserved'), terrain: terrain.flat ? null : terrain });
     markInit(`buildings(${buildings.stats.buildings})`);
   }
 
   let traffic = null;
   if (geo?.roadGraph && !debug.split(',').includes('noroads')) {
-    traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: applySurfaceCuts(await loadCphSurfaces(), lakesDoc?.surface_cuts) });
+    traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: applySurfaceCuts(await loadCphSurfaces(), lakesDoc?.surface_cuts), terrain });
   }
 
   // M4: street furniture (data/cph-furniture.json): trees, lamps, parked cars, bins, bollards, benches, racks, bus stops
@@ -346,6 +365,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     cullingRoots: ['CopenhagenDebugFootprints'],
     roadSurfaces: traffic?.surfaces || null,
     groundHeight: traffic?.surfaces?.groundHeight || null,
+    terrain,
     ground,
     debugFootprints,
     buildings,

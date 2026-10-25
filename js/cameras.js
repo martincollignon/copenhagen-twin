@@ -178,6 +178,8 @@ class CameraSystem {
 
   update(dt, elapsed) {
     const entity = this.controllerManager.getActiveEntity();
+    // bare terrain height (the one ground model): camera floors and scenic viewpoints are relative to it
+    const ground = (x, z) => this.controllerManager.getGroundHeight?.(x, z, 'car') ?? 0;
     const desiredPos = this._desiredPos;
     const desiredLook = this._desiredLook;
 
@@ -205,7 +207,7 @@ class CameraSystem {
 
         desiredPos.set(
           entity.position.x - Math.sin(totalYaw) * horizDist,
-          Math.max(0.65, entity.position.y + height),
+          Math.max(0.65 + ground(entity.position.x, entity.position.z), entity.position.y + height),
           entity.position.z - Math.cos(totalYaw) * horizDist
         );
 
@@ -231,7 +233,7 @@ class CameraSystem {
 
         desiredPos.set(
           entity.position.x - Math.sin(entity.heading) * backDist + Math.cos(entity.heading) * sideOffset,
-          Math.max(0.55, lowY),
+          Math.max(0.55 + ground(entity.position.x, entity.position.z), lowY),
           entity.position.z - Math.cos(entity.heading) * backDist - Math.sin(entity.heading) * sideOffset
         );
         const lookAhead = entity.type === 'cargobike' ? 4.2 : 3.2;
@@ -290,6 +292,8 @@ class CameraSystem {
           desiredPos.set(loc.x - fx * view.back + fz * sway, view.up, loc.z - fz * view.back - fx * sway);
           desiredLook.set(loc.x + fx * view.ahead, view.lookY, loc.z + fz * view.ahead);
         }
+        desiredPos.y += ground(desiredPos.x, desiredPos.z);
+        desiredLook.y += ground(desiredLook.x, desiredLook.z);
         break;
       }
 
@@ -332,7 +336,7 @@ class CameraSystem {
       this.followLookOffset.lerp(desiredLook.sub(entity.position), k);
       this.currentPos.set(entity.position.x, this.followBaseY, entity.position.z).add(this.followOffset);
       this.currentLookAt.set(entity.position.x, this.followBaseY, entity.position.z).add(this.followLookOffset);
-      this.currentPos.y = Math.max(0.55, this.currentPos.y);
+      this.currentPos.y = Math.max(0.55 + ground(this.currentPos.x, this.currentPos.z), this.currentPos.y);
     } else {
       this.followEntity = null;
       const k = 1 - Math.exp(-dt * 8.5);

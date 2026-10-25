@@ -126,8 +126,14 @@ lod_index = load("data/lod2/index.json")
 lay = json.loads((OUT / "layout.json").read_text())
 plan = lay["plan"]
 
-# buildings
+# buildings, as the engine stands them (terrain ground applied by js/layout-cph.js; see dump_layout.mjs)
 B = geo["buildings"]
+_lb = {b["id"]: b for b in lay.get("buildings", [])}
+for b in B:
+    if b["id"] in _lb:
+        b["ground"] = _lb[b["id"]]["ground"]
+        b["street"] = _lb[b["id"]]["street"]
+        b["terrain"] = _lb[b["id"]]["terrain"]
 bpoly = [ring_poly(b["ring"], b.get("holes")) for b in B]
 bvalid = [i for i, p in enumerate(bpoly) if p is not None and not p.is_empty]
 bgeoms = [bpoly[i] for i in bvalid]
@@ -252,19 +258,20 @@ ex = [(B[bvalid[i]]["id"], *loc[i], f"{a:.0f} m2 in lake", a) for i, a in per.it
 check("bld-water", "buildings", "Building footprint overlaps a lake (>= 1 m2)", len(per), len(B), "high", ex,
       "walls rise out of the water / lake wall + building wall intersect (e.g. houses on the dossering over the lake edge)", weight=3)
 
-# building ground vs engine reference
+# building ground vs the street the engine draws beside it (terrain + layer offsets: pavement 0.2, carriageway 0.02)
+street_gap = [(b, p, b["ground"] - b["street"]) for b, p in zip((B[i] for i in bvalid), bgeoms) if "street" in b]
 gs = np.array([b["ground"] for b in B])
-bad = [(b["id"], *centroid(p), f"ground {b['ground']:.2f}", abs(b["ground"])) for b, p in zip((B[i] for i in bvalid), bgeoms) if not (-0.2 <= b["ground"] <= 0.5)]
-check("bld-ground-range", "buildings", "Building `ground` outside [-0.2, 0.5] m (pavement is 0.2, carriageway 0.02, plane 0)", len(bad), len(B), "med", bad,
-      f"ground min {gs.min():.2f} max {gs.max():.2f} median {np.median(gs):.2f}; a ground below 0 sinks the walls into the plane, above 0.5 floats the skirt",
-      weight=1.5)
-
-up = [(b["id"], *centroid(p), f"ground {b['ground']:+.2f} m", abs(b["ground"])) for b, p in zip((B[i] for i in bvalid), bgeoms) if abs(b["ground"]) > 1.0]
-n_up = sum(1 for b in B if b["ground"] > 1.0)
-n_dn = sum(1 for b in B if b["ground"] < -1.0)
-check("bld-ground-vs-flat-plane", "buildings", "|ground| > 1 m: the building is placed on real terrain, but the roads, pavements, lakes and plane are flat (y 0.02-0.2)", len(up), len(B), "high", up,
-      f"{n_up} buildings have ground > +1 m (ground floor and entrances float above the street, the facade rows start `ground` m above the pavement), {n_dn} have ground < -1 m (sunk). Percentiles 5/50/95: "
-      f"{np.percentile(gs, 5):.2f} / {np.percentile(gs, 50):.2f} / {np.percentile(gs, 95):.2f}", weight=3)
+bad = [(b["id"], *centroid(p), f"ground {b['ground']:+.2f} vs street {b['street']:+.2f} ({g:+.2f} m)", abs(g)) for b, p, g in street_gap if abs(g) > 0.5]
+n_up = sum(1 for _, _, g in street_gap if g > 0.5)
+n_dn = sum(1 for _, _, g in street_gap if g < -0.5)
+check("bld-ground-vs-street", "buildings", "Building `ground` differs from the walking height just outside its outline by > 0.5 m (floating / sunken ground floor)", len(bad), len(B), "high", bad,
+      f"{n_up} float more than 0.5 m above the street they face, {n_dn} are sunk. Percentiles 5/50/95 of ground - street: "
+      f"{np.percentile([g for _, _, g in street_gap], 5):.2f} / {np.percentile([g for _, _, g in street_gap], 50):.2f} / {np.percentile([g for _, _, g in street_gap], 95):.2f}. "
+      "(Replaces bld-ground-vs-flat-plane and bld-ground-range, which compared the terrain `ground` with the flat plane y = 0.)", weight=3)
+tdiff = [(b["id"], *centroid(p), f"ground {b['ground']:+.2f} vs terrain along outline {b['terrain']:+.2f}", abs(b["ground"] - b["terrain"])) for b, p in zip((B[i] for i in bvalid), bgeoms)
+         if "terrain" in b and abs(b["ground"] - b["terrain"]) > 0.5]
+check("bld-ground-terrain", "buildings", "Building `ground` differs from the terrain model along its outline by > 0.5 m", len(tdiff), len(B), "high", tdiff,
+      f"ground min {gs.min():.2f} max {gs.max():.2f} median {np.median(gs):.2f}: one height model for buildings, roads, lakes and props means these agree", weight=2)
 step = []
 pairs_t = overlaps([g.buffer(0.8) for g in bgeoms], bgeoms, 0.01, same=True)
 for i, j, a in pairs_t:
@@ -394,6 +401,16 @@ for s in S:
 pr = overlaps(spoly, [water_open], 1.0)
 ex = [(sid[i], *centroid(spoly[i].intersection(water_open)), f"{scls[i]}: {a:.0f} m2 over water (after the engine's surface_cuts)", a) for i, _, a in pr]
 check("water-surface", "water", "Ground-material polygon overlaps open water after surface_cuts (>= 1 m2)", len(ex), len(spoly), "med", ex, "register ground drawn at 0.014 above the sunk water", weight=1.5)
+
+# lake walls: with one height model the wall top follows the terrain at the shore; the water sits at its measured level
+lw = lay.get("lakeWalls")
+if lw:
+    fb = lw["freeboards"]
+    tall = [f for f in fb if f["free"] > 2.0]
+    ex = [(f["id"], f["x"], f["z"], f"wall {f['free']:.2f} m above the water", f["free"]) for f in tall]
+    check("lake-wall-too-tall", "water", "Lake wall more than 2.0 m above the water at a shore vertex (8 m spacing)", len(tall), len(fb), "med", ex,
+          f"free-board p5/p50/p95 {np.percentile([f['free'] for f in fb], 5):.2f} / {np.percentile([f['free'] for f in fb], 50):.2f} / {np.percentile([f['free'] for f in fb], 95):.2f} m; "
+          "the water level is the measured DTM level of each lake, the wall top follows the terrain at the shore", weight=1)
 
 # lake lights
 ll = plan["lakeLights"]

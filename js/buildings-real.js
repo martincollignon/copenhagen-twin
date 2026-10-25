@@ -304,7 +304,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
   return { state, update, evict, get active() { return state.resident.size; } };
 }
 
-async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoPanel = true, lod2 = null, tex = texRequested(), observed = true } = {}) {
+async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoPanel = true, lod2 = null, tex = texRequested(), observed = true, terrain = null } = {}) {
   const buildings = geo.buildings || [];
   const heroIds = new Set((geo.heroes || []).map((h) => h.building_id));
   const byId = new Map(buildings.map((b) => [b.id, b]));
@@ -353,7 +353,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     for (const { b } of leaf.items) {
       const glassy = b.wall_material === 'glas';
       const quads = tex && observed && !glassy && b.observed?.atlas?.walls?.length ? [] : null;
-      const added = addBuilding(acc, b, { ...(glassy ? { wallAcc: glassAcc } : {}), ...(lod2Records.has(b.id) ? { lod2: lod2Records.get(b.id) } : {}), ...(quads ? { quads } : {}), ...(observed ? {} : { observed: false }) });
+      const added = addBuilding(acc, b, { ...(glassy ? { wallAcc: glassAcc } : {}), ...(lod2Records.has(b.id) ? { lod2: lod2Records.get(b.id) } : {}), ...(quads ? { quads } : {}), ...(observed ? {} : { observed: false }), ...(terrain ? { terrain } : {}) });
       if (added) triangles += added.wallTriangles + added.roofTriangles;
       if (added && quads) {
         const walls = texturedWalls(b, quads, added.mapping);
@@ -408,7 +408,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
       if (b) heroIds.delete(hero.building_id);
       if (b) {
         const acc = createAccumulator();
-        addBuilding(acc, b);
+        addBuilding(acc, b, terrain ? { terrain } : {});
         const group = new THREE.Group();
         const wm = new THREE.Mesh(toBufferGeometry(acc.wall), masonry);
         wm.userData.ranges = acc.wallRanges;

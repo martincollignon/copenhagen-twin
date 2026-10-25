@@ -5,6 +5,7 @@ import {
 } from 'three/tsl';
 import { cityUniforms } from './tsl-materials.js';
 import { buildLakeArrays, groundWithHoles, shoreDistanceField, WATER } from './lakes-cph.js';
+import { buildTerrainMeshArrays } from './terrain-cph.js';
 
 // js/water-cph.js
 // The Soerne as water: sunken lake surface with TSL ripples, fresnel sky/planar reflection and a soft shoreline, held by
@@ -78,7 +79,7 @@ const skyColourAt = (r) => {
   return sky.add(cityUniforms.uSunColor.mul(sunAmount.mul(1.5)));
 };
 
-function createWaterMaterial({ sdf, bbox, planar }) {
+function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
   const material = new THREE.MeshStandardNodeMaterial({ roughness: 0.045, metalness: 0, envMapIntensity: 1.0 });
   material.name = 'cph-water';
   const wp = positionWorld;
@@ -125,7 +126,7 @@ function createWaterMaterial({ sdf, bbox, planar }) {
   if (planar) {
     reflectorNode = reflector({ resolutionScale: planar.resolutionScale ?? 0.4, bounces: false });
     reflectorNode.target.rotateX(-Math.PI / 2);
-    reflectorNode.target.position.y = WATER.surfaceY;
+    reflectorNode.target.position.y = level;
     reflectorNode.uvNode = reflectorNode.uvNode.add(vec2(sx, sz).mul(0.06));
     reflection = reflectorNode.rgb;
   } else {
@@ -142,17 +143,18 @@ function createWaterMaterial({ sdf, bbox, planar }) {
  * Builds the lakes into `scene`. Returns { group, ground, water, material, stats, update, attach, setPlanar }.
  * `ground` is the cut ground mesh (replaces the plain plane); `update(x, z)` gates the planar reflection pass.
  */
-function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -750, 750, 750], planar = true } = {}) {
-  const arrays = buildLakeArrays(doc, { bbox });
+function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -750, 750, 750], planar = true, terrain = null } = {}) {
+  const arrays = buildLakeArrays(doc, { bbox, terrain });
   const group = new THREE.Group();
   group.name = 'CopenhagenLakes';
 
   // ground plane with the lakes cut out
-  const g = groundWithHoles(size, arrays.cutRings, arrays.islands);
+  // (with terrain: the terrain mesh, whose cut cells follow the lake outlines; otherwise the flat plane)
+  const g = terrain && !terrain.flat ? buildTerrainMeshArrays(terrain, { uvSize: size }) : groundWithHoles(size, arrays.cutRings, arrays.islands);
   const groundGeometry = new THREE.BufferGeometry();
   groundGeometry.setAttribute('position', new THREE.Float32BufferAttribute(g.position, 3));
   groundGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
-  groundGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(g.position.map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+  groundGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(g.normal || Array.from(g.position, (_, i) => (i % 3 === 1 ? 1 : 0)), 3));
   groundGeometry.setIndex(new THREE.Uint32BufferAttribute(g.index, 1));
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.name = 'CopenhagenGround';
@@ -167,7 +169,7 @@ function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -75
   sdf.generateMipmaps = false;
   sdf.needsUpdate = true;
 
-  const { material, reflectorNode } = createWaterMaterial({ sdf, bbox, planar: planar ? { resolutionScale: 0.4 } : null });
+  const { material, reflectorNode } = createWaterMaterial({ sdf, bbox, planar: planar ? { resolutionScale: 0.4 } : null, level: arrays.level });
   const water = new THREE.Mesh(toGeometry(arrays.surface), material);
   water.name = 'lake-water';
   water.receiveShadow = true;
@@ -242,9 +244,10 @@ function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -75
   return {
     group, ground, water, material, walls, field, state, setPlanar,
     stats: { ...arrays.stats, surfaceTriangles: arrays.surface.index.length / 3, groundTriangles: g.index.length / 3 },
+    level: arrays.level,
     attach: ({ camera: cam }) => { camera = cam; },
     // the reflection pass renders the whole scene again: skip it from high above or far from the lakes
-    update: () => { if (camera) setPlanar(camera.position.y < 450 && camera.position.y > WATER.surfaceY + 0.2); }
+    update: () => { if (camera) setPlanar(camera.position.y < 450 && camera.position.y > arrays.level + 0.2); }
   };
 }
 

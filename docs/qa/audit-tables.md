@@ -5,14 +5,12 @@
 | severity | check | layer | count | of | % |
 |---|---|---|---:|---:|---:|
 | high | `car-off-carriageway` | cars | 1314 | 2694 | 48.78 |
-| high | `bld-ground-vs-flat-plane` | buildings | 1190 | 2517 | 47.28 |
 | high | `on-cycletrack:cars` | cars | 824 | 2694 | 30.59 |
 | high | `on-carriageway:glass` | glass | 6 | 23 | 26.09 |
 | high | `car-in-moving-lane` | cars | 692 | 2694 | 25.69 |
 | high | `on-carriageway:shelters` | shelters | 4 | 21 | 19.05 |
 | high | `on-carriageway:benches` | benches | 104 | 938 | 11.09 |
 | high | `overlap:cars+cars` | furniture | 286 | 2694 | 10.62 |
-| high | `bld-ground-step-neighbours` | buildings | 239 | 2517 | 9.5 |
 | high | `on-carriageway:lamp-poles` | lamp-poles | 38 | 467 | 8.14 |
 | high | `on-carriageway:bins` | bins | 40 | 539 | 7.42 |
 | high | `road-through-bld` | roads | 38 | 931 | 4.08 |
@@ -26,13 +24,16 @@
 | high | `on-carriageway:monuments` | monuments | 1 | 76 | 1.32 |
 | high | `overlap:benches+cars` | furniture | 39 | 3632 | 1.07 |
 | high | `bld-bld-overlap` | buildings | 22 | 2517 | 0.87 |
+| high | `bld-ground-vs-street` | buildings | 18 | 2517 | 0.72 |
+| high | `bld-ground-terrain` | buildings | 15 | 2517 | 0.6 |
 | high | `in-building-partial:benches` | benches | 4 | 938 | 0.43 |
 | high | `in-water:benches` | benches | 4 | 938 | 0.43 |
 | high | `overlap:cars+trees` | furniture | 30 | 7599 | 0.39 |
 | high | `in-water:bins` | bins | 2 | 539 | 0.37 |
-| high | `wire-through-building` | lamps | 4 | 1239 | 0.32 |
+| high | `wire-through-building` | lamps | 3 | 1239 | 0.24 |
 | high | `in-building-partial:cars` | cars | 6 | 2694 | 0.22 |
 | high | `in-building-partial:lamp-poles` | lamp-poles | 1 | 467 | 0.21 |
+| high | `bld-ground-step-neighbours` | buildings | 5 | 2517 | 0.2 |
 | high | `in-building-partial:bins` | bins | 1 | 539 | 0.19 |
 | high | `overlap:cars+stands` | furniture | 6 | 3434 | 0.17 |
 | high | `water-carriageway` | water | 1 | 931 | 0.11 |
@@ -42,7 +43,6 @@
 | high | `water-cycletrack` | water | 0 | 678 | 0.0 |
 | high | `water-pavement` | water | 0 | 983 | 0.0 |
 | med | `wire-floating-anchor` | lamps | 1203 | 1239 | 97.09 |
-| med | `bld-ground-range` | buildings | 1682 | 2517 | 66.83 |
 | med | `shelter-conflict` | bus stops | 13 | 21 | 61.9 |
 | med | `lod2-eave-mismatch` | lod2 | 1138 | 2114 | 53.83 |
 | med | `pavement-carriageway` | pavement | 390 | 983 | 39.67 |
@@ -52,13 +52,13 @@
 | med | `rack-rows` | bikeRacks | 275 | 1035 | 26.57 |
 | med | `on-carriageway:flags` | flags | 11 | 47 | 23.4 |
 | med | `on-carriageway:bikes` | bikes | 1342 | 7102 | 18.9 |
+| med | `bld-height-sanity` | buildings | 429 | 2517 | 17.04 |
 | med | `on-carriageway:meters` | meters | 7 | 47 | 14.89 |
 | med | `on-carriageway:hoops` | hoops | 885 | 6128 | 14.44 |
 | med | `signal-no-junction` | signals | 23 | 164 | 14.02 |
 | med | `surf-surf-diffclass` | surfaces | 30 | 229 | 13.1 |
 | med | `on-cycletrack:glass` | glass | 3 | 23 | 13.04 |
 | med | `on-cycletrack:bins` | bins | 64 | 539 | 11.87 |
-| med | `bld-height-sanity` | buildings | 298 | 2517 | 11.84 |
 | med | `busstop-far-from-road` | bus stops | 5 | 47 | 10.64 |
 | med | `surf-under-road` | surfaces | 15 | 143 | 10.49 |
 | med | `overlap:benches+benches` | furniture | 92 | 938 | 9.81 |
@@ -67,14 +67,16 @@
 | med | `on-cycletrack:bollards` | bollards | 28 | 396 | 7.07 |
 | med | `in-building-partial:stands` | stands | 47 | 740 | 6.35 |
 | med | `on-cycletrack:benches` | benches | 51 | 938 | 5.44 |
+| med | `ground-jump-centreline` | ground height | 216 | 4655 | 4.64 |
 | med | `on-cycletrack:monuments` | monuments | 3 | 76 | 3.95 |
-| med | `ground-jump-centreline` | ground height | 183 | 4655 | 3.93 |
+| med | `lake-wall-too-tall` | water | 62 | 1631 | 3.8 |
 | med | `tree-crown-facade` | trees | 184 | 4905 | 3.75 |
 | med | `rack-giant` | bikeRacks | 38 | 1035 | 3.67 |
 | med | `in-building-partial:bikes` | bikes | 256 | 7102 | 3.6 |
 | med | `on-cycletrack:trees` | trees | 173 | 4905 | 3.53 |
 | med | `in-building-hidden:bins` | bins | 18 | 539 | 3.34 |
 | med | `lod2-spire` | lod2 | 68 | 2114 | 3.22 |
+| med | `ground-jump-gt25cm` | ground height | 147 | 4655 | 3.16 |
 | med | `overlap:glass+stands` | furniture | 23 | 763 | 3.01 |
 | med | `road-road-overlap` | roads | 26 | 931 | 2.79 |
 | med | `overlap:bins+bins` | furniture | 13 | 539 | 2.41 |
@@ -97,7 +99,6 @@
 | med | `overlap:bikes+trees` | furniture | 14 | 12007 | 0.12 |
 | med | `overlap:bikes+bollards` | furniture | 6 | 7498 | 0.08 |
 | med | `lakelights-water` | furniture | 0 | 143 | 0.0 |
-| med | `ground-jump-gt25cm` | ground height | 0 | 4655 | 0.0 |
 | med | `wire-too-low` | lamps | 0 | 1239 | 0.0 |
 | med | `signal-in-building` | signals | 0 | 164 | 0.0 |
 | med | `busstop-in-building` | bus stops | 0 | 47 | 0.0 |
@@ -170,23 +171,6 @@ Count **1314** of 2694 (48.78%). bay points come from kerb lines / parking polyg
 | 8 | car[74] perp | 73.3, 317.7 | 0% on carriageway/bay paint, 0% on pavement, 4.9 m from centreline |
 | 9 | car[108] par | 680.5, 302.6 | 0% on carriageway/bay paint, 0% on pavement, 11.3 m from centreline |
 | 10 | car[109] par | 685.8, 300.5 | 0% on carriageway/bay paint, 0% on pavement, 16.2 m from centreline |
-
-#### `bld-ground-vs-flat-plane` (high): |ground| > 1 m: the building is placed on real terrain, but the roads, pavements, lakes and plane are flat (y 0.02-0.2)
-
-Count **1190** of 2517 (47.28%). 1090 buildings have ground > +1 m (ground floor and entrances float above the street, the facade rows start `ground` m above the pavement), 100 have ground < -1 m (sunk). Percentiles 5/50/95: -0.88 / 0.62 / 2.67
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | gdk:1064780389 | 82.6, 679.9 | ground -6.23 m |
-| 2 | gdk:1064780705 | 118.4, 544.9 | ground -6.12 m |
-| 3 | gdk:1114558373 | 81.9, 743.0 | ground -5.50 m |
-| 4 | gdk:1064712951 | 333.5, 168.9 | ground +4.18 m |
-| 5 | gdk:1064716172 | -500.4, -752.9 | ground +4.02 m |
-| 6 | gdk:1064714133 | 374.0, -53.9 | ground +4.01 m |
-| 7 | gdk:1064716464 | -637.8, -762.4 | ground +3.86 m |
-| 8 | gdk:1064802214 | -473.5, -751.2 | ground +3.86 m |
-| 9 | gdk:1064812240 | -602.5, -743.5 | ground +3.82 m |
-| 10 | gdk:1064716463 | -590.9, -735.8 | ground +3.73 m |
 
 #### `on-cycletrack:cars` (high): cars on a cycle track (>= 25% of footprint)
 
@@ -279,23 +263,6 @@ Count **286** of 2694 (10.62%).
 | 8 | cars[725] x cars[2627] | -284.4, -641.4 | 8.50 m2 (97% of smaller) |
 | 9 | cars[819] x cars[2447] | -546.5, -627.5 | 8.49 m2 (97% of smaller) |
 | 10 | cars[276] x cars[2415] | -204.5, 529.0 | 8.48 m2 (97% of smaller) |
-
-#### `bld-ground-step-neighbours` (high): Touching buildings whose `ground` differs by > 1.5 m (stepped base along one frontage)
-
-Count **239** of 2517 (9.5%). a continuous Copenhagen block front gets a staircase of base lines / floating ground floors
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | gdk:1064780389 / gdk:1107312288 | 81.6, 696.6 | party-wall neighbours' ground differ 6.2 m |
-| 2 | gdk:1064780389 / gdk:1107312287 | 81.1, 712.6 | party-wall neighbours' ground differ 6.2 m |
-| 3 | gdk:1064812240 / gdk:1233983965 | -600.4, -740.5 | party-wall neighbours' ground differ 3.8 m |
-| 4 | gdk:1064716463 / gdk:1233983965 | -598.5, -739.3 | party-wall neighbours' ground differ 3.7 m |
-| 5 | gdk:1064716174 / gdk:1064803837 | -405.9, -746.9 | party-wall neighbours' ground differ 3.5 m |
-| 6 | gdk:1064714034 / gdk:1064813344 | 568.7, 12.5 | party-wall neighbours' ground differ 3.4 m |
-| 7 | gdk:1064805491 / gdk:1064813344 | 563.6, 14.3 | party-wall neighbours' ground differ 3.4 m |
-| 8 | gdk:1064813344 / gdk:1227520193 | 564.6, 31.4 | party-wall neighbours' ground differ 3.4 m |
-| 9 | gdk:1064802216 / gdk:1088168692 | -380.6, -715.4 | party-wall neighbours' ground differ 3.4 m |
-| 10 | gdk:1064716175 / gdk:1064803837 | -405.2, -746.8 | party-wall neighbours' ground differ 3.3 m |
 
 #### `on-carriageway:lamp-poles` (high): lamp-poles on the capped carriageway (>= 25% of footprint)
 
@@ -502,6 +469,40 @@ Count **22** of 2517 (0.87%). 1 pairs are near-duplicates (IoU > 0.8); 6 pairs h
 | 9 | gdk:1064780389 x gdk:1107312287 | 81.1, 712.6 | 15 m2 (100% of smaller), eave -1.1/3.2 |
 | 10 | gdk:1064780389 x gdk:1107312288 | 81.6, 696.6 | 13 m2 (100% of smaller), eave -1.1/3.2 |
 
+#### `bld-ground-vs-street` (high): Building `ground` differs from the walking height just outside its outline by > 0.5 m (floating / sunken ground floor)
+
+Count **18** of 2517 (0.72%). 10 float more than 0.5 m above the street they face, 8 are sunk. Percentiles 5/50/95 of ground - street: -0.17 / -0.02 / 0.04. (Replaces bld-ground-vs-flat-plane and bld-ground-range, which compared the terrain `ground` with the flat plane y = 0.)
+
+| # | id | x, z | measure |
+|---:|---|---|---|
+| 1 | gdk:1114558373 | 81.9, 743.0 | ground -1.12 vs street -5.81 (+4.69 m) |
+| 2 | gdk:1107312569 | 603.8, -87.0 | ground +3.15 vs street +0.00 (+3.15 m) |
+| 3 | gdk:1107312570 | 618.8, -90.5 | ground +3.01 vs street +0.00 (+3.01 m) |
+| 4 | gdk:1064804878 | 503.0, 123.2 | ground +2.69 vs street +0.00 (+2.69 m) |
+| 5 | gdk:1107317699 | 668.9, -152.5 | ground +2.35 vs street +0.00 (+2.35 m) |
+| 6 | gdk:1064713314 | 188.7, 591.9 | ground -1.72 vs street +0.00 (-1.72 m) |
+| 7 | gdk:1064714269 | 419.7, -8.4 | ground +1.35 vs street +0.00 (+1.35 m) |
+| 8 | gdk:1064809760 | 28.2, 612.4 | ground +2.78 vs street +1.56 (+1.22 m) |
+| 9 | gdk:1114653087 | 714.9, 514.6 | ground -1.07 vs street +0.00 (-1.07 m) |
+| 10 | gdk:1064780700 | 142.3, 415.8 | ground +1.03 vs street +0.00 (+1.03 m) |
+
+#### `bld-ground-terrain` (high): Building `ground` differs from the terrain model along its outline by > 0.5 m
+
+Count **15** of 2517 (0.6%). ground min -6.35 max 4.22 median 1.14: one height model for buildings, roads, lakes and props means these agree
+
+| # | id | x, z | measure |
+|---:|---|---|---|
+| 1 | gdk:1114558373 | 81.9, 743.0 | ground -1.12 vs terrain along outline -5.24 |
+| 2 | gdk:1107312569 | 603.8, -87.0 | ground +3.15 vs terrain along outline +0.00 |
+| 3 | gdk:1107312570 | 618.8, -90.5 | ground +3.01 vs terrain along outline +0.00 |
+| 4 | gdk:1064804878 | 503.0, 123.2 | ground +2.69 vs terrain along outline +0.00 |
+| 5 | gdk:1107317699 | 668.9, -152.5 | ground +2.35 vs terrain along outline +0.00 |
+| 6 | gdk:1064713314 | 188.7, 591.9 | ground -1.72 vs terrain along outline +0.00 |
+| 7 | gdk:1064714269 | 419.7, -8.4 | ground +1.35 vs terrain along outline +0.00 |
+| 8 | gdk:1064809760 | 28.2, 612.4 | ground +2.78 vs terrain along outline +1.59 |
+| 9 | gdk:1114653087 | 714.9, 514.6 | ground -1.07 vs terrain along outline +0.00 |
+| 10 | gdk:1064780700 | 142.3, 415.8 | ground +1.03 vs terrain along outline +0.00 |
+
 #### `in-building-partial:benches` (high): benches straddles a facade (25-90% of footprint inside a building)
 
 Count **4** of 938 (0.43%). half inside the wall: visible poking through the facade
@@ -552,14 +553,13 @@ Count **2** of 539 (0.37%). 1 are more than 1 m from the shore; the rest sit on 
 
 #### `wire-through-building` (high): Wire span crosses a building volume (> 1 m inside the footprint shrunk by 0.4 m, eave above the wire)
 
-Count **4** of 1239 (0.32%). the span is facade-to-facade `inferred` across the street, or the 2018 line crosses a courtyard; pendant and wire pass through a house
+Count **3** of 1239 (0.24%). the span is facade-to-facade `inferred` across the street, or the 2018 line crosses a courtyard; pendant and wire pass through a house
 
 | # | id | x, z | measure |
 |---:|---|---|---|
-| 1 | lamp[1217] | 618.8, -102.0 | 28.3 m of the span inside a building (eave 8.5 > wire 8.2) |
-| 2 | lamp[1237] | 149.5, -260.3 | 17.1 m of the span inside a building (eave 19.8 > wire 8.4) |
-| 3 | lamp[1238] | 176.2, -279.1 | 13.4 m of the span inside a building (eave 19.9 > wire 8.2) |
-| 4 | lamp[72] | -728.1, -458.1 | 10.4 m of the span inside a building (eave 12.0 > wire 8.8) |
+| 1 | lamp[1237] | 149.5, -260.3 | 17.1 m of the span inside a building (eave 19.8 > wire 9.1) |
+| 2 | lamp[1238] | 176.2, -279.1 | 13.4 m of the span inside a building (eave 19.9 > wire 9.0) |
+| 3 | lamp[72] | -728.1, -458.1 | 10.4 m of the span inside a building (eave 12.0 > wire 9.9) |
 
 #### `in-building-partial:cars` (high): cars straddles a facade (25-90% of footprint inside a building)
 
@@ -581,6 +581,18 @@ Count **1** of 467 (0.21%). half inside the wall: visible poking through the fac
 | # | id | x, z | measure |
 |---:|---|---|---|
 | 1 | lamp-poles[221] | 712.7, 512.7 | 32% of footprint |
+
+#### `bld-ground-step-neighbours` (high): Touching buildings whose `ground` differs by > 1.5 m (stepped base along one frontage)
+
+Count **5** of 2517 (0.2%). a continuous Copenhagen block front gets a staircase of base lines / floating ground floors
+
+| # | id | x, z | measure |
+|---:|---|---|---|
+| 1 | gdk:1064780389 / gdk:1114558373 | 81.2, 734.8 | party-wall neighbours' ground differ 5.1 m |
+| 2 | gdk:1064713599 / gdk:1064809760 | 25.1, 596.3 | party-wall neighbours' ground differ 2.6 m |
+| 3 | gdk:1064809760 / gdk:1214389223 | 33.1, 637.9 | party-wall neighbours' ground differ 2.6 m |
+| 4 | gdk:1064710550 / gdk:1064813295 | 530.5, -700.9 | party-wall neighbours' ground differ 1.6 m |
+| 5 | gdk:1064713317 / gdk:1064809760 | 32.4, 634.0 | party-wall neighbours' ground differ 1.6 m |
 
 #### `in-building-partial:bins` (high): bins straddles a facade (25-90% of footprint inside a building)
 
@@ -658,23 +670,6 @@ Count **1203** of 1239 (97.09%). the cable ends in mid-air at 8.9 m
 | 8 | lamp[604] | 408.9, 153.5 | anchors 49.0 / 23.8 m from any facade |
 | 9 | lamp[667] | 306.2, 336.7 | anchors 35.9 / 47.1 m from any facade |
 | 10 | lamp[987] | 438.6, 133.9 | anchors 35.1 / 46.6 m from any facade |
-
-#### `bld-ground-range` (med): Building `ground` outside [-0.2, 0.5] m (pavement is 0.2, carriageway 0.02, plane 0)
-
-Count **1682** of 2517 (66.83%). ground min -6.23 max 4.18 median 0.62; a ground below 0 sinks the walls into the plane, above 0.5 floats the skirt
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | gdk:1064780389 | 82.6, 679.9 | ground -6.23 |
-| 2 | gdk:1064780705 | 118.4, 544.9 | ground -6.12 |
-| 3 | gdk:1114558373 | 81.9, 743.0 | ground -5.50 |
-| 4 | gdk:1064712951 | 333.5, 168.9 | ground 4.18 |
-| 5 | gdk:1064716172 | -500.4, -752.9 | ground 4.02 |
-| 6 | gdk:1064714133 | 374.0, -53.9 | ground 4.01 |
-| 7 | gdk:1064716464 | -637.8, -762.4 | ground 3.86 |
-| 8 | gdk:1064802214 | -473.5, -751.2 | ground 3.86 |
-| 9 | gdk:1064812240 | -602.5, -743.5 | ground 3.82 |
-| 10 | gdk:1064716463 | -590.9, -735.8 | ground 3.73 |
 
 #### `shelter-conflict` (med): Shelter footprint >= 15% in a building, or >= 10% on the carriageway / cycle track
 
@@ -827,6 +822,23 @@ Count **1342** of 7102 (18.9%). standing in the roadway (cars/bollards/flags at 
 | 9 | bikes[158] | -173.8, -496.4 | 100% of footprint |
 | 10 | bikes[165] | -170.7, -494.7 | 100% of footprint |
 
+#### `bld-height-sanity` (med): Height implausible: > 60 m, < 2.5 m, or > 6.5 / < 2.0 m per storey
+
+Count **429** of 2517 (17.04%). 
+
+| # | id | x, z | measure |
+|---:|---|---|---|
+| 1 | gdk:1064712326 | 708.2, 318.0 | h 24.9 m, 3 storeys, measured |
+| 2 | gdk:1064710530 | -307.6, -48.4 | h 24.2 m, 2 storeys, measured |
+| 3 | gdk:1213434780 | -83.5, 795.1 | h 23.7 m, 19 storeys, measured |
+| 4 | gdk:1064714062 | 631.1, -232.9 | h 22.1 m, 3 storeys, measured |
+| 5 | gdk:1064714130 | 579.5, -150.0 | h 21.6 m, 12 storeys, measured |
+| 6 | gdk:1064813456 | 649.2, -45.8 | h 20.6 m, 3 storeys, measured |
+| 7 | gdk:1064714568 | 178.6, -22.2 | h 20.1 m, 3 storeys, measured |
+| 8 | gdk:1064714265 | 700.6, -679.4 | h 20.0 m, 3 storeys, measured |
+| 9 | gdk:1064713699 | -591.4, -474.1 | h 19.8 m, 3 storeys, measured |
+| 10 | gdk:1064713815 | 429.8, -418.2 | h 17.9 m, 2 storeys, measured |
+
 #### `on-carriageway:meters` (med): meters on the capped carriageway (>= 25% of footprint)
 
 Count **7** of 47 (14.89%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
@@ -918,23 +930,6 @@ Count **64** of 539 (11.87%). blocks the track (bikes/hoops: racks laid over the
 | 8 | bins[533] | -582.5, -363.2 | 100% of footprint |
 | 9 | bins[40] | 442.0, 335.2 | 100% of footprint |
 | 10 | bins[53] | 114.1, 321.6 | 100% of footprint |
-
-#### `bld-height-sanity` (med): Height implausible: > 60 m, < 2.5 m, or > 6.5 / < 2.0 m per storey
-
-Count **298** of 2517 (11.84%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | gdk:1064712326 | 708.2, 318.0 | h 24.6 m, 3 storeys, measured |
-| 2 | gdk:1064710530 | -307.6, -48.4 | h 24.1 m, 2 storeys, measured |
-| 3 | gdk:1213434780 | -83.5, 795.1 | h 23.6 m, 19 storeys, measured |
-| 4 | gdk:1064714062 | 631.1, -232.9 | h 22.1 m, 3 storeys, measured |
-| 5 | gdk:1064714130 | 579.5, -150.0 | h 21.5 m, 12 storeys, measured |
-| 6 | gdk:1064813456 | 649.2, -45.8 | h 20.3 m, 3 storeys, measured |
-| 7 | gdk:1064714568 | 178.6, -22.2 | h 20.1 m, 3 storeys, measured |
-| 8 | gdk:1064714265 | 700.6, -679.4 | h 19.9 m, 3 storeys, measured |
-| 9 | gdk:1064713699 | -591.4, -474.1 | h 19.8 m, 3 storeys, measured |
-| 10 | gdk:1213781523 | -578.9, -436.7 | h 19.5 m, 3 storeys, measured |
 
 #### `busstop-far-from-road` (med): Stop flag > 5 m from the nearest carriageway edge
 
@@ -1061,6 +1056,23 @@ Count **51** of 938 (5.44%). blocks the track (bikes/hoops: racks laid over the 
 | 9 | benches[52] | 151.4, 568.0 | 100% of footprint |
 | 10 | benches[90] | -596.1, -302.7 | 100% of footprint |
 
+#### `ground-jump-centreline` (med): Height step > 0.15 m ALONG a carriageway centreline
+
+Count **216** of 4655 (4.64%). cars/cyclists/pedestrians read this field: a step on the roadway = a pavement/cycle/surface slab covering the asphalt there
+
+| # | id | x, z | measure |
+|---:|---|---|---|
+| 1 | osm:way/160726988 | 379.5, -31.0 | Israels Plads centreline dh +0.23 |
+| 2 | osm:way/160726988 | 380.4, -30.6 | Israels Plads centreline dh +0.21 |
+| 3 | osm:way/150918586 | -355.3, 293.7 |  centreline dh -0.20 |
+| 4 | osm:way/160726988 | 378.6, -31.4 | Israels Plads centreline dh +0.20 |
+| 5 | osm:way/160726988 | 381.3, -30.1 | Israels Plads centreline dh +0.20 |
+| 6 | osm:way/150919854 | -636.3, 312.7 |  centreline dh -0.19 |
+| 7 | osm:way/305430258 | 549.3, 1.2 |  centreline dh +0.19 |
+| 8 | osm:way/437649576 | 492.8, 208.2 | Sankt Petri Passage centreline dh -0.19 |
+| 9 | osm:way/160726988 | 377.7, -31.9 | Israels Plads centreline dh +0.19 |
+| 10 | osm:way/160726988 | 366.0, -37.5 | Israels Plads centreline dh -0.19 |
+
 #### `on-cycletrack:monuments` (med): monuments on a cycle track (>= 25% of footprint)
 
 Count **3** of 76 (3.95%). blocks the track (bikes/hoops: racks laid over the track)
@@ -1071,22 +1083,22 @@ Count **3** of 76 (3.95%). blocks the track (bikes/hoops: racks laid over the tr
 | 2 | monuments[60] | 612.5, -168.4 | 58% of footprint |
 | 3 | monuments[67] | 23.3, -511.0 | 43% of footprint |
 
-#### `ground-jump-centreline` (med): Height step > 0.15 m ALONG a carriageway centreline
+#### `lake-wall-too-tall` (med): Lake wall more than 2.0 m above the water at a shore vertex (8 m spacing)
 
-Count **183** of 4655 (3.93%). cars/cyclists/pedestrians read this field: a step on the roadway = a pavement/cycle/surface slab covering the asphalt there
+Count **62** of 1631 (3.8%). free-board p5/p50/p95 0.30 / 0.82 / 1.75 m; the water level is the measured DTM level of each lake, the wall top follows the terrain at the shore
 
 | # | id | x, z | measure |
 |---:|---|---|---|
-| 1 | osm:way/115912300 | -640.6, -490.6 |  centreline dh +0.18 |
-| 2 | osm:way/150878857 | -453.2, 191.0 |  centreline dh +0.18 |
-| 3 | osm:way/150894943 | -610.3, -25.5 | Steenwinkelsvej centreline dh -0.18 |
-| 4 | osm:way/1073231248 | 222.4, -315.3 |  centreline dh +0.18 |
-| 5 | osm:way/1378864838 | 688.7, 174.6 |  centreline dh +0.18 |
-| 6 | osm:way/150917376 | -357.3, 442.8 |  centreline dh +0.18 |
-| 7 | osm:way/1378864835 | 666.9, 292.8 |  centreline dh +0.18 |
-| 8 | osm:way/150896583 | -468.0, -119.2 |  centreline dh -0.18 |
-| 9 | osm:way/1446346983 | -553.7, -359.8 |  centreline dh +0.18 |
-| 10 | osm:way/437649576 | 492.8, 208.2 | Sankt Petri Passage centreline dh -0.18 |
+| 1 | lake:0 | 151.4, -428.0 | wall 3.96 m above the water |
+| 2 | lake:0 | 46.4, -491.6 | wall 3.12 m above the water |
+| 3 | lake:3 | 284.8, 192.6 | wall 3.11 m above the water |
+| 4 | lake:3 | 260.9, 199.0 | wall 2.88 m above the water |
+| 5 | lake:3 | 260.9, 194.9 | wall 2.79 m above the water |
+| 6 | lake:3 | 287.5, 167.4 | wall 2.72 m above the water |
+| 7 | lake:3 | 260.4, 193.1 | wall 2.69 m above the water |
+| 8 | lake:0 | 60.3, -513.8 | wall 2.67 m above the water |
+| 9 | lake:3 | 291.0, 213.5 | wall 2.57 m above the water |
+| 10 | lake:0 | 158.0, -438.2 | wall 2.52 m above the water |
 
 #### `tree-crown-facade` (med): Crown penetrates a facade by > 1 m (crown base below the eave)
 
@@ -1189,6 +1201,23 @@ Count **68** of 2114 (3.22%). tall pitched roofs / towers / vegetation points in
 | 8 | gdk:1107313127 | 284.6, 766.9 | roof top 64.9 vs eave 41.5 |
 | 9 | gdk:1064712965 | 335.2, 638.8 | roof top 23.5 vs eave 3.4 |
 | 10 | gdk:1064813533 | -54.3, 761.4 | roof top 23.7 vs eave 4.0 |
+
+#### `ground-jump-gt25cm` (med): Walking-height field steps by > 0.25 m over 1 m (carriageway edge/centre probes)
+
+Count **147** of 4655 (3.16%). 1465 steps > 0.15 m total, 216 on carriageway centrelines (should be 0: asphalt is flat at 0.02). Kerb steps are 0.10-0.18 m by design
+
+| # | id | x, z | measure |
+|---:|---|---|---|
+| 1 | osm:way/27206697 | 128.9, 589.7 | Hammerichsgade offset -9.95 dh +1.37 |
+| 2 | osm:way/69974781 | 108.0, 577.7 | Vandværksviadukten offset -11.5 dh +1.24 |
+| 3 | osm:way/27206697 | 128.6, 590.6 | Hammerichsgade offset -9.95 dh +1.09 |
+| 4 | osm:way/69974781 | 107.2, 577.2 | Vandværksviadukten offset -11.5 dh +0.98 |
+| 5 | osm:way/69974781 | 98.2, 571.6 | Vandværksviadukten offset -11.5 dh +0.85 |
+| 6 | osm:way/27206697 | 112.9, 716.0 | Hammerichsgade offset -9.95 dh -0.80 |
+| 7 | osm:way/69974781 | 114.8, 582.0 | Vandværksviadukten offset -11.5 dh +0.80 |
+| 8 | osm:way/144226567 | 26.1, 40.1 |  offset 5 dh -0.74 |
+| 9 | osm:way/69974781 | 103.3, 574.8 | Vandværksviadukten offset -11.5 dh -0.73 |
+| 10 | osm:way/27206697 | 129.2, 588.7 | Hammerichsgade offset -9.95 dh +0.72 |
 
 #### `overlap:glass+stands` (med): glass overlaps stands (>= 20% of the smaller footprint)
 
@@ -1523,10 +1552,6 @@ Count **6** of 7498 (0.08%).
 #### `lakelights-water` (med): Lake-path lights inside the lake or > 6 m from its edge
 
 Count **0** of 143 (0.0%). 0 are inside open water
-
-#### `ground-jump-gt25cm` (med): Walking-height field steps by > 0.25 m over 1 m (carriageway edge/centre probes)
-
-Count **0** of 4655 (0.0%). 1063 steps > 0.15 m total, 183 on carriageway centrelines (should be 0: asphalt is flat at 0.02). Kerb steps are 0.10-0.18 m by design
 
 #### `wire-too-low` (med): Wire or lantern lower than 5 m above ground (KK clearance 8.5 m published; modelled 8 m)
 

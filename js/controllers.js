@@ -1504,10 +1504,12 @@ class ThirdPersonControllerManager {
     };
   }
 
-  // The walking surface of the person and the cyclist follows the street surface model (carriageway, cycle track,
-  // raised pavement, ramps; set by main.js from world.groundHeight); everything else drives on y = 0
+  // The walking surface of the person and the cyclist follows the street surface model (terrain + carriageway, cycle track,
+  // raised pavement, ramps; set by main.js from world.groundHeight); everything else drives on the bare terrain
   getGroundHeight(x, z, mode = 'person') {
-    return this.groundField && (mode === 'person' || mode === 'cyclist') ? this.groundField.heightAt(x, z) : 0.0;
+    if (!this.groundField) return 0.0;
+    if (mode === 'person' || mode === 'cyclist') return this.groundField.heightAt(x, z);
+    return this.groundField.terrainAt ? this.groundField.terrainAt(x, z) : 0.0;
   }
 
   // The colliders whose bounds come within `r` of (x, z), in their original order. They never move, so they are

@@ -211,7 +211,14 @@ function addBuilding(acc, b, opts = {}) {
   const holePts = (b.holes || []).map((h) => cleanRing(h, false)).filter(Boolean);
   const ground = b.ground;
   const eave = Math.max(b.eave, ground + 0.5);
-  const bottom = Math.min(ground, 0) - 0.1;
+  // The wall stands on the terrain (js/terrain-cph.js, the one ground model): its skirt reaches 0.25 m under the lowest
+  // ground along the outline, so a sloping street never shows a gap. Without terrain: the flat plane at y = 0.
+  let bottom = Math.min(ground, 0) - 0.1;
+  if (opts.terrain && !opts.terrain.flat) {
+    let low = ground;
+    for (const ring of [outerPts, ...holePts]) for (const p of ring) low = Math.min(low, opts.terrain.heightAt(p[0], p[1]));
+    bottom = low - 0.25;
+  }
   const f = b.facade || {};
   const groundH = f.ground_floor_h || f.floor_h || 3;
   // Fit a whole number of storeys between the ground floor and the eave (the BBR storey count and the DSM height

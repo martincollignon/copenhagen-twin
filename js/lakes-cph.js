@@ -1,4 +1,5 @@
 import { triangulatePolygon, pointInRing } from './polygon-cph.js';
+import { densifyRing } from './terrain-cph.js';
 
 // js/lakes-cph.js
 // Pure (no three.js) geometry for the Soerne (Peblinge, Sortedams and Sankt Joergens Soe) and the other lakes of
@@ -15,6 +16,10 @@ export const WATER = Object.freeze({
   deckY: 0.02, // bridge deck (road surface layer)
   extendMinArea: 20000, // m2: only the big lakes (Soerne) are continued to the horizon
   far: 2400, // lake outlines that touch the district bbox are continued to here: the water reaches the horizon
+  snap: 0.3, // m: lakes whose measured level is within this of the biggest lake share its level
+  minFreeboard: 0.3, // m: the wall top never lies lower than this over the water
+  shoreProbe: 2, // m: land-side probe distance for the quay height
+  wallStep: 8, // m: wall / coping segments follow the terrain at this spacing
   shoreMax: 16, // distance-field range in metres
   cell: 1 // distance-field cell in metres
 });
@@ -92,8 +97,11 @@ export const KIND = Object.freeze({ wall: 0, coping: 1, soffit: 2 });
  * horizontal normal. A coping ledge (copingW wide, on the side opposite to the face normal) caps the wall top when
  * `coping` is set. Returns the metres of wall emitted.
  */
-function wallAlong(arrays, ring, { faceSign, yBottom, yTop, coping = false, bbox = null, skip = null }) {
+function wallAlong(arrays, ring, { faceSign, yBottom, yTop, coping = false, bbox = null, skip = null, vOf = (y) => y }) {
   const n = ring.length / 2;
+  // heights may follow terrain: yBottom / yTop are numbers or functions of the vertex (x, z)
+  const yb = typeof yBottom === 'function' ? yBottom : () => yBottom;
+  const yt = typeof yTop === 'function' ? yTop : () => yTop;
   // miter normals (unit, pointing away from the face side) for the coping outline
   const nrm = [];
   for (let k = 0; k < n; k++) {
@@ -125,10 +133,14 @@ function wallAlong(arrays, ring, { faceSign, yBottom, yTop, coping = false, bbox
     if (len < 1e-4 || (bbox && outsideEdge(ring, 2 * k, bbox)) || (skip && skip(k))) continue;
     const fnx = faceSign * -dz / len; // left normal is (-dz, dx)
     const fnz = faceSign * dx / len;
-    const a = arrays.vertex(ring[2 * k], yBottom, ring[2 * k + 1], fnx, 0, fnz, start, yBottom, KIND.wall);
-    const b = arrays.vertex(ring[2 * j], yBottom, ring[2 * j + 1], fnx, 0, fnz, start + len, yBottom, KIND.wall);
-    const c = arrays.vertex(ring[2 * j], yTop, ring[2 * j + 1], fnx, 0, fnz, start + len, yTop, KIND.wall);
-    const d = arrays.vertex(ring[2 * k], yTop, ring[2 * k + 1], fnx, 0, fnz, start, yTop, KIND.wall);
+    const yBk = yb(ring[2 * k], ring[2 * k + 1]);
+    const yBj = yb(ring[2 * j], ring[2 * j + 1]);
+    const yTk = yt(ring[2 * k], ring[2 * k + 1]);
+    const yTj = yt(ring[2 * j], ring[2 * j + 1]);
+    const a = arrays.vertex(ring[2 * k], yBk, ring[2 * k + 1], fnx, 0, fnz, start, vOf(yBk), KIND.wall);
+    const b = arrays.vertex(ring[2 * j], yBj, ring[2 * j + 1], fnx, 0, fnz, start + len, vOf(yBj), KIND.wall);
+    const c = arrays.vertex(ring[2 * j], yTj, ring[2 * j + 1], fnx, 0, fnz, start + len, vOf(yTj), KIND.wall);
+    const d = arrays.vertex(ring[2 * k], yTk, ring[2 * k + 1], fnx, 0, fnz, start, vOf(yTk), KIND.wall);
     // (a, b, c) faces the left of the direction of travel; flip for the right-hand face
     if (faceSign > 0) arrays.index.push(a, b, c, a, c, d); else arrays.index.push(a, c, b, a, d, c);
     metres += len;
@@ -138,10 +150,10 @@ function wallAlong(arrays, ring, { faceSign, yBottom, yTop, coping = false, bbox
       const oz0 = ring[2 * k + 1] + nrm[k][1] * w;
       const ox1 = ring[2 * j] + nrm[j][0] * w;
       const oz1 = ring[2 * j + 1] + nrm[j][1] * w;
-      const e = arrays.vertex(ring[2 * k], yTop, ring[2 * k + 1], 0, 1, 0, start, 0, KIND.coping);
-      const f = arrays.vertex(ring[2 * j], yTop, ring[2 * j + 1], 0, 1, 0, start + len, 0, KIND.coping);
-      const g = arrays.vertex(ox1, yTop, oz1, 0, 1, 0, start + len, w, KIND.coping);
-      const h = arrays.vertex(ox0, yTop, oz0, 0, 1, 0, start, w, KIND.coping);
+      const e = arrays.vertex(ring[2 * k], yTk, ring[2 * k + 1], 0, 1, 0, start, 0, KIND.coping);
+      const f = arrays.vertex(ring[2 * j], yTj, ring[2 * j + 1], 0, 1, 0, start + len, 0, KIND.coping);
+      const g = arrays.vertex(ox1, yTj, oz1, 0, 1, 0, start + len, w, KIND.coping);
+      const h = arrays.vertex(ox0, yTk, oz0, 0, 1, 0, start, w, KIND.coping);
       // upward-facing quad (e, f, g, h): the outer edge lies on the away side of the face
       const cross = edgeTurn(arrays, e, f, g);
       if (cross > 0) arrays.index.push(e, f, g, e, g, h); else arrays.index.push(e, g, f, e, h, g);
@@ -181,27 +193,61 @@ function surfaceArrays(ring, holes, y) {
  *   walls:   lake walls (faces towards the water), granite coping on top, bridge soffits and fascias
  *   ground:  the lakes' extended outlines (holes of the ground plane) and the islands inside them
  */
-export function buildLakeArrays(doc, { bbox = [-750, -750, 750, 750] } = {}) {
+export function buildLakeArrays(doc, { bbox = [-750, -750, 750, 750], terrain = null } = {}) {
   const lakes = doc?.lakes || [];
+  const measured = terrain && !terrain.flat ? terrain : null;
+  // With terrain every lake sits at its MEASURED water level (the DTM over the lake is the water surface); lakes within
+  // SNAP of the biggest one share its level (they are one water body split by a bridge). Without terrain the lakes use the
+  // old relative frame (ground y = 0, water 0.8 m below).
+  const main = measured ? lakes.reduce((best, l) => (!best || Math.abs(shoelace(l.ring)) > Math.abs(shoelace(best.ring)) ? l : best), null) : null;
+  const mainLevel = main ? measured.lakeLevel(main.id) : null;
+  // top of the quay at a shore vertex: the median terrain on the land side (the DTM right at the outline is partly water
+  // or the lake bed), plus the coping; never lower than minFreeboard over the water
+  const shoreTop = (x, z, lvl) => {
+    const land = [];
+    for (let k = 0; k < 8; k++) {
+      const a = (k * Math.PI) / 4;
+      const px = x + Math.cos(a) * WATER.shoreProbe;
+      const pz = z + Math.sin(a) * WATER.shoreProbe;
+      if (!inLake(doc, px, pz)) land.push(measured.heightAt(px, pz));
+    }
+    land.sort((p, q) => p - q);
+    const ground = land.length ? land[land.length >> 1] : lvl + 0.8;
+    return Math.max(ground + WATER.wallTop, lvl + WATER.minFreeboard);
+  };
+  const levelOf = (lake) => {
+    const v = measured ? measured.lakeLevel(lake.id) : null;
+    if (v == null) return null;
+    return mainLevel != null && Math.abs(v - mainLevel) < WATER.snap ? mainLevel : v;
+  };
   const surface = { position: [], index: [] };
   const walls = new Arrays();
   const cutRings = [];
   const islands = [];
   let wallMetres = 0;
+  const freeboards = []; // wall height above the water at every densified shore vertex (terrain mode)
   for (const lake of lakes) {
     const ring = extendBeyondBbox(lake.ring, bbox);
     const holes = (lake.holes || []).map((h) => extendBeyondBbox(h, bbox));
-    const s = surfaceArrays(ring, holes, WATER.surfaceY);
+    const lvl = levelOf(lake);
+    const surfY = lvl ?? WATER.surfaceY;
+    const s = surfaceArrays(ring, holes, surfY);
     const base = surface.position.length / 3;
     surface.position.push(...s.position);
     for (const i of s.index) surface.index.push(base + i);
     // Rings are counter-clockwise seen from above (negative shoelace in x/z): the water is on the right of travel on the
     // outer ring and on the left of travel round an island (hole rings run the other way).
     const outerSign = Math.sign(shoelace(ring)) > 0 ? 1 : -1; // water side of the exterior ring
-    wallMetres += wallAlong(walls, ring, { faceSign: outerSign, yBottom: WATER.bedY, yTop: WATER.wallTop, coping: true, bbox });
+    // wall: from the lake bed to the terrain at the shore (never lower than 0.3 m over the water), densified to follow it
+    const wallArgs = lvl == null
+      ? { yBottom: WATER.bedY, yTop: WATER.wallTop }
+      : { yBottom: lvl + (WATER.bedY - WATER.surfaceY), yTop: (x, z) => shoreTop(x, z, lvl), vOf: (y) => y - lvl + WATER.surfaceY };
+    const dense = (r) => (lvl == null ? r : densifyRing(r, WATER.wallStep));
+    if (lvl != null) { const d = dense(ring); for (let i = 0; i < d.length; i += 2) freeboards.push({ id: lake.id, x: d[i], z: d[i + 1], free: shoreTop(d[i], d[i + 1], lvl) - lvl }); }
+    wallMetres += wallAlong(walls, dense(ring), { faceSign: outerSign, ...wallArgs, coping: true, bbox });
     cutRings.push({ ring, holes });
     for (const hole of holes) {
-      wallMetres += wallAlong(walls, hole, { faceSign: Math.sign(shoelace(hole)) > 0 ? -1 : 1, yBottom: WATER.bedY, yTop: WATER.wallTop, coping: true, bbox });
+      wallMetres += wallAlong(walls, dense(hole), { faceSign: Math.sign(shoelace(hole)) > 0 ? -1 : 1, ...wallArgs, coping: true, bbox });
       islands.push(hole);
     }
   }
@@ -210,7 +256,11 @@ export function buildLakeArrays(doc, { bbox = [-750, -750, 750, 750] } = {}) {
   for (const b of doc?.bridges || []) {
     const { pts, idx } = triangulatePolygon(b.ring);
     const base = soffit.vertexCount;
-    for (let i = 0; i < pts.length; i += 2) soffit.vertex(pts[i], WATER.soffitY, pts[i + 1], 0, -1, 0, pts[i], pts[i + 1], KIND.soffit);
+    // a measured deck height (the DTM along the bridge) replaces the old "deck = road layer, 0.02 above the ground"
+    const deck = measured?.deckHeight(b.id);
+    const deckY = deck != null ? deck : WATER.deckY;
+    const soffitY = deck != null ? deck - (WATER.deckY - WATER.soffitY) : WATER.soffitY;
+    for (let i = 0; i < pts.length; i += 2) soffit.vertex(pts[i], soffitY, pts[i + 1], 0, -1, 0, pts[i], pts[i + 1], KIND.soffit);
     for (let i = 0; i < idx.length; i += 3) {
       const [p, q, r] = [idx[i], idx[i + 1], idx[i + 2]];
       const y2 = (pts[2 * q + 1] - pts[2 * p + 1]) * (pts[2 * r] - pts[2 * p]) - (pts[2 * q] - pts[2 * p]) * (pts[2 * r + 1] - pts[2 * p + 1]);
@@ -219,16 +269,17 @@ export function buildLakeArrays(doc, { bbox = [-750, -750, 750, 750] } = {}) {
     // fascia on the edges that open onto water, facing away from the deck
     const open = new Set(b.open_edges || []);
     const outer = Math.sign(shoelace(b.ring)) > 0 ? -1 : 1; // outward = right of a CCW-in-math ring
-    wallAlong(soffit, b.ring, { faceSign: outer, yBottom: WATER.soffitY, yTop: WATER.deckY, skip: (k) => !open.has(k) });
+    wallAlong(soffit, b.ring, { faceSign: outer, yBottom: soffitY, yTop: deckY, skip: (k) => !open.has(k) });
     bridges.push(b.id);
   }
   for (const p of doc?.ponds || []) {
-    const s = surfaceArrays(p.ring, [], -0.12);
+    const pl = measured ? measured.pondLevel(p.id) : null;
+    const s = surfaceArrays(p.ring, [], pl != null ? pl + 0.02 : -0.12); // a pond lies where the terrain dips to its level
     const base = surface.position.length / 3;
     surface.position.push(...s.position);
     for (const i of s.index) surface.index.push(base + i);
   }
-  return { surface, walls, soffit, cutRings, islands, stats: { lakes: lakes.length, wallMetres: Math.round(wallMetres), bridges: bridges.length } };
+  return { surface, walls, soffit, cutRings, islands, level: mainLevel ?? WATER.surfaceY, freeboards, stats: { lakes: lakes.length, wallMetres: Math.round(wallMetres), bridges: bridges.length } };
 }
 
 /** Ground plane (size x size, centred on the origin) with the lake outlines cut out and the islands filled back in. */

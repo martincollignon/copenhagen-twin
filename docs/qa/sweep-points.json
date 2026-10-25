@@ -337,7 +337,7 @@
    }
   },
   {
-   "label": "Worst #3: water-carriageway, bld-ground-range, bld-ground-vs-flat-plane",
+   "label": "Worst #3: water-carriageway, ground-jump-centreline, mast-height-high",
    "pos": [
     389.4,
     1.7,
@@ -355,39 +355,39 @@
     "score": 18.65,
     "checks": [
      "water-carriageway",
-     "bld-ground-range",
-     "bld-ground-vs-flat-plane",
-     "mast-height-high"
+     "ground-jump-centreline",
+     "mast-height-high",
+     "overlap:benches+trees"
     ],
     "what": "19 m2 over open water",
     "id": "osm:way/160726988"
    }
   },
   {
-   "label": "Worst #4: wire-through-building, bld-bld-overlap, on-carriageway:bins",
+   "label": "Worst #4: wire-through-building, in-building-partial:bikes, in-building-partial:hoops",
    "pos": [
-    629.9,
+    154.1,
     1.7,
-    -106.6
+    -249.2
    ],
    "look": [
-    618.8,
+    149.5,
     1.2,
-    -102.0
+    -260.3
    ],
    "fov": 68,
    "detail": {
-    "x": 618.8340000000001,
-    "z": -102.043,
-    "score": 28.32,
+    "x": 149.45999999999998,
+    "z": -260.263,
+    "score": 17.08,
     "checks": [
      "wire-through-building",
-     "bld-bld-overlap",
-     "on-carriageway:bins",
-     "on-cycletrack:flags"
+     "in-building-partial:bikes",
+     "in-building-partial:hoops",
+     "on-carriageway:trees"
     ],
-    "what": "28.3 m of the span inside a building (eave 8.5 > wire 8.2)",
-    "id": "lamp[1217]"
+    "what": "17.1 m of the span inside a building (eave 19.8 > wire 9.1)",
+    "id": "lamp[1237]"
    }
   },
   {
@@ -445,7 +445,7 @@
    }
   },
   {
-   "label": "Worst #7: on-cycletrack:cars, on-carriageway:trees",
+   "label": "Worst #7: on-cycletrack:cars, bld-ground-terrain, bld-ground-vs-street",
    "pos": [
     498.5,
     1.7,
@@ -463,6 +463,8 @@
     "score": 1.0,
     "checks": [
      "on-cycletrack:cars",
+     "bld-ground-terrain",
+     "bld-ground-vs-street",
      "on-carriageway:trees"
     ],
     "what": "100% of footprint",

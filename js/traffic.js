@@ -101,6 +101,8 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
   // =========================================================================
   // 0. ROAD NETWORK
   // =========================================================================
+  // Vehicles rest on the terrain (js/terrain-cph.js via the scene's ground model); 0 on the flat plane
+  const groundAt = (x, z) => (options.groundHeight ? options.groundHeight.terrainAt(x, z) : 0);
   const network = buildRoadNetwork(signalIntersections, options);
   const { nodes, edges, connector, curvePoint } = network;
 
@@ -239,6 +241,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
       sp.x = x + (Math.random() - 0.5) * 0.35;
       sp.y = y + (Math.random() - 0.5) * 0.18;
       sp.z = z + (Math.random() - 0.5) * 0.35;
+      sp.floor = groundAt(x, z);
       sp.vx = nx * outBoost + tx * tanBoost;
       sp.vy = 2.4 + Math.random() * 5.4;
       sp.vz = nz * outBoost + tz * tanBoost;
@@ -1379,11 +1382,11 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     for (let w = 0; w < 2; w++) {
       const wz = w === 0 ? halfBase : -halfBase;
       dummy.rotation.set(v.wheelSpin + w * 0.55, rotY + (w === 0 ? v.steer : 0), roll, 'YXZ');
-      dummy.position.set(v.x - halfTrack * cosY + wz * sinY, radius, v.z + halfTrack * sinY + wz * cosY);
+      dummy.position.set(v.x - halfTrack * cosY + wz * sinY, radius + groundAt(v.x, v.z), v.z + halfTrack * sinY + wz * cosY);
       dummy.updateMatrix();
       leftInst.setMatrixAt(i * 2 + w, dummy.matrix);
 
-      dummy.position.set(v.x + halfTrack * cosY + wz * sinY, radius, v.z - halfTrack * sinY + wz * cosY);
+      dummy.position.set(v.x + halfTrack * cosY + wz * sinY, radius + groundAt(v.x, v.z), v.z - halfTrack * sinY + wz * cosY);
       dummy.updateMatrix();
       rightInst.setMatrixAt(i * 2 + w, dummy.matrix);
     }
@@ -1412,7 +1415,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     const bodyInst = near ? bodies[c.bodyType].near : bodies[c.bodyType].far;
     const slot = bodyInst.count++;
 
-    dummy.position.set(c.x, 0.0, c.z);
+    dummy.position.set(c.x, groundAt(c.x, c.z), c.z);
     dummy.rotation.set(c.pitch, rotY, c.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -1443,7 +1446,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     // Soft Under-Car Contact Shadow (AO) stays flat on the asphalt
     const visIdx = visibleCars++;
     dummy.rotation.set(0, rotY, 0, 'YXZ');
-    dummy.position.set(c.x, 0.018, c.z);
+    dummy.position.set(c.x, 0.018 + groundAt(c.x, c.z), c.z);
     dummy.scale.set(2.22, 1.0, 5.05);
     dummy.updateMatrix();
     carShadowInst.setMatrixAt(visIdx, dummy.matrix);
@@ -1480,14 +1483,14 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     if (hasView && !visible(b.x, b.z, 22)) return;
 
     const i = visibleBuses++;
-    dummy.position.set(b.x, 0.018, b.z);
+    dummy.position.set(b.x, 0.018 + groundAt(b.x, b.z), b.z);
     dummy.rotation.set(0, rotY, 0, 'YXZ');
     dummy.scale.set(2.92, 1.0, 12.1);
     dummy.updateMatrix();
     busShadowInst.setMatrixAt(i, dummy.matrix);
 
     // Lofted Bus Body is defined in ground-relative Y (0.36m skirt to 3.0m roof crown)
-    dummy.position.set(b.x, 0.0, b.z);
+    dummy.position.set(b.x, groundAt(b.x, b.z), b.z);
     dummy.rotation.set(b.pitch, rotY, b.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -1552,7 +1555,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
 
         const baseInt = (v.bus ? HEADLIGHTS.busIntensity : HEADLIGHTS.intensity) * beamScale * fade;
         // Match the body instance, including suspension and impact rotation.
-        dummy.position.set(v.x, 0, v.z);
+        dummy.position.set(v.x, groundAt(v.x, v.z), v.z);
         dummy.rotation.set(v.pitch, v.yaw + v.yawOffset, v.roll, 'YXZ');
         dummy.scale.set(1, 1, 1);
         dummy.updateMatrix();
@@ -1582,8 +1585,9 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
         sp.x += sp.vx * dt;
         sp.y += sp.vy * dt;
         sp.z += sp.vz * dt;
-        if (sp.y < 0.03) {
-          sp.y = 0.03;
+        const spGround = (sp.floor || 0) + 0.03; // terrain height at the impact
+        if (sp.y < spGround) {
+          sp.y = spGround;
           sp.vy = Math.abs(sp.vy) * 0.45;
           sp.vx *= 0.78;
           sp.vz *= 0.78;
