@@ -6,7 +6,7 @@
 // is read as a Rådhusbelægning square (inferred). Triangles carry a kerb-aligned (u, v) surface coordinate
 // (createKerbFrame in walk-space-cph.js) so slab rows and sett lines run parallel to the street.
 
-import { bridgeHoles, earClip, pointInRing, ringArea, ringPerimeter } from './polygon-cph.js';
+import { triangulatePolygon, pointInRing, ringArea, ringPerimeter } from './polygon-cph.js';
 import { createKerbFrame } from './walk-space-cph.js';
 
 export const PAVEMENT_CLASSES = ['kbh_fortov', 'raadhus', 'cobbles', 'setts', 'gravel', 'other'];
@@ -106,14 +106,14 @@ const hash01 = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; retu
  * Tessellate one ring into kerb-framed triangles and push them into `buckets` (keyed by class).
  * `classOf(x, z)` returns the class for a triangle centroid; `skip(x, z)` drops triangles (e.g. under a cycle track).
  */
-export function tessellateFramed(ring, { frame, y, seed, classOf, skip, maxEdge, buckets, keyPrefix = '' }) {
+export function tessellateFramed(ring, { holes, frame, y, seed, classOf, skip, maxEdge, buckets, keyPrefix = '' }) {
   const out = [];
-  const idx = earClip(ring);
+  const { pts, idx } = triangulatePolygon(ring, holes);
   for (let i = 0; i < idx.length; i += 3) {
     const a = idx[i];
     const b = idx[i + 1];
     const c = idx[i + 2];
-    subdivide([ring[2 * a], ring[2 * a + 1], ring[2 * b], ring[2 * b + 1], ring[2 * c], ring[2 * c + 1]], maxEdge, out);
+    subdivide([pts[2 * a], pts[2 * a + 1], pts[2 * b], pts[2 * b + 1], pts[2 * c], pts[2 * c + 1]], maxEdge, out);
   }
   let kept = 0;
   for (const t of out) {
@@ -166,9 +166,9 @@ export function buildPavementBuckets(geo, surfacesDoc, { roads, y, groundY, skip
   // register polygons that are not pavements (park paths, squares, gravel); drawn just above the ground plane
   for (const s of surfacesDoc?.surfaces || []) {
     if (!s.ring || s.ring.length < 6 || s.cls === 'grass') continue;
-    // holes (lawns inside a path network) are bridged into the outline
-    const outline = s.holes?.length ? bridgeHoles(s.ring, s.holes) : s.ring;
-    tessellateFramed(outline, {
+    // holes (lawns inside a path network) are carved out by the triangulation
+    tessellateFramed(s.ring, {
+      holes: s.holes,
       frame, y: s.src?.[0]?.startsWith('osm') ? groundY - 0.004 : groundY, seed: hash01(++i), buckets, keyPrefix: 'ground:',
       maxEdge: () => 12,
       classOf: () => s.cls

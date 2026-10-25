@@ -101,6 +101,40 @@ def inside_bbox(c):
     return x0 - MARGIN <= c[0] <= x1 + MARGIN and z0 - MARGIN <= c[1] <= z1 + MARGIN
 
 
+def sanitize(rec):
+    """Repair an invalid polygon record (self-touching rings, holes crossing the outline) with shapely and split the
+    result into simple polygons, one record each. Valid polygons come back unchanged."""
+    from shapely.geometry import Polygon  # noqa: PLC0415
+    from shapely.validation import make_valid  # noqa: PLC0415
+
+    def pairs(flat_ring):
+        return [(flat_ring[i], flat_ring[i + 1]) for i in range(0, len(flat_ring), 2)]
+
+    poly = Polygon(pairs(rec["ring"]), [pairs(h) for h in rec.get("holes", []) if len(h) >= 6])
+    if poly.is_valid:
+        return [rec]
+    fixed = make_valid(poly)
+    parts = [g for g in getattr(fixed, "geoms", [fixed]) if g.geom_type in ("Polygon", "MultiPolygon")]
+    polys = [p for g in parts for p in (g.geoms if g.geom_type == "MultiPolygon" else [g]) if p.area > 1e-4]
+    out = []
+    for k, p in enumerate(polys):
+        r = {**rec, "ring": flat(list(p.exterior.coords)[:-1])}
+        r.pop("holes", None)
+        holes = [flat(list(h.coords)[:-1]) for h in p.interiors]
+        if holes:
+            r["holes"] = holes
+        if k:
+            r["id"] = f"{rec['id']}~{k}"
+        out.append(r)
+    return out
+
+
+def sanitize_doc(doc):
+    for key in ("surfaces", "markings"):
+        doc[key] = [r2 for r in doc[key] for r2 in sanitize(r)]
+    return doc
+
+
 def convert(fc, mapper, prefix):
     out = []
     for f in fc["features"]:
@@ -113,14 +147,20 @@ def convert(fc, mapper, prefix):
             rec.update(id=f"{prefix}:{f['properties'].get('uuid') or f['properties'].get('id')}#{k}", ring=flat(ring))
             if holes:
                 rec["holes"] = holes
-            out.append(rec)
+            out.extend(sanitize(rec))
     return out
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--refresh", action="store_true")
+    ap.add_argument("--sanitize-existing", action="store_true", help="repair invalid polygons in the committed data file without refetching")
     args = ap.parse_args()
+    if args.sanitize_existing:
+        doc = sanitize_doc(json.loads(OUT.read_text()))
+        OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
+        print("sanitized", OUT, len(doc["surfaces"]), len(doc["markings"]))
+        return
     import fetch  # noqa: PLC0415 (needs requests)
 
     belag = fetch.kk_layer("dp_belaegninger", args.refresh)

@@ -7,7 +7,7 @@
 // `buildCphRoadSurfaces` turns the arrays into merged meshes.
 
 import { carriagewayWidth } from './road-width-cph.js';
-import { bridgeHoles, earClip } from './polygon-cph.js';
+import { triangulatePolygon } from './polygon-cph.js';
 import { buildPavementBuckets } from './pavement-cph.js';
 
 // Heights (m): carriageway -> (10 cm kerb) -> cycle track -> (8 cm kerb) -> pavement
@@ -152,13 +152,13 @@ function dashed(layer, pts, o, w, dash, period, y) {
 }
 
 function fillRing(layer, ring, y, holes) {
-  if (holes?.length) ring = bridgeHoles(ring, holes);
+  const { pts, idx } = triangulatePolygon(ring, holes);
   const o = layer.pos.length / 3;
-  for (let i = 0; i < ring.length; i += 2) {
-    layer.pos.push(ring[i], y, ring[i + 1]);
+  for (let i = 0; i < pts.length; i += 2) {
+    layer.pos.push(pts[i], y, pts[i + 1]);
     layer.uv.push(0, 0);
   }
-  for (const t of earClip(ring)) layer.idx.push(o + t);
+  for (const t of idx) layer.idx.push(o + t);
 }
 
 const ringCentroid = (ring) => {
