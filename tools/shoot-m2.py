@@ -8,6 +8,7 @@ ap.add_argument('--out', default='docs/m2')
 ap.add_argument('--shots', default='all')
 ap.add_argument('--query', default='')
 ap.add_argument('--verify', action='store_true', help='cleanup check: boots, asserts the HUD and the console, and captures docs/cleanup shots')
+ap.add_argument('--surfaces', action='store_true', help='M4 ground-surface close-ups (pavement, cycle tracks, junction, square, aerial) into --out')
 ap.add_argument('--perf', action='store_true', help='unthrottled frame timing instead of captures')
 args = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -37,6 +38,53 @@ mid, nrm, blk = longest_wall('gdk:1064813373')
 h = blk['eave'] - blk['ground']
 SHOTS['angled-block'] = ([mid[0] + nrm[0] * 30, 1.7, mid[1] + nrm[1] * 30], [mid[0], h * 0.45, mid[1]], 62)
 SHOTS['angled-block-up'] = ([mid[0] + nrm[0] * 45, 28, mid[1] + nrm[1] * 45], [mid[0] - nrm[0] * 10, 8, mid[1] - nrm[1] * 10], 55)
+
+def surface_views():
+    """Camera setups for the M4 ground-surface shots, derived from the data (so they follow the street, not fixed numbers)."""
+    import math
+    surf = json.load(open(os.path.join(root, 'data/cph-surfaces.json')))
+    def seg_near(x, z, only=None):
+        best = None
+        for r in GEO['roads']:
+            if r['class'] not in ('primary', 'secondary', 'residential') or (only and not only(r)): continue
+            p = r['pts']
+            for i in range(0, len(p) - 2, 2):
+                ax, az, bx, bz = p[i], p[i+1], p[i+2], p[i+3]
+                dx, dz = bx - ax, bz - az
+                l2 = dx*dx + dz*dz or 1
+                t = max(0, min(1, ((x-ax)*dx + (z-az)*dz) / l2))
+                d = math.hypot(ax + dx*t - x, az + dz*t - z)
+                if best is None or d < best[0]: best = (d, dx / l2**.5, dz / l2**.5, r)
+        return best
+    def pavement_point(x, z):
+        # centre of the sidewalk polygon (wider than 2.5 m) nearest to x, z
+        best = None
+        for s in GEO['sidewalks']:
+            r = s['ring']; n = len(r) // 2
+            cx = sum(r[0::2]) / n; cz = sum(r[1::2]) / n
+            a = abs(sum(r[2*i] * r[(2*i+3) % len(r)] - r[(2*i+2) % len(r)] * r[2*i+1] for i in range(n))) / 2
+            per = sum(math.hypot(r[2*((i+1) % n)] - r[2*i], r[2*((i+1) % n)+1] - r[2*i+1]) for i in range(n)) or 1
+            if a < 60 or 2 * a / per < 2.4: continue
+            d = math.hypot(cx - x, cz - z)
+            if best is None or d < best[0]: best = (d, cx, cz)
+        return best[1], best[2]
+    out = {}
+    px, pz = pavement_point(0, 40)
+    d, ux, uz, road = seg_near(px, pz)
+    out['pavement-norre-sogade'] = ([px - ux * 3.2, 1.7, pz - uz * 3.2], [px + ux * 5, 0.2, pz + uz * 5], 62)
+    out['pavement-closeup'] = ([px - ux * 1.2, 0.85, pz - uz * 1.2], [px + ux * 2.2, 0.2, pz + uz * 2.2], 62)
+    out['pavement-closeup-down'] = ([px, 1.7, pz], [px + ux * 0.4, 0.2, pz + uz * 0.4], 70)
+    dd, dux, duz, droad = seg_near(97, -476.7, lambda r: r['cycleTrack'] != 'none')
+    out['dlb-cycle-tracks'] = ([97 - dux * 16 + duz * 0.5, 3.0, -476.7 - duz * 16 - dux * 0.5], [97 + dux * 10, 0.1, -476.7 + duz * 10], 62)
+    blues = [m for m in surf['markings'] if m['kind'] == 'bluecycle']
+    def cen(m): return (sum(m['ring'][0::2]) / (len(m['ring']) // 2), sum(m['ring'][1::2]) / (len(m['ring']) // 2))
+    bx, bz = min((cen(m) for m in blues), key=lambda c: math.hypot(c[0] - 97, c[1] + 476.7))
+    out['dlb-junction-blue'] = ([bx + 12, 5.5, bz + 12], [bx, 0, bz], 60)
+    out['blagards-plads'] = ([-314.6 + 20, 9, -448 + 20], [-314.6, 0, -448], 60)
+    out['blagards-plads-eye'] = ([-314.6 + 7, 1.7, -448 + 5], [-314.6 - 5, 0.3, -448 - 2], 65)
+    out['aerial'] = ([-420, 330, 380], [20, 0, -20], 50)
+    out['aerial-close'] = ([60, 120, 150], [30, 0, -60], 55)
+    return out
 try:
     with sync_playwright() as p:
         browser = p.chromium.launch(args=['--enable-unsafe-webgpu', '--use-angle=metal', '--ignore-gpu-blocklist'] + (['--disable-frame-rate-limit', '--disable-gpu-vsync'] if args.perf else []))
@@ -51,6 +99,15 @@ try:
         def shot(name):
             page.wait_for_timeout(2500)
             page.screenshot(path=f'{args.out}/{name}.png')
+        if args.surfaces:
+            os.makedirs(args.out, exist_ok=True)
+            for name, v in surface_views().items():
+                view(*v); shot(name)
+                print('shot', name, v[0])
+            errs = [l for l in logs if l.startswith(('error', 'pageerror', 'warning'))]
+            print('\n'.join(errs[:20]))
+            browser.close()
+            raise SystemExit(0)
         if args.verify:
             os.makedirs(args.out, exist_ok=True)
             errors = []
@@ -73,6 +130,8 @@ try:
                        cyclists: (ts.cyclists || []).length, drawCalls: t.renderer.info.render.drawCalls, location: document.querySelector('#hud-location').textContent }; }""")
             print(json.dumps(info, default=str))
             check('buildings render', bool(info['buildings']) and info['buildings'].get('buildings', 0) > 100)
+            names = page.evaluate("() => globalThis.__twin.world.roadSurfaces.group.children.map((m) => m.name)")
+            check('M4 ground surfaces built', all(n in names for n in ('ground-kbh_fortov', 'road-kerb', 'road-cycle', 'road-blue', 'road-paint')), ','.join(names))
             check('cars on the road', info['cars'] > 10, str(info['cars']))
             check('buses on the road', info['buses'] > 0, str(info['buses']))
             check('cyclists exist', info['cyclists'] > 0, str(info['cyclists']))

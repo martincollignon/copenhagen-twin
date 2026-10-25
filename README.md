@@ -42,6 +42,18 @@ uv run tools/cph-geodata/build.py --env-file <path>   # a .env with DHM_TERRAIN_
 
 Raw downloads are cached under `data/raw/`, so reruns are offline. See `tools/cph-geodata/build.py` for options.
 
+`data/cph-surfaces.json` (ground-material polygons and road markings, M4) is a separate generated file:
+
+```sh
+uv run tools/cph-geodata/surfaces.py   # KK dp_belaegninger + afmaerkning_total + blaa_cykelfelt, OSM squares
+```
+
+It carries classes `kbh_fortov, raadhus, asphalt_road, asphalt_cycle, cobbles, setts, gravel, grass, other` per surface
+(with `src`/`conf`) and marking `kind`s `white, crossing, arrow, symbol, bay, bump, bluecycle, yellow, service, ramp, red`.
+The twin renders Københavnerfortov (slab rows with a sett line between, parallel to the kerb), Rådhusbelægning, cobbles
+and setts procedurally (`js/surface-materials-cph.js`); pavements are the Københavnerfortov unless the register or a
+plaza-sized polygon says otherwise. Without the file the twin still boots (pavements and lane paint only).
+
 ## Licence and attributions
 
 The project code is available under the [MIT License](LICENSE).
@@ -52,6 +64,6 @@ The data bundle `data/cph-geodata.json` is a derived database and carries the li
 
 - © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), available under the Open Database License (ODbL). The OSM-derived parts of the bundle, and anything derived from them, stay under the ODbL (attribution, share-alike).
 - Indeholder data fra Klimadatastyrelsen / GeoDanmark (Bygning), BBR og Københavns Kommune (kbhkort, CC BY 4.0 / Open Data DK licens).
-- Københavns Kommune open data: trae_basis, cykelsti, cykelstativ, trafiksignal_oversigt, fortovsmatrikel, parkregister.
+- Københavns Kommune open data: trae_basis, cykelsti, cykelstativ, trafiksignal_oversigt, fortovsmatrikel, parkregister, and for `data/cph-surfaces.json` dp_belaegninger, afmaerkning_total, blaa_cykelfelt (plus OSM squares, ODbL).
 
 The same attributions are in the `attribution` field of the data file and in the loading screen. Third-party data and dependencies retain their respective licences.

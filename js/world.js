@@ -14,6 +14,20 @@ import { createWalkSpace } from './walk-space-cph.js';
 // With `?debug=footprints` the geodata's buildings, water and parks are drawn as flat debug polygons.
 
 const CPH_GEODATA_URL = './data/cph-geodata.json';
+const CPH_SURFACES_URL = './data/cph-surfaces.json';
+
+/** Optional ground-surface register and road markings (tools/cph-geodata/surfaces.py); null when absent. */
+async function loadCphSurfaces(url = CPH_SURFACES_URL, fetchImpl = globalThis.fetch) {
+  try {
+    const response = await fetchImpl(url, { cache: 'no-cache' });
+    if (!response.ok) return null;
+    const doc = await response.json();
+    return doc?.version?.startsWith('cph-surfaces/') ? doc : null;
+  } catch (error) {
+    console.info('[cph] no surfaces loaded:', error?.message || error);
+    return null;
+  }
+}
 
 /** Fetches the compiled geodata. Returns null when it is absent or unreadable: the engine boots without it. */
 async function loadCphGeodata(url = CPH_GEODATA_URL, fetchImpl = globalThis.fetch) {
@@ -152,8 +166,8 @@ const nullTraffic = () => ({
 });
 
 // Road surfaces, the drivable network, traffic, pedestrians, cyclists and signal heads from the geodata
-async function buildCphTraffic(scene, geo, { markInit }) {
-  const surfaces = await buildCphRoadSurfaces(scene, geo);
+async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null }) {
+  const surfaces = await buildCphRoadSurfaces(scene, geo, { surfaces: surfacesDoc });
   markInit('roadSurfaces');
   const walk = createWalkSpace(geo);
   let cyclists = null;
@@ -265,7 +279,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
 
   let traffic = null;
   if (geo?.roadGraph && !debug.split(',').includes('noroads')) {
-    traffic = await buildCphTraffic(scene, geo, { markInit });
+    traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: await loadCphSurfaces() });
   }
 
   return {
@@ -285,4 +299,4 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   };
 }
 
-export { CPH_GEODATA_URL, loadCphGeodata, buildWorld };
+export { CPH_GEODATA_URL, CPH_SURFACES_URL, loadCphGeodata, loadCphSurfaces, buildWorld };
