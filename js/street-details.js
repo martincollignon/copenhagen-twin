@@ -17,7 +17,7 @@ import {
 import { cityUniforms, createSteamMaterial, createTreeGrateMaterial, createGodRayMaterial } from './tsl-materials.js';
 import { createTreeField } from './trees.js';
 import { pavedPlazaRects, centralParkClearings, parkTreeSites, sidewalkBlocks, parkLampSites } from './city-grid.js';
-import { bryantParkLawn } from './landmarks.js';
+import { landmarkState } from './landmark-state.js';
 
 // js/street-details.js
 // Populates Manhattan streets with authentic NYC street furniture using InstancedMesh:
@@ -853,7 +853,7 @@ function buildStreetDetails(scene) {
 
   // A. Bryant Park: double allées of London planes on the raised terraces along the Great Lawn's north & south sides
   //    and its west end, framing the lawn the library's terrace looks out over (the lawn as fitted by landmarks.js)
-  const bpl = bryantParkLawn;
+  const bpl = landmarkState.bryantParkLawn;
   if (bpl) {
     const ty = bpl.top - 0.2;
     for (let tx = bpl.minX - 6; tx <= bpl.maxX + 6; tx += 6.5) {

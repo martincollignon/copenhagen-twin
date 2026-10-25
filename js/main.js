@@ -3,27 +3,24 @@ import { pass, mrt, output, normalView, positionView, metalness, roughness, vec2
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 import { createPostProcessing } from './post-processing.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
+import { CITY, IS_NYC } from './city.js';
 import { getLocationLabel, isTypingInField, ROADS, NYC_LANDMARKS, TELEPORT_LOCATIONS } from './city-config.js';
-import { buildCityGrid } from './city-grid.js';
-import { buildBoroughs } from './boroughs.js';
-import { buildLandmarks } from './landmarks.js';
-import { buildCityBlocks } from './buildings.js';
-import { buildStreetDetails } from './street-details.js';
-import { createTrafficSystem, createHighwayTraffic } from './traffic.js';
-import { buildRoadPaint } from './road-paint.js';
 import { ThirdPersonControllerManager } from './controllers.js';
 import { TouchControls } from './touch-controls.js';
 import { GamepadControls } from './gamepad-controls.js';
 import { CameraSystem, CAMERA_PRESETS } from './cameras.js';
 import { LightingSystem } from './lighting.js';
-import { NYCMapSystem } from './nyc-map.js';
 import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
 import { CityAudioSystem } from './audio-system.js';
 
 // js/main.js
-// Main entry point for New York City (Midtown Manhattan) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
+// Main entry point in Three.js WebGPURenderer & TSL (three.js dev, see index.html).
+// `?city=cph` (default) boots the Copenhagen twin (js/world-cph.js); `?city=nyc` boots the original Manhattan build
+// (js/world-nyc.js). The world modules are imported dynamically so each mode only fetches its own.
 
 async function initApp() {
+  document.body.classList.add(`city-${CITY}`);
+  if (!IS_NYC) document.title = 'Copenhagen Twin';
   const container = document.getElementById('canvas-container');
   const loadingOverlay = document.getElementById('loading-overlay');
   const loadingStatus = document.getElementById('loading-status');
@@ -70,40 +67,24 @@ async function initApp() {
   markInit('lighting');
 
   if (loadingStatus) {
-    loadingStatus.textContent = 'Constructing Manhattan Grid, Landmarks & Streetscape...';
+    loadingStatus.textContent = IS_NYC ? 'Constructing Manhattan Grid, Landmarks & Streetscape...' : 'Constructing Copenhagen...';
   }
 
-  // 3. Build Manhattan Geography, Iconic Landmarks, Blocks, Street Details & Traffic
-  const cityGrid = buildCityGrid(scene);
-  markInit('cityGrid');
-  const boroughs = buildBoroughs(scene, { sidewalks: cityGrid.sidewalks });
-  markInit('boroughs');
-  const { colliders: landmarkColliders } = buildLandmarks(scene);
-  markInit('landmarks');
-  const cityBlocks = buildCityBlocks(scene);
-  markInit('blocks');
-  const allColliders = [...landmarkColliders, ...cityBlocks.colliders, ...boroughs.colliders, ...(cityGrid.colliders || [])];
-
-  const streetDetails = buildStreetDetails(scene);
-  markInit('streetDetails');
-  // Buildings turned along non-grid streets have oriented colliders whose world bounds reach past their lots: they stay
-  // inside the property line anyway, so the road network (lanes & sidewalks) doesn't need them.
-  // Elevated building sections that clear even a bus don't obstruct ground traffic.
-  const trafficSystem = createTrafficSystem(scene, cityGrid.sidewalks, [
-    ...cityGrid.footprints,
-    ...streetDetails.footprints,
-    ...allColliders.filter((c) => !c.obb && (c.minY ?? 0) < 3.5)
-  ], streetDetails.signalIntersections);
-  markInit('traffic');
-  const highwayTraffic = createHighwayTraffic(scene, cityGrid.highwayLanes);
-  buildRoadPaint(scene, trafficSystem.network);
-  markInit('roadPaint');
+  // 3. Build the city: Manhattan (nyc) or the Copenhagen ground plane (cph); both return the same interface
+  const world = IS_NYC
+    ? (await import('./world-nyc.js')).buildNycWorld(scene, { markInit })
+    : await (await import('./world-cph.js')).buildCphWorld(scene, {
+      markInit,
+      debug: new URLSearchParams(location.search).get('debug') || ''
+    });
+  const { boroughs, cityBlocks, streetDetails, trafficSystem, highwayTraffic } = world;
+  const allColliders = world.colliders;
 
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
   // Reuse teleport placement so saved players return at rest, close to their last positions.
   try {
-    const saved = JSON.parse(localStorage.getItem('nyc-player-state'));
+    const saved = JSON.parse(localStorage.getItem(`${CITY}-player-state`));
     if (saved?.version === 1) {
       for (const mode of Object.keys(controllerManager.entities)) {
         const p = saved.entities?.[mode];
@@ -120,7 +101,7 @@ async function initApp() {
       const entities = Object.fromEntries(Object.entries(controllerManager.entities).map(([mode, entity]) => [mode, {
         x: entity.position.x, y: entity.position.y, z: entity.position.z, heading: entity.heading
       }]));
-      localStorage.setItem('nyc-player-state', JSON.stringify({ version: 1, activeMode: controllerManager.activeMode, entities }));
+      localStorage.setItem(`${CITY}-player-state`, JSON.stringify({ version: 1, activeMode: controllerManager.activeMode, entities }));
     } catch { /* Storage may be disabled or full. */ }
   }
 
@@ -150,7 +131,7 @@ async function initApp() {
 
   // Island-wide static geometry: chunk & distance-cull the small props, shadow stand-ins for the big casters
   // (scene-culling.js)
-  const cullingRoots = ['ManhattanCityGrid', 'ManhattanCityBlocks', 'ManhattanStreetDetails', 'ManhattanLandmarks', 'Boroughs']
+  const cullingRoots = world.cullingRoots
     .map((name) => scene.getObjectByName(name))
     .filter(Boolean);
   setupSceneCulling(scene, cullingRoots, lightingSystem.sunLight.shadow);
@@ -446,11 +427,10 @@ async function initApp() {
     return destination;
   }
 
-  const mapSystem = new NYCMapSystem({
+  const mapSystem = world.createMapSystem({
     controllerManager,
     cameraSystem,
     trafficSystem,
-    allBlocks: cityBlocks.allBlocks,
     onToggle: (open) => {
       controllerManager.resetInput();
       touchControls.setEnabled(!open);
@@ -464,6 +444,8 @@ async function initApp() {
   });
 
   teleportButtons.forEach((btn) => {
+    // The markup lists the NYC destinations; hide the ones this city has no location for
+    if (!TELEPORT_LOCATIONS[btn.getAttribute('data-teleport')]) btn.hidden = true;
     btn.addEventListener('click', () => {
       const key = btn.getAttribute('data-teleport');
       const loc = TELEPORT_LOCATIONS[key];

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { bryantParkLawn } from './landmarks.js';
+import { landmarkState } from './landmark-state.js';
 
 // js/cameras.js
 // Multi-camera system supporting Third-Person Chase (with mouse/touch orbit + zoom),
@@ -298,7 +298,7 @@ class CameraSystem {
       case 'bryantPark': {
         // Inside Bryant Park Great Lawn looking East toward NYPL portico, One Vanderbilt & Chrysler Building
         const sway = Math.sin(elapsed * 0.25) * 1.5;
-        const lawn = bryantParkLawn || { minX: -260, maxX: -150, minZ: 40, maxZ: 120, top: 1.3 };
+        const lawn = landmarkState.bryantParkLawn || { minX: -260, maxX: -150, minZ: 40, maxZ: 120, top: 1.3 };
         const lz = (lawn.minZ + lawn.maxZ) * 0.5;
         desiredPos.set(lawn.minX + 18.0, lawn.top + 1.7, lz + sway);
         desiredLook.set(lawn.maxX + 260.0, 70.0, lz - 60.0);

@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const read = (path) => readFileSync(join(__dirname, '..', path), 'utf8');
 let TELEPORT_LOCATIONS, LANDMARK_SITES, blockAt, nearestRoads, getIslandBoundsAtZ;
 test.before(async () => {
-  ({ TELEPORT_LOCATIONS, LANDMARK_SITES, blockAt, nearestRoads, getIslandBoundsAtZ } = await import('../js/city-config.js'));
+  ({ TELEPORT_LOCATIONS, LANDMARK_SITES, blockAt, nearestRoads, getIslandBoundsAtZ } = await import('../js/city-config-nyc.js'));
 });
 
 test('every teleport button has a destination on a real roadway inside Manhattan', () => {
@@ -53,8 +53,11 @@ test('preset and map teleports share arrival resets and mark the resolved landin
     getLocationLabel: (x, z) => `${x}, ${z}`,
     cityBlocks: { allBlocks: [] },
     trafficSystem: {},
-    NYCMapSystem: class {
-      constructor(options) { this.onTeleport = options.onTeleport; map = this; }
+    world: {
+      createMapSystem: (options) => {
+        map = { onTeleport: options.onTeleport };
+        return map;
+      }
     },
     teleportButtons: Object.keys(TELEPORT_LOCATIONS).map((key) => ({
       getAttribute: () => key,

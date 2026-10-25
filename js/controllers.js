@@ -21,7 +21,7 @@ import {
 } from './actor-models.js';
 import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
-import { bryantParkLawn } from './landmarks.js';
+import { landmarkState } from './landmark-state.js';
 
 // js/controllers.js
 // Sculpted, non-blocky GTA 6-style 3D models, animations, and physics controllers
@@ -840,7 +840,7 @@ class ThirdPersonControllerManager {
       return 1.24;
     }
     // Inside Bryant Park's Great Lawn (west of the New York Public Library, 40th-42nd St)
-    const lawn = bryantParkLawn;
+    const lawn = landmarkState.bryantParkLawn;
     if (lawn && x > lawn.minX && x < lawn.maxX && z > lawn.minZ && z < lawn.maxZ) {
       return lawn.top;
     }

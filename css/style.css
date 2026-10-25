@@ -1450,3 +1450,7 @@ body.touch-enabled .pop-item { min-height: 44px; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Copenhagen mode (M0): the Manhattan street atlas minimap and full map are not available yet */
+body.city-cph #minimap-card,
+body.city-cph #btn-open-map { display: none; }
