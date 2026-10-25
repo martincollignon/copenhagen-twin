@@ -13,6 +13,7 @@ ap.add_argument('--fixes', action='store_true', help='M4 surface-fix close-ups (
 ap.add_argument('--lod2', action='store_true', help='M4 LoD2 roofs: before (?debug=nolod2, flat extrusions) and after shots of pitched roofs into --out (default docs/m4-lod2)')
 ap.add_argument('--colours', action='store_true', help='M4 observed colours: before (?debug=noobserved) / after / ?tex=1 shots and fps into --out (default docs/m4-colours)')
 ap.add_argument('--water', action='store_true', help='M4 lakes + calibrated facade colours: Peblinge Soe from Dronning Louises Bro day/night, lake path, Norre Sogade facades and aerial before/after into --out (default docs/m4-water-colour)')
+ap.add_argument('--furniture', action='store_true', help='M4 street furniture: Nørre Søgade day+night (wire lamps), parked cars, lake-path trees, a bus stop; fps and draw calls (default out docs/m4-furniture)')
 ap.add_argument('--perf', action='store_true', help='unthrottled frame timing instead of captures')
 args = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -221,6 +222,70 @@ def water_views():
 def facade_views():
     c = colour_views()
     return {k: c[k] for k in ('norre-sogade-a-street', 'norre-sogade-b-street', 'norre-sogade-a-aerial', 'aerial', 'aerial-close') if k in c}
+
+def furniture_views():
+    """Camera setups for the M4 street-furniture shots, chosen from the data (street names, water edge, bus stops)."""
+    import math
+    fur = json.load(open(os.path.join(root, 'data/cph-furniture.json')))
+    rg = GEO['roadGraph']
+    N = rg['nodes']
+    def street_segments(name):
+        idx = rg['names'].index(name)
+        out = []
+        for l in rg['links']:
+            if l[6] == idx:
+                out.append((N[2*l[0]], N[2*l[0]+1], N[2*l[1]], N[2*l[1]+1]))
+        return out
+    def along(name, near=(0, 0), back=22, h=2.0, fov=64, look_up=3.5, ahead=40):
+        """Eye-level view along a street from `back` m before its point nearest `near`."""
+        best = None
+        for ax, az, bx, bz in street_segments(name):
+            mx, mz = (ax + bx) / 2, (az + bz) / 2
+            d = math.hypot(mx - near[0], mz - near[1])
+            if best is None or d < best[0]: best = (d, ax, az, bx, bz)
+        _, ax, az, bx, bz = best
+        l = math.hypot(bx - ax, bz - az) or 1
+        tx, tz = (bx - ax) / l, (bz - az) / l
+        mx, mz = (ax + bx) / 2, (az + bz) / 2
+        return ([mx - tx * back, h, mz - tz * back], [mx + tx * ahead, look_up, mz + tz * ahead], fov)
+    out = {}
+    out['ns-street'] = along('Nørre Søgade', near=(0, 0), back=18, h=2.1, look_up=4.0)
+    out['ns-street-up'] = along('Nørre Søgade', near=(0, 0), back=10, h=1.8, look_up=6.5, fov=72)
+    out['ravnsborggade'] = along('Ravnsborggade', near=(0, 0), back=26, h=2.4, look_up=1.0, fov=60)
+    # lake path: shore points ranked by the number of tall trees within 22 m; the camera stands on the path side 14 m
+    # along the shore, outside every building, looking along the tree row
+    lake = next(w for w in GEO['water'] if w['name'] == 'Peblinge Sø')
+    r = lake['ring']
+    def inside(x, z):
+        for b in GEO['buildings']:
+            q = b['ring']; n = len(q) // 2; c = False
+            for i in range(n):
+                j = (i - 1) % n
+                if (q[2*i+1] > z) != (q[2*j+1] > z) and x < (q[2*j] - q[2*i]) * (z - q[2*i+1]) / (q[2*j+1] - q[2*i+1]) + q[2*i]: c = not c
+            if c: return True
+        return False
+    cands = []
+    for i in range(0, len(r), 2):
+        x, z = r[i], r[i+1]
+        cands.append((sum(1 for t in fur['trees'] if (t['x']-x)**2 + (t['z']-z)**2 < 22**2 and t['height'] > 8), x, z))
+    cands.sort(reverse=True)
+    cx = sum(r[0::2]) / (len(r) // 2); cz = sum(r[1::2]) / (len(r) // 2)
+    for _, lx, lz in cands[:60]:
+        dx, dz = cx - lx, cz - lz; dl = math.hypot(dx, dz)
+        ux, uz = dx / dl, dz / dl
+        cam = (lx - ux * 9 - uz * 16, lz - uz * 9 + ux * 16)  # on the path side (away from the lake), 16 m along the shore
+        if not inside(*cam):
+            break
+    out['lake-trees'] = ([cam[0], 1.9, cam[1]], [lx + uz * 14 - ux * 4, 6.5, lz - ux * 14 - uz * 4], 62)
+    out['lake-trees-wide'] = ([lx + ux * 30, 5.0, lz + uz * 30], [lx - ux * 20, 6.0, lz - uz * 20], 66)
+    stops = [s for s in fur['busStops'] if s['shelter']] or fur['busStops']
+    stops.sort(key=lambda s: math.hypot(s['x'], s['z']))
+    s = stops[0]
+    fx, fz = math.sin(s['yaw']), math.cos(s['yaw'])
+    out['bus-stop'] = ([s['x'] + fx * 9 + s['tangent'][0] * 4, 1.7, s['z'] + fz * 9 + s['tangent'][1] * 4], [s['x'], 1.5, s['z']], 55)
+    out['_bus_stop'] = s
+    return out
+
 try:
     with sync_playwright() as p:
         browser = p.chromium.launch(args=['--enable-unsafe-webgpu', '--use-angle=metal', '--ignore-gpu-blocklist'] + (['--disable-frame-rate-limit', '--disable-gpu-vsync'] if args.perf else []))
@@ -228,7 +293,7 @@ try:
         logs = []
         page.on('console', lambda m: logs.append(f'{m.type}: {m.text}'))
         page.on('pageerror', lambda e: logs.append(f'pageerror: {e}'))
-        page.goto(f'http://127.0.0.1:{port}/index.html?{args.query.lstrip("&")}')
+        page.goto(f'http://127.0.0.1:{port}/index.html?{("hooks&" + args.query.lstrip("&")) if args.furniture else args.query.lstrip("&")}')
         page.wait_for_function('globalThis.__twin && globalThis.__twin.world', timeout=120000)
         page.wait_for_timeout(4000)
         view = lambda pos, look, fov=60: page.evaluate('([p,l,f]) => { globalThis.__twin.cameraSystem.debugView = {pos:p, look:l, fov:f}; }', [pos, look, fov])
@@ -302,6 +367,31 @@ try:
                 if variant == 'tex':
                     print('tex state', page.evaluate('() => { const m = globalThis.__twin.world.buildings.texManager; return m && { enabled: m.state.enabled, resident: m.state.resident.size, loaded: m.state.loaded, failed: m.state.failed.size }; }'))
             json.dump(fps, open(f'{out_dir}/fps.json', 'w'), indent=1)
+            errs = [l for l in logs if l.startswith(('error', 'pageerror', 'warning'))]
+            print('\n'.join(errs[:30]))
+            browser.close()
+            raise SystemExit(0)
+        if args.furniture:
+            out_dir = args.out if args.out != 'docs/m2' else 'docs/m4-furniture'
+            os.makedirs(out_dir, exist_ok=True)
+            views = furniture_views()
+            print('bus stop', json.dumps(views.pop('_bus_stop'), ensure_ascii=False))
+            free = lambda pos, look, fov=60: page.evaluate('([p,l,f]) => { globalThis.__twin.freeCam = {pos:p, target:l, fov:f}; }', [pos, look, fov])
+            measure = '''() => new Promise((res) => { const d = []; let last = performance.now(); const end = last + 3000;
+              const tick = (now) => { d.push(now - last); last = now; if (now < end) requestAnimationFrame(tick); else { d.sort((a, b) => a - b); res({ frames: d.length, medianMs: +d[d.length >> 1].toFixed(2), p95Ms: +d[Math.floor(d.length * .95)].toFixed(2), fps: +(d.length / 3).toFixed(1) }); } };
+              requestAnimationFrame(tick); })'''
+            print('counts', json.dumps(page.evaluate('() => globalThis.__twin.world.furniture && globalThis.__twin.world.furniture.counts')))
+            for variant, time_id in (('day', 'midday'), ('night', 'midnight')):
+                page.evaluate("(id) => document.querySelector(`[data-time=\"${id}\"]`).click()", time_id)
+                page.wait_for_timeout(2500)
+                for name, v in views.items():
+                    if variant == 'night' and name in ('lake-trees-wide',): continue
+                    free(*v); page.wait_for_timeout(3000)
+                    page.screenshot(path=f'{out_dir}/{name}-{variant}.png')
+                    t = page.evaluate(measure)
+                    info = page.evaluate('() => ({ drawCalls: globalThis.__twin.renderer.info.render.drawCalls, triangles: globalThis.__twin.renderer.info.render.triangles, fur: globalThis.__twin.world.furniture.stats })')
+                    print(variant, name, json.dumps(t), json.dumps(info))
+            print('mesh counts', json.dumps(page.evaluate('() => globalThis.__twin.world.furniture.meshCounts()')))
             errs = [l for l in logs if l.startswith(('error', 'pageerror', 'warning'))]
             print('\n'.join(errs[:30]))
             browser.close()

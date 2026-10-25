@@ -664,7 +664,7 @@ async function initApp() {
       savePlayerState();
       nextPlayerSave = now + 5000;
     }
-    world.update(cameraSystem.currentPos.x, cameraSystem.currentPos.z);
+    world.update(cameraSystem.currentPos.x, cameraSystem.currentPos.z, lightingSystem.uNightFactor.value);
     lightingSystem.update(cameraSystem.currentPos);
     audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.activePresetId === 'midnight');
     if (warmedUp) updateSceneCulling(cameraSystem.camera.position); // the warm-up frame draws every chunk

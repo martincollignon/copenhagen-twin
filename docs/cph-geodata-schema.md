@@ -134,3 +134,9 @@ Derived by `tools/cph-geodata/lakes.py` from `water` plus the parkregister "Soer
 water of Sortedams/Peblinge/Sankt Joergens Soe: `lakes` (disjoint outlines, bridge strips included), `bridges` (strips closed over a
 bridge deck, with `open_edges` onto the water), `ponds` (< 1500 m2) and `surface_cuts` (ground-surface polygons cut by the lakes).
 The engine sinks the water 0.8 m below the ground, builds granite walls and cuts the ground plane (`js/lakes-cph.js`, `js/water-cph.js`).
+
+## Street furniture (M4, `tools/cph-geodata/furniture.py` -> `data/cph-furniture.json`)
+
+A separate file (`version: "cph-furniture/1"`, same frame); `data/cph-geodata.json` is untouched. Every feature has `src`, `conf` and `licence` (`CC-BY-4.0`, `unstated` for datasets without a licence statement, `ODbL` for water-edge derived items). `yaw` is the direction an object faces (model +z -> `(sin yaw, cos yaw)` in x, z).
+
+Arrays: `trees` (`height`, `crown_radius`, `genus` family, `species`, `age`), `lamps` (Citelum mast and wire-suspended: `mount`, `pole` kbh/tube/park, `pole_h`, `light` led/sodium/metalhalide/fluorescent, `cct`, `watt`, wire `span` [x0, z0, x1, z1] from the 2018 `belysning-ledninger` lines or, `span_conf: inferred`, facade to facade across the street), `parkingBays` (`kind` par/ang/perp from `p_pladser` kerb lines and `parkering_areal` polygons), `parkMeters`, `bins`, `glassContainers`, `binStands`, `bollards` (`material`, `colour`), `benches`, `bikeRacks` (`capacity`), `busStops` (Movia equipment flags), `monuments`, `rescuePosts`, `lakeLights` (inferred CitySwan-style path lights, 15 m repeat). The engine (`js/street-furniture-cph.js`, pure mapping in `js/street-furniture-data.js`) places them at the ground height and fills the bays with parked cars at 70-85 % occupancy (seeded).

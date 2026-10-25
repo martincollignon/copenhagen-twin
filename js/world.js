@@ -10,6 +10,8 @@ import { createWalkSpace } from './walk-space-cph.js';
 import { buildLakes } from './water-cph.js';
 import { setCalibration } from './appearance.js';
 import { applySurfaceCuts } from './lakes-cph.js';
+import { loadCphFurniture } from './street-furniture-data.js';
+import { createStreetFurniture } from './street-furniture-cph.js';
 
 // js/world.js
 // The Copenhagen world: a ground plane in the Copenhagen frame (docs/cph-geodata-schema.md) plus data/cph-geodata.json,
@@ -318,10 +320,26 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: applySurfaceCuts(await loadCphSurfaces(), lakesDoc?.surface_cuts) });
   }
 
+  // M4: street furniture (data/cph-furniture.json): trees, lamps, parked cars, bins, bollards, benches, racks, bus stops
+  let furniture = null;
+  if (geo && !debug.split(',').includes('nofurniture')) {
+    const doc = await loadCphFurniture();
+    if (doc) {
+      furniture = createStreetFurniture(scene, doc, { groundHeight: traffic?.surfaces?.groundHeight || null });
+      markInit(`furniture(${furniture.plan.trees.length} trees, ${furniture.plan.lamps.length} lamps, ${furniture.plan.cars.length} cars)`);
+    }
+  }
+
   return {
     colliders: [],
-    // the player's surroundings: buildings stream in around the camera
-    update: (x, z) => { buildings?.update(x, z); lakes?.update(x, z); },
+    // the player's surroundings: buildings, lakes and street furniture stream in around the camera; `night` is the
+    // lighting system's night factor (lamps switch on above ~0.1)
+    update: (x, z, night = 0) => {
+      buildings?.update(x, z);
+      lakes?.update(x, z);
+      furniture?.update(x, z, night);
+    },
+    furniture,
     audioSignals: [],
     locationLabel: createLocator(geo),
     trafficSystem: traffic ? traffic.traffic : nullTraffic(),
