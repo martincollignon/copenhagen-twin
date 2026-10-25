@@ -101,6 +101,9 @@ def inside_bbox(c):
     return x0 - MARGIN <= c[0] <= x1 + MARGIN and z0 - MARGIN <= c[1] <= z1 + MARGIN
 
 
+MIN_AREA = 0.01  # m2: smaller pieces are digitising slivers, invisible and never worth a triangle
+
+
 def sanitize(rec):
     """Repair an invalid polygon record (self-touching rings, holes crossing the outline) with shapely and split the
     result into simple polygons, one record each. Valid polygons come back unchanged."""
@@ -112,10 +115,11 @@ def sanitize(rec):
 
     poly = Polygon(pairs(rec["ring"]), [pairs(h) for h in rec.get("holes", []) if len(h) >= 6])
     if poly.is_valid:
-        return [rec]
+        return [rec] if poly.area >= MIN_AREA else []
     fixed = make_valid(poly)
     parts = [g for g in getattr(fixed, "geoms", [fixed]) if g.geom_type in ("Polygon", "MultiPolygon")]
-    polys = [p for g in parts for p in (g.geoms if g.geom_type == "MultiPolygon" else [g]) if p.area > 1e-4]
+    polys = [p for g in parts for p in (g.geoms if g.geom_type == "MultiPolygon" else [g]) if p.area >= MIN_AREA]
+    polys.sort(key=lambda p: -p.area)  # the largest part keeps the record's id
     out = []
     for k, p in enumerate(polys):
         r = {**rec, "ring": flat(list(p.exterior.coords)[:-1])}

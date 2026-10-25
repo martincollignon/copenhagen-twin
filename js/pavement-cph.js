@@ -85,6 +85,80 @@ export function subdivide(tri, maxEdge, out, depth = 0) {
   }
 }
 
+const STRIP_W = 0.4; // m, the granite sett (chaussésten) strip along the building line
+const STRIP_NEAR = 0.35; // m, how close a pavement edge must run to a footprint edge to count as the building line
+
+/** Spatial hash over building footprint edges: nearest(x, z) is the distance to the closest edge. */
+export function createBuildingEdgeIndex(buildings, cell = 16) {
+  const hash = new Map();
+  for (const b of buildings || []) {
+    const r = b.ring;
+    if (!r || r.length < 6) continue;
+    const n = r.length / 2;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const e = [r[2 * i], r[2 * i + 1], r[2 * j], r[2 * j + 1]];
+      for (let ix = Math.floor((Math.min(e[0], e[2]) - 1) / cell); ix <= Math.floor((Math.max(e[0], e[2]) + 1) / cell); ix++) {
+        for (let iz = Math.floor((Math.min(e[1], e[3]) - 1) / cell); iz <= Math.floor((Math.max(e[1], e[3]) + 1) / cell); iz++) {
+          const k = ix * 100003 + iz;
+          if (!hash.has(k)) hash.set(k, []);
+          hash.get(k).push(e);
+        }
+      }
+    }
+  }
+  return {
+    nearest(x, z) {
+      let best = Infinity;
+      for (const [ax, az, bx, bz] of hash.get(Math.floor(x / cell) * 100003 + Math.floor(z / cell)) || []) {
+        const dx = bx - ax;
+        const dz = bz - az;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+        best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z));
+      }
+      return best;
+    }
+  };
+}
+
+/**
+ * Quads (flat 8-number rings) of the sett strip along every pavement edge that runs on a building line: the
+ * Københavnerfortov has a row of small granite setts at the facade as well as at the kerb.
+ */
+export function facadeStrips(sidewalks, edgeIndex, { width = STRIP_W, near = STRIP_NEAR } = {}) {
+  const out = [];
+  for (const s of sidewalks || []) {
+    const r = s.ring;
+    if (!r || r.length < 6) continue;
+    const n = r.length / 2;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const ax = r[2 * i];
+      const az = r[2 * i + 1];
+      const bx = r[2 * j];
+      const bz = r[2 * j + 1];
+      const L = Math.hypot(bx - ax, bz - az);
+      if (L < 1) continue;
+      // the whole edge (not just its midpoint) lies on the footprint edge
+      if ([0.1, 0.5, 0.9].some((t) => edgeIndex.nearest(ax + (bx - ax) * t, az + (bz - az) * t) > near)) continue;
+      const ux = (bx - ax) / L;
+      const uz = (bz - az) / L;
+      let nx = -uz;
+      let nz = ux;
+      const mx = (ax + bx) / 2;
+      const mz = (az + bz) / 2;
+      if (!pointInRing(r, mx + nx * 0.05, mz + nz * 0.05)) { nx = -nx; nz = -nz; } // point into the pavement
+      if (!pointInRing(r, mx + nx * 0.05, mz + nz * 0.05)) continue;
+      // clip the strip's depth to what the pavement allows (a thin pavement narrower than the strip)
+      let w = width;
+      while (w > 0.1 && !pointInRing(r, mx + nx * w, mz + nz * w)) w -= 0.1;
+      if (w < 0.1) continue;
+      out.push([ax, az, bx, bz, bx + nx * w, bz + nz * w, ax + nx * w, az + nz * w]);
+    }
+  }
+  return out;
+}
+
 class Bucket {
   constructor() { this.position = []; this.kuv = []; this.seed = []; }
   get vertexCount() { return this.position.length / 3; }
@@ -146,7 +220,7 @@ export function tessellateFramed(ring, { holes, frame, y, seed, classOf, skip, m
  * @param {{ roads: Array, y: number, groundY: number, skip?: Function, nearCycle?: Function }} opts
  * @returns {Map<string, Bucket>} keys: '<cls>' (pavement, at y) and 'ground:<cls>' (register polygons, at groundY)
  */
-export function buildPavementBuckets(geo, surfacesDoc, { roads, y, groundY, skip, nearCycle }) {
+export function buildPavementBuckets(geo, surfacesDoc, { roads, y, groundY, skip, nearCycle, extraPavement = [] }) {
   const frame = createKerbFrame(roads);
   const index = createSurfaceIndex(surfacesDoc?.surfaces);
   const buckets = new Map();
@@ -162,6 +236,14 @@ export function buildPavementBuckets(geo, surfacesDoc, { roads, y, groundY, skip
         return c && c !== 'other' && c !== 'grass' && c !== 'asphalt_road' ? c : fallback;
       }
     });
+  }
+  // the sett strip along the building line, just above the slabs
+  for (const quad of facadeStrips(geo.sidewalks, createBuildingEdgeIndex(geo.buildings))) {
+    tessellateFramed(quad, { frame, y: y + 0.003, seed: hash01(++i), skip, maxEdge: () => 6, buckets, classOf: () => 'setts' });
+  }
+  // raised side-street crossings (junction-mouths-cph.js): pavement slabs bridging the gaps in the KK sidewalk polygons
+  for (const q of extraPavement) {
+    tessellateFramed(q, { frame, y, seed: hash01(++i), buckets, maxEdge: () => 6, classOf: () => 'kbh_fortov' });
   }
   // register polygons that are not pavements (park paths, squares, gravel); drawn just above the ground plane
   for (const s of surfacesDoc?.surfaces || []) {

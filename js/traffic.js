@@ -301,7 +301,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
   const nearEdges = [];
   const nearSignals = [];
   const pedestrianSystem = createPedestrianSystem(network, {
-    player, nearEdges, nearSignals, mayCross, walkOn, visible, nearView, blockAt: options.blockAt
+    player, nearEdges, nearSignals, mayCross, walkOn, visible, nearView, blockAt: options.blockAt, groundHeight: options.groundHeight
   });
   group.add(...pedestrianSystem.meshes);
 

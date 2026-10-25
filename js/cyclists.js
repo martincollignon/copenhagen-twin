@@ -100,7 +100,7 @@ function buildBike(geos, mats, frameMat, shadowMat) {
  * @param geo     data/cph-geodata.json
  * @param signalNodes road-network.js nodes with `signal`: they give the cyclists' junction lights their offsets and arms
  */
-export function createCyclistSystem(scene, geo, signalNodes = []) {
+export function createCyclistSystem(scene, geo, signalNodes = [], { groundHeight = null } = {}) {
   const network = buildCyclistNetwork(geo, signalNodes.map((n) => ({
     x: n.x, z: n.z, sigOffset: n.sigOffset ?? signalOffset(n.x, n.z), arms: n.arms
   })));
@@ -137,7 +137,7 @@ export function createCyclistSystem(scene, geo, signalNodes = []) {
       b.helmet.visible = show;
       if (!show) continue;
       drawn++;
-      b.root.position.set(c.x, 0, c.z);
+      b.root.position.set(c.x, groundHeight ? groundHeight.heightAt(c.x, c.z) : 0, c.z);
       b.root.rotation.set(0, c.yaw, 0);
       b.lean.rotation.z = c.lean;
       b.front.rotation.x = b.rear.rotation.x = c.pedal * 0.6;

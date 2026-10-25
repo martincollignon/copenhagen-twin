@@ -9,6 +9,7 @@ ap.add_argument('--shots', default='all')
 ap.add_argument('--query', default='')
 ap.add_argument('--verify', action='store_true', help='cleanup check: boots, asserts the HUD and the console, and captures docs/cleanup shots')
 ap.add_argument('--surfaces', action='store_true', help='M4 ground-surface close-ups (pavement, cycle tracks, junction, square, aerial) into --out')
+ap.add_argument('--fixes', action='store_true', help='M4 surface-fix close-ups (side-street mouth, facade sett strip, pedestrian feet, gravel polygon) into --out')
 ap.add_argument('--perf', action='store_true', help='unthrottled frame timing instead of captures')
 args = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -85,6 +86,23 @@ def surface_views():
     out['aerial'] = ([-420, 330, 380], [20, 0, -20], 50)
     out['aerial-close'] = ([60, 120, 150], [30, 0, -60], 55)
     return out
+def fix_views():
+    """Camera setups for the M4 surface-fix shots (positions from the compiled data: see tests/junction-mouths-cph.test.mjs)."""
+    out = {}
+    mx, mz, dx, dz = 52.6, -95.0, 0.90, 0.43  # Kjeld Langes Gade opening on Nørre Søgade
+    out['mouth-norre-sogade'] = ([mx + dx * 16, 7, mz + dz * 16], [mx, 0, mz], 62)
+    out['mouth-norre-sogade-low'] = ([mx + dx * 9 + dz * 3, 1.8, mz + dz * 9 - dx * 3], [mx, 0.1, mz], 70)
+    out['mouth-norre-sogade-aerial'] = ([mx + 12, 45, mz + 20], [mx, 0, mz], 55)
+    # facade sett strip: the longest strip near the teleport (see tests/surface-fixes-cph.test.mjs facadeStrips)
+    ux, uz, nx, nz, mx, mz = 0.903, 0.43, 0.43, -0.9, 71.3, -80.7
+    out['facade-setts'] = ([mx + nx * 1.9 - ux * 2.4, 0.95, mz + nz * 1.9 - uz * 2.4], [mx + ux * 3, 0.2, mz + uz * 3], 62)
+    out['facade-setts-down'] = ([mx + nx * 1.1, 1.7, mz + nz * 1.1], [mx + ux * 0.8 - nx * 0.2, 0.2, mz + uz * 0.8 - nz * 0.2], 70)
+    surf = json.load(open(os.path.join(root, 'data/cph-surfaces.json')))
+    g = next(s for s in surf['surfaces'] if s['id'].startswith('kk:belaegning:127103f8'))
+    gx, gz = sum(g['ring'][0::2]) / (len(g['ring']) // 2), sum(g['ring'][1::2]) / (len(g['ring']) // 2)
+    out['gravel-polygon'] = ([gx + 14, 22, gz + 14], [gx, 0, gz], 55)
+    out['gravel-polygon-close'] = ([gx + 6, 6, gz + 6], [gx, 0, gz], 60)
+    return out
 try:
     with sync_playwright() as p:
         browser = p.chromium.launch(args=['--enable-unsafe-webgpu', '--use-angle=metal', '--ignore-gpu-blocklist'] + (['--disable-frame-rate-limit', '--disable-gpu-vsync'] if args.perf else []))
@@ -99,6 +117,31 @@ try:
         def shot(name):
             page.wait_for_timeout(2500)
             page.screenshot(path=f'{args.out}/{name}.png')
+        if args.fixes:
+            os.makedirs(args.out, exist_ok=True)
+            for name, v in fix_views().items():
+                view(*v); shot(name)
+                print('shot', name, v[0])
+            # pedestrian feet: the placed pedestrian nearest the player, filmed at knee height; re-aimed just before the
+            # capture because pedestrians keep walking
+            find_ped = lambda: page.evaluate("""() => { const ps = globalThis.__twin.world.trafficSystem.peds.filter((p) => p.placed); if (!ps.length) return null;
+              const e = globalThis.__twin.controllerManager.entities.car.position; ps.sort((a, b) => Math.hypot(a.x - e.x, a.z - e.z) - Math.hypot(b.x - e.x, b.z - e.z));
+              const p = ps[0]; return { x: p.x, z: p.z, ux: p.ux * p.dir, uz: p.uz * p.dir }; }""")
+            def ped_view(ped, dist=1.5):
+                n = (ped['ux'] ** 2 + ped['uz'] ** 2) ** .5 or 1
+                ux, uz = ped['ux'] / n, ped['uz'] / n
+                return ([ped['x'] - uz * dist + ux * 0.4, 0.4, ped['z'] + ux * dist + uz * 0.4], [ped['x'], 0.45, ped['z']], 50)
+            ped = find_ped()
+            print('ped', ped)
+            if ped:
+                view(*ped_view(ped)); page.wait_for_timeout(1500)
+                ped = find_ped(); view(*ped_view(ped)); page.wait_for_timeout(120)
+                page.screenshot(path=f'{args.out}/pedestrian-feet.png')
+                print('shot pedestrian-feet', ped)
+            errs = [l for l in logs if l.startswith(('error', 'pageerror', 'warning'))]
+            print('\n'.join(errs[:20]))
+            browser.close()
+            raise SystemExit(0)
         if args.surfaces:
             os.makedirs(args.out, exist_ok=True)
             for name, v in surface_views().items():

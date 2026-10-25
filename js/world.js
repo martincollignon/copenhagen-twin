@@ -177,6 +177,7 @@ async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null }) {
     walkable: walk.walkable,
     onSidewalk: walk.onSidewalk,
     blockAt: walk.blockAt,
+    groundHeight: surfaces.groundHeight,
     debug: (globalThis.__cphDebug = {}),
     // pedestrians walk outside the cycle track beside a carriageway
     extraOffset: (e, sign) => {
@@ -187,7 +188,7 @@ async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null }) {
   });
   markInit('traffic');
   const signalNodes = traffic.network.nodes.filter((n) => n.signal);
-  cyclists = createCyclistSystem(scene, geo, signalNodes);
+  cyclists = createCyclistSystem(scene, geo, signalNodes, { groundHeight: surfaces.groundHeight });
   markInit('cyclists');
   const heads = buildSignalHeads(scene, signalNodes);
   markInit('signalHeads');
@@ -291,6 +292,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     trafficSystem: traffic ? traffic.traffic : nullTraffic(),
     cullingRoots: ['CopenhagenDebugFootprints'],
     roadSurfaces: traffic?.surfaces || null,
+    groundHeight: traffic?.surfaces?.groundHeight || null,
     ground,
     debugFootprints,
     buildings,
