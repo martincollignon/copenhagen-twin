@@ -828,11 +828,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections, o
 
   // May v, its front bumper d metres before the stop line, enter the intersection now? Sets the exit lane.
   // Once too close to stop, v is committed: it goes, and holds the intersection from then on.
-  // why a vehicle may not enter (v.why: the number of the test in mayEnter that said no), for diagnosis
-  const no = (v, why) => {
-    v.why = why;
-    return false;
-  };
+  // v.why records which test in mayEnter said no (its number), for diagnosis
   function mayEnter(v, d) {
     const e = v.edge;
     const n = e.to;
@@ -843,7 +839,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections, o
     if (v.commit === n) return true;
     if (v.move.out[v.lane] < 0) {
       // missed the lane for the planned move: go wherever this lane goes instead
-      if (d > 12) return no(v, 1);
+      if (d > 12) return (v.why = 1, false);
       v.move = chooseMove(v, true);
     }
     const m = v.move;
@@ -854,13 +850,13 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections, o
         mayEnter.warned = true;
         console.warn('[traffic] lane leads nowhere', { lane: v.lane, lanes: e.lanes.length, out: m.out.slice(), moves: e.moves.length, x: Math.round(v.x), z: Math.round(v.z) });
       }
-      return no(v, 2);
+      return (v.why = 2, false);
     }
-    if (!v.isPolice && (phase === 'red' || (phase === 'amber' && stoppable))) return no(v, 0);
-    if (boxBusy(n, e.axisIndex)) return no(v, 3); // crossing traffic inside
+    if (!v.isPolice && (phase === 'red' || (phase === 'amber' && stoppable))) return (v.why = 0, false);
+    if (boxBusy(n, e.axisIndex)) return (v.why = 3, false); // crossing traffic inside
     const lead = ahead(e.occ[v.lane], v.s, v);
-    if (lead && lead.v.yielding) return no(v, 4); // the vehicle ahead waits inside to turn: wait behind the line
-    if (v.bus && besideTail(v)) return no(v, 5); // its tail would swing out over that bus as it starts to turn
+    if (lead && lead.v.yielding) return (v.why = 4, false); // the vehicle ahead waits inside to turn: wait behind the line
+    if (v.bus && besideTail(v)) return (v.why = 5, false); // its tail would swing out over that bus as it starts to turn
     // At a signal, the first in line to turn pulls into the intersection to wait there for the people crossing the
     // road it turns into (they walk on the same green): short of their crosswalk or, turning left across oncoming
     // traffic, short of the oncoming lanes until there is a gap. The light changing stops both for it at the latest.
@@ -868,14 +864,14 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections, o
     const first = n.signal && (!v.isPolice || phase === 'green') && m.turn !== 'S' && !lead;
     const across = m.turn === 'L' && !!e.opposite;
     const wait = first ? (across ? yieldPoint(v, c, e) : c.len - 3 - v.half) : -1; // < 0: no room inside to wait
-    if (m.turn === 'L' ? across && wait < 0 && yieldOncoming(e.opposite, v.wait > 8, v) : e.opposite && e.opposite.lefts > 0) return no(v, 6);
-    if ((n.signal ? v.isPolice && phase !== 'green' : e.axisIndex !== 0) && yieldToCrossTraffic(v, n)) return no(v, 7);
+    if (m.turn === 'L' ? across && wait < 0 && yieldOncoming(e.opposite, v.wait > 8, v) : e.opposite && e.opposite.lefts > 0) return (v.why = 6, false);
+    if ((n.signal ? v.isPolice && phase !== 'green' : e.axisIndex !== 0) && yieldToCrossTraffic(v, n)) return (v.why = 7, false);
     // nobody on the crosswalks while it passes over them, on the way in and on the way out, and a free place to
     // clear the intersection to, taking turns with lanes merging into it
-    if (pedestrianOn(n, e.inSide, laneCoord(e, v.lane), 0, timeTo(v, d + 2.5 + 2 * v.half))) return no(v, 8);
-    if (wait < 0 && pedestrianOn(n, f.outSide, laneCoord(f, j), timeTo(v, d + c.len - 3), timeTo(v, d + c.len + 2 * v.half))) return no(v, 9);
+    if (pedestrianOn(n, e.inSide, laneCoord(e, v.lane), 0, timeTo(v, d + 2.5 + 2 * v.half))) return (v.why = 8, false);
+    if (wait < 0 && pedestrianOn(n, f.outSide, laneCoord(f, j), timeTo(v, d + c.len - 3), timeTo(v, d + c.len + 2 * v.half))) return (v.why = 9, false);
     const vs = v.s - e.len - c.len; // where on f it would be now
-    if (!room(f, j, v) || alongside(f, j, v, vs, m.turn !== 'S') || mergingAhead(v, f, j)) return no(v, 10);
+    if (!room(f, j, v) || alongside(f, j, v, vs, m.turn !== 'S') || mergingAhead(v, f, j)) return (v.why = 10, false);
     v.out = j;
     v.yielding = wait >= 0;
     v.yieldAt = wait;
