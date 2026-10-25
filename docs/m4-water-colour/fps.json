@@ -1,10 +1,10 @@
 {
  "peblinge-from-dlb": {
-  "fps": 25,
+  "fps": 27.7,
   "medianMs": 33.4
  },
  "peblinge-from-dlb-simple": {
-  "fps": 52.7,
+  "fps": 47.7,
   "medianMs": 16.7
  }
 }
