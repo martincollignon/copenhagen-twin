@@ -1,0 +1,6 @@
+interface:
+  display_name: "Building case to 3D"
+  short_description: "Rebuild a Danish building in 3D from its byggesag drawings + Skråfoto"
+  default_prompt: "Use $building-case-to-3d to reconstruct the building at this address from these Filarkiv/byggesag PDFs as a georeferenced, validated 3D model."
+policy:
+  allow_implicit_invocation: true

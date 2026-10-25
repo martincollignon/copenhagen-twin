@@ -55,3 +55,7 @@ The data bundle `data/cph-geodata.json` is a derived database and carries the li
 - Københavns Kommune open data: trae_basis, cykelsti, cykelstativ, trafiksignal_oversigt, fortovsmatrikel, parkregister.
 
 The same attributions are in the `attribution` field of the data file and in the loading screen. Third-party data and dependencies retain their respective licences.
+
+## Building reconstruction skill
+
+`.claude/skills/building-case-to-3d/` (also `.agents/skills/` for Codex) rebuilds a single building as LoD3 from its Filarkiv/byggesag drawings, reconciled against 2025 Skråfoto. Subagents: `drawing-archivist`, `skraafoto-registrar`, `twin-validator` (`.claude/agents/`, `.codex/agents/`). Output heroes (e.g. Nørre Søgade 37) are referenced from `data/cph-geodata.json` `heroes[]` and linked with `tools/link-heroes.sh`. Drawings and models stay outside git.
