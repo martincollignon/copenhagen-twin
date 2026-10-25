@@ -11,6 +11,7 @@ ap.add_argument('--verify', action='store_true', help='cleanup check: boots, ass
 ap.add_argument('--surfaces', action='store_true', help='M4 ground-surface close-ups (pavement, cycle tracks, junction, square, aerial) into --out')
 ap.add_argument('--fixes', action='store_true', help='M4 surface-fix close-ups (side-street mouth, facade sett strip, pedestrian feet, gravel polygon) into --out')
 ap.add_argument('--lod2', action='store_true', help='M4 LoD2 roofs: before (?debug=nolod2, flat extrusions) and after shots of pitched roofs into --out (default docs/m4-lod2)')
+ap.add_argument('--colours', action='store_true', help='M4 observed colours: before (?debug=noobserved) / after / ?tex=1 shots and fps into --out (default docs/m4-colours)')
 ap.add_argument('--perf', action='store_true', help='unthrottled frame timing instead of captures')
 args = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -104,6 +105,57 @@ def fix_views():
     out['gravel-polygon'] = ([gx + 14, 22, gz + 14], [gx, 0, gz], 55)
     out['gravel-polygon-close'] = ([gx + 6, 6, gz + 6], [gx, 0, gz], 60)
     return out
+def colour_views():
+    """Camera setups for the observed-colour shots, derived from the data."""
+    import math
+    out = {'aerial': ([-420, 330, 380], [20, 0, -20], 50), 'aerial-close': ([-140, 150, 210], [-60, 8, 40], 55)}
+    byid = {b['id']: b for b in GEO['buildings']}
+    def cen(r): return sum(r[0::2]) / (len(r) // 2), sum(r[1::2]) / (len(r) // 2)
+    rs = [r for r in GEO['roads'] if r.get('name') == 'Nørre Søgade']
+    r = max(rs, key=lambda r: len(r['pts'])); p = r['pts']; k = min(max((len(p) // 4) * 2, 2), len(p) - 4)
+    dx, dz = p[k + 2] - p[k - 2], p[k + 3] - p[k - 1]; l = math.hypot(dx, dz) or 1; ux, uz = dx / l, dz / l
+    mx, mz = p[k], p[k + 1]
+    for tag, sgn in (('a', 1), ('b', -1)):
+        out[f'norre-sogade-{tag}-street'] = ([mx + uz * 20 * sgn - ux * 14, 1.7, mz - ux * 20 * sgn - uz * 14], [mx - uz * 12 * sgn + ux * 6, 11, mz + ux * 12 * sgn + uz * 6], 66)
+        out[f'norre-sogade-{tag}-aerial'] = ([mx + uz * 42 * sgn, 24, mz - ux * 42 * sgn], [mx - uz * 8 * sgn, 11, mz + ux * 8 * sgn], 58)
+    # a brick block: the building with the most observed brick-hued wall length near the centre
+    best = None
+    for b in GEO['buildings']:
+        o = b.get('observed')
+        if not o or abs(cen(b['ring'])[0]) > 400 or abs(cen(b['ring'])[1]) > 400: continue
+        ring = b['ring']; n = len(ring) // 2; score = 0; edge = None
+        for w in o['walls']:
+            if w['ring'] != 0 or not w['conf'].startswith('observed'): continue
+            t = w['tone']
+            if not (t[0] > t[1] * 1.25 and t[1] >= t[2] * 0.9 and t[0] > 0.3): continue
+            i = w['edge']; j = (i + 1) % n
+            L = math.hypot(ring[2*j] - ring[2*i], ring[2*j+1] - ring[2*i+1])
+            if L > 12 and w.get('sunlit') and L > score: score, edge = L, (i, j)
+        if edge and (best is None or score > best[0]): best = (score, b, edge)
+    def wall_view(b, edge, dist, h, fov=62, up=0):
+        ring = b['ring']; i, j = edge
+        x0, z0, x1, z1 = ring[2*i], ring[2*i+1], ring[2*j], ring[2*j+1]
+        L = math.hypot(x1 - x0, z1 - z0); nx, nz = -(z1 - z0) / L, (x1 - x0) / L
+        cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
+        return ([cx + nx * dist, 1.7 + up, cz + nz * dist], [cx, h, cz], fov)
+    if best:
+        out['brick-block'] = wall_view(best[1], best[2], 24, 8)
+        out['brick-block-high'] = wall_view(best[1], best[2], 40, 8, 55, 18)
+        print('brick block', best[1]['id'], round(best[0], 1))
+    # photo close-up: the longest, mostly-valid atlas strip near the centre
+    pbest = None
+    for b in GEO['buildings']:
+        a = (b.get('observed') or {}).get('atlas')
+        if not a: continue
+        c = cen(b['ring'])
+        if math.hypot(*c) > 250: continue
+        for w in a['walls']:
+            if w['ring'] == 0 and w['filled_frac'] < 0.25 and w['len_m'] > 14 and w['h_m'] > 12 and (pbest is None or w['len_m'] > pbest[0]): pbest = (w['len_m'], b, (w['edge'], (w['edge'] + 1) % (len(b['ring']) // 2)))
+    if pbest:
+        out['tex-closeup'] = wall_view(pbest[1], pbest[2], 20, 9, 62)
+        out['tex-closeup-street'] = wall_view(pbest[1], pbest[2], 10, 6, 70)
+        print('tex wall', pbest[1]['id'], round(pbest[0], 1))
+    return out
 def lod2_views():
     """Camera setups for the LoD2 roof shots, derived from the road geometry of the named streets."""
     import math
@@ -167,6 +219,32 @@ try:
         def shot(name):
             page.wait_for_timeout(2500)
             page.screenshot(path=f'{args.out}/{name}.png')
+        if args.colours:
+            out_dir = args.out if args.out != 'docs/m2' else 'docs/m4-colours'
+            os.makedirs(out_dir, exist_ok=True)
+            views = colour_views()
+            fps = {}
+            for variant, q in (('before', 'debug=noobserved'), ('after', ''), ('tex', 'tex=1')):
+                page.goto(f'http://127.0.0.1:{port}/index.html?{q}')
+                page.wait_for_function('globalThis.__twin && globalThis.__twin.world', timeout=120000)
+                page.wait_for_timeout(4000)
+                print(variant, json.dumps(page.evaluate('() => globalThis.__twin.world.buildings && globalThis.__twin.world.buildings.stats'), default=str))
+                for name, v in views.items():
+                    if variant == 'tex' and not (name.startswith('tex') or name in ('norre-sogade-a-street', 'brick-block', 'aerial-close')): continue
+                    view(*v); page.wait_for_timeout(5000 if variant == 'tex' else 2500)
+                    page.screenshot(path=f'{out_dir}/{name}-{variant}.png')
+                    t = page.evaluate('''() => new Promise((res) => { const d = []; let last = performance.now(); const end = last + 2500;
+                      const tick = (now) => { d.push(now - last); last = now; if (now < end) requestAnimationFrame(tick); else { d.sort((a, b) => a - b); res({ fps: +(d.length / 2.5).toFixed(1), medianMs: +d[d.length >> 1].toFixed(2) }); } };
+                      requestAnimationFrame(tick); })''')
+                    fps[f'{name}-{variant}'] = t
+                    print('shot', name, variant, json.dumps(t))
+                if variant == 'tex':
+                    print('tex state', page.evaluate('() => { const m = globalThis.__twin.world.buildings.texManager; return m && { enabled: m.state.enabled, resident: m.state.resident.size, loaded: m.state.loaded, failed: m.state.failed.size }; }'))
+            json.dump(fps, open(f'{out_dir}/fps.json', 'w'), indent=1)
+            errs = [l for l in logs if l.startswith(('error', 'pageerror', 'warning'))]
+            print('\n'.join(errs[:30]))
+            browser.close()
+            raise SystemExit(0)
         if args.lod2:
             out_dir = args.out if args.out != 'docs/m2' else 'docs/m4-lod2'
             os.makedirs(out_dir, exist_ok=True)

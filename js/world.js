@@ -277,7 +277,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   if (geo?.buildings?.length && !debug.split(',').includes('nobuildings')) {
     // Optional LoD2 roofs (tools/lod2 -> data/lod2); `?debug=nolod2` keeps the flat extrusions for before/after shots
     const lod2 = debug.split(',').includes('nolod2') ? null : await loadLod2();
-    buildings = await buildRealBuildings(scene, geo, { lod2 });
+    buildings = await buildRealBuildings(scene, geo, { lod2, observed: !debug.split(',').includes('noobserved') });
     markInit(`buildings(${buildings.stats.buildings})`);
   }
 

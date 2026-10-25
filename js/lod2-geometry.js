@@ -145,11 +145,63 @@ function lod2EdgeTops(rec, b, cleanRings, fallback, minTop) {
   return { tops, rawToClean, cleaned };
 }
 
-/** Roof triangles as [[x, y, z] x3] (counter-clockwise from above), straight from the record. */
-function lod2RoofTriangles(rec) {
+const FRAGMENT_MIN_AREA = 2.0; // m2 of connected roof surface below which a piece is roofer debris
+const FRAGMENT_MIN_WIDTH = 0.3; // m: area / longest extent of a small piece; thinner ones are slivers
+const FRAGMENT_SLIVER_MAX_AREA = 12.0; // slivers are only dropped below this area (long thin real roofs stay)
+
+/**
+ * Roof triangles worth drawing as [[x, y, z] x3] indices into `rec.idx` order: roofer meshes carry small disconnected
+ * fragments and thin slivers (point-cloud noise: chimneys, antennas, cars at the edge) that show up as spikes near streets.
+ * Triangles are grouped into connected pieces (vertices welded at 1 cm); a piece is dropped when its area is under
+ * `minArea`, or when it is a thin sliver (area / longest extent under `minWidth`, area under `sliverMaxArea`). The largest
+ * piece is always kept, so a roof never vanishes. Returns { keep: Uint8Array per triangle (1 = keep), pieces, dropped }.
+ */
+function roofFragmentMask(rec, { minArea = FRAGMENT_MIN_AREA, minWidth = FRAGMENT_MIN_WIDTH, sliverMaxArea = FRAGMENT_SLIVER_MAX_AREA } = {}) {
+  const tris = [];
+  for (let t = 0; t < rec.nT; t++) if (rec.kind[t] === ROOF) tris.push(t);
+  const weld = new Map();
+  const vid = (v) => {
+    const key = `${Math.round(rec.pos[3 * v] * 100)},${Math.round(rec.pos[3 * v + 1] * 100)},${Math.round(rec.pos[3 * v + 2] * 100)}`;
+    if (!weld.has(key)) weld.set(key, weld.size);
+    return weld.get(key);
+  };
+  const parent = [];
+  const find = (a) => { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; };
+  const ids = tris.map((t) => [0, 1, 2].map((k) => vid(rec.idx[3 * t + k])));
+  for (let i = 0; i < weld.size; i++) parent.push(i);
+  for (const [a, b, c] of ids) { parent[find(a)] = find(b); parent[find(b)] = find(c); }
+  const pieces = new Map();
+  tris.forEach((t, i) => {
+    const root = find(ids[i][0]);
+    const v = [0, 1, 2].map((k) => rec.idx[3 * t + k]);
+    const P = v.map((q) => [rec.pos[3 * q], rec.pos[3 * q + 1], rec.pos[3 * q + 2]]);
+    const area = triArea2(P) / 2;
+    let piece = pieces.get(root);
+    if (!piece) { piece = { area: 0, min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity], tris: [] }; pieces.set(root, piece); }
+    piece.area += area;
+    piece.tris.push(t);
+    for (const p of P) for (let k = 0; k < 3; k++) { piece.min[k] = Math.min(piece.min[k], p[k]); piece.max[k] = Math.max(piece.max[k], p[k]); }
+  });
+  const keep = new Uint8Array(rec.nT);
+  let biggest = null;
+  for (const piece of pieces.values()) if (!biggest || piece.area > biggest.area) biggest = piece;
+  let dropped = 0;
+  for (const piece of pieces.values()) {
+    const extent = Math.max(Math.hypot(piece.max[0] - piece.min[0], piece.max[2] - piece.min[2]), 1e-6);
+    const sliver = piece.area < sliverMaxArea && piece.area / extent < minWidth;
+    const drop = piece !== biggest && (piece.area < minArea || sliver);
+    if (drop) { dropped += piece.tris.length; continue; }
+    for (const t of piece.tris) keep[t] = 1;
+  }
+  return { keep, pieces: pieces.size, dropped };
+}
+
+/** Roof triangles as [[x, y, z] x3] (counter-clockwise from above) from the record, fragments filtered (`filter: false` keeps all). */
+function lod2RoofTriangles(rec, { filter = true } = {}) {
+  const mask = filter ? roofFragmentMask(rec).keep : null;
   const out = [];
   for (let t = 0; t < rec.nT; t++) {
-    if (rec.kind[t] !== ROOF) continue;
+    if (rec.kind[t] !== ROOF || (mask && !mask[t])) continue;
     out.push([0, 1, 2].map((k) => { const v = rec.idx[3 * t + k]; return [rec.pos[3 * v], rec.pos[3 * v + 1], rec.pos[3 * v + 2]]; }));
   }
   return out;
@@ -174,11 +226,11 @@ function clipAbove(tri, yMin) {
   return out;
 }
 
-const triArea2 = (t) => {
+function triArea2(t) {
   const ux = t[1][0] - t[0][0], uy = t[1][1] - t[0][1], uz = t[1][2] - t[0][2];
   const vx = t[2][0] - t[0][0], vy = t[2][1] - t[0][1], vz = t[2][2] - t[0][2];
   return Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
-};
+}
 
 /**
  * Roofer wall triangles worth drawing on top of the extruded walls: outer-wall triangles clipped to above the cleaned
@@ -212,4 +264,4 @@ function lod2WallPieces(rec, lod) {
   return out;
 }
 
-export { LOD2_NO_TOP, ROOF, WALL, parseLod2Record, loadLod2, rawEdges, lod2EdgeTops, lod2RoofTriangles, lod2WallPieces, clipAbove };
+export { LOD2_NO_TOP, ROOF, WALL, parseLod2Record, loadLod2, rawEdges, lod2EdgeTops, lod2RoofTriangles, roofFragmentMask, lod2WallPieces, clipAbove };

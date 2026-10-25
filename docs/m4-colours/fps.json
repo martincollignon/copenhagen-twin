@@ -1,0 +1,102 @@
+{
+ "aerial-before": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "aerial-close-before": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "norre-sogade-a-street-before": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "norre-sogade-a-aerial-before": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "norre-sogade-b-street-before": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "norre-sogade-b-aerial-before": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "brick-block-before": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "brick-block-high-before": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "tex-closeup-before": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "tex-closeup-street-before": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "aerial-after": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "aerial-close-after": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "norre-sogade-a-street-after": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "norre-sogade-a-aerial-after": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "norre-sogade-b-street-after": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "norre-sogade-b-aerial-after": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "brick-block-after": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "brick-block-high-after": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "tex-closeup-after": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "tex-closeup-street-after": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "aerial-close-tex": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "norre-sogade-a-street-tex": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "brick-block-tex": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "tex-closeup-tex": {
+  "fps": 60.4,
+  "medianMs": 16.7
+ },
+ "tex-closeup-street-tex": {
+  "fps": 60.8,
+  "medianMs": 16.7
+ }
+}

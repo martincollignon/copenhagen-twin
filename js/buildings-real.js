@@ -3,7 +3,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Quadtree } from './quadtree.js';
 import { createPreWarBuildingMaterial, createCurtainWallMaterial } from './tsl-materials.js';
+import { attribute } from 'three/tsl';
 import { createAccumulator, addBuilding } from './building-geometry.js';
+import { describeAppearance, texturedWalls } from './appearance.js';
 import { CPH_FRAME, toLocal } from './city-config.js';
 
 // js/buildings-real.js
@@ -16,6 +18,11 @@ const HEROES_DIR = './data/heroes';
 const STREAM_RADIUS = 2400; // cells further than this from the camera are hidden (the district is 1.5 km across)
 const LEAF_CAPACITY = 48;
 const LEAF_DEPTH = 5;
+const TEX_DIR = './data/tex';
+const TEX_RADIUS = 110; // buildings further than this from the camera keep tone + procedural windows
+const TEX_MAX_BUILDINGS = 28; // texture budget: photo atlases resident at once (nearest first, LRU eviction)
+const TEX_CONCURRENCY = 4;
+const TEX_MAX_FAILURES = 3; // consecutive failed loads before photo mode switches itself off (no 404 spam)
 
 function toBufferGeometry(wall) {
   const g = new THREE.BufferGeometry();
@@ -35,6 +42,7 @@ function roofGeometry(roof) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(roof.position, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(roof.normal, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(roof.color, 3));
+  g.setAttribute('roofMat', new THREE.Float32BufferAttribute(roof.mat, 2)); // roughness, metalness by roof type hint
   g.setIndex(new THREE.BufferAttribute(new Uint32Array(roof.index), 1));
   g.computeBoundingSphere();
   return g;
@@ -163,6 +171,7 @@ function createInfoPanel() {
   document.body.appendChild(el);
   const tag = (text, kind) => `<span style="padding:0 5px;border-radius:4px;margin-left:6px;font-size:10px;letter-spacing:.04em;text-transform:uppercase;background:${kind === 'measured' ? '#2f6f4f' : kind === 'inferred' ? '#7a5a1c' : '#3b4a66'};color:#fff">${text}</span>`;
   const row = (label, value, conf) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0;border-top:1px solid rgba(255,255,255,0.07)"><span style="opacity:.65">${label}</span><span style="text-align:right">${value}${conf ? tag(conf, conf) : ''}</span></div>`;
+  const swatch = (rgb) => (Array.isArray(rgb) ? `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(255,255,255,.35);background:rgb(${rgb.map((c) => Math.round(c * 255)).join(',')})"></span>` : '');
   const e = (v) => (v === null || v === undefined || v === '' ? '<span style="opacity:.5">unknown</span>' : String(v).replace(/[<>&]/g, ''));
   return {
     element: el,
@@ -177,6 +186,9 @@ function createInfoPanel() {
         row('Storeys', e(info.storeys), c.storeys),
         row('Height', e(info.heightText), c.eave),
         row('Roof', `${e(info.roof)} / ${e(info.roofMaterial)}`, c.roof),
+        info.appearance?.wall ? row('Wall colour', `${swatch(info.appearance.wall.tone)}${e(info.appearance.wall.text)}${info.appearance.wall.photo ? ' + photo' : ''}`, info.appearance.wall.kind === 'observed' ? 'measured' : info.appearance.wall.kind === 'prior' ? 'scaled' : 'inferred') : '',
+        ...(info.appearance?.wall?.flags || []).map((t) => `<div style="padding:1px 0;color:#e7c27a;font-size:11px">${e(t)}</div>`),
+        info.appearance?.roof ? row('Roof colour', `${swatch(info.appearance.roof.tone)}${e(info.appearance.roof.text)}`, info.appearance.roof.kind === 'observed' ? 'measured' : 'inferred') : '',
         info.roofSource ? row('Roof geometry', e(info.roofSource), info.roofSource.startsWith('LoD2') ? 'measured' : 'inferred') : '',
         row('Wall', e(info.wallMaterial), c.wall_material),
         row('Facade', `floor ${e(f.floor_h)} m, bay ${e(f.bay_w)} m, ${e(f.ground_type)}`, c.facade ?? 'inferred'),
@@ -189,7 +201,110 @@ function createInfoPanel() {
   };
 }
 
-async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoPanel = true, lod2 = null } = {}) {
+/** `?tex=1` (or `?debug=tex`): wall photos from data/tex for the buildings near the camera. */
+function texRequested() {
+  if (typeof location === 'undefined') return false;
+  const q = new URLSearchParams(location.search);
+  return q.get('tex') === '1' || (q.get('debug') || '').split(',').includes('tex');
+}
+
+/**
+ * Lazy photo walls. Per building one small mesh (photo quads of the usable atlas strips, lifted 2.5 cm off the extruded
+ * wall so they win the depth test) with its own atlas texture. Only the TEX_MAX_BUILDINGS nearest buildings within
+ * TEX_RADIUS of the camera are resident (LRU); everything else keeps tone + procedural windows. The atlas folder is probed
+ * once with the first atlas; if it is absent (data/tex is gitignored) photo mode turns itself off quietly.
+ */
+function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {}) {
+  const state = { enabled: true, probed: false, failures: 0, resident: new Map(), loading: new Set(), failed: new Set(), lastRun: 0, loaded: 0 };
+  const loader = typeof createImageBitmap === 'function';
+
+  async function fetchBitmap(file) {
+    const response = await fetchImpl(`./data/${file}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    return createImageBitmap(blob, { imageOrientation: 'none', premultiplyAlpha: 'none' });
+  }
+
+  async function load(c) {
+    state.loading.add(c.id);
+    try {
+      const bitmap = await fetchBitmap(c.walls.file);
+      const texture = new THREE.Texture(bitmap);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.generateMipmaps = true;
+      texture.minFilter = THREE.LinearMipmapLinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.anisotropy = 4;
+      texture.flipY = false;
+      texture.needsUpdate = true;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(c.walls.position, 3));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(c.walls.normal, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(c.walls.uv, 2));
+      g.setIndex(c.walls.index);
+      g.computeBoundingSphere();
+      const material = new THREE.MeshStandardNodeMaterial({ map: texture, color: 0x8c8c8c, roughness: 0.9, metalness: 0.0 }) // photos already carry their sun: scaled down so the engine light does not double it;
+      const mesh = new THREE.Mesh(g, material);
+      mesh.name = `wall-photos-${c.id}`;
+      mesh.receiveShadow = true;
+      mesh.raycast = () => {}; // picking uses the extruded walls underneath
+      root.add(mesh);
+      state.resident.set(c.id, { mesh, texture, material, bitmap, last: performance.now() });
+      state.loaded++;
+      state.failures = 0;
+    } catch (error) {
+      state.failed.add(c.id);
+      if (++state.failures >= TEX_MAX_FAILURES) {
+        state.enabled = false;
+        console.info('[cph] wall photos unavailable (data/tex missing or unreadable); keeping tone + procedural facades:', error?.message || error);
+      }
+    } finally {
+      state.loading.delete(c.id);
+    }
+  }
+
+  function evict(id) {
+    const r = state.resident.get(id);
+    if (!r) return;
+    root.remove(r.mesh);
+    r.mesh.geometry.dispose();
+    r.material.dispose();
+    r.texture.dispose();
+    r.bitmap.close?.();
+    state.resident.delete(id);
+  }
+
+  /** Called every frame with the camera position; does its work at most every 350 ms. */
+  function update(x, z, now = performance.now()) {
+    if (!state.enabled || !loader || now - state.lastRun < 350) return;
+    state.lastRun = now;
+    const near = [];
+    for (const c of candidates) {
+      const d = Math.hypot(c.cx - x, c.cz - z);
+      if (d < TEX_RADIUS && !state.failed.has(c.id)) near.push([d, c]);
+    }
+    near.sort((a, b) => a[0] - b[0]);
+    const want = near.slice(0, TEX_MAX_BUILDINGS);
+    const wantIds = new Set(want.map(([, c]) => c.id));
+    for (const id of [...state.resident.keys()]) if (!wantIds.has(id) && !near.some(([, c]) => c.id === id)) evict(id);
+    // Over budget: drop the farthest residents that are no longer wanted
+    for (const id of [...state.resident.keys()]) if (!wantIds.has(id) && state.resident.size + state.loading.size > TEX_MAX_BUILDINGS) evict(id);
+    const todo = want.filter(([, c]) => !state.resident.has(c.id) && !state.loading.has(c.id));
+    const run = async () => {
+      if (!state.probed && todo.length) {
+        state.probed = true;
+        await load(todo.shift()[1]); // the first atlas doubles as the presence probe
+        if (!state.enabled) return;
+      }
+      for (const [, c] of todo.slice(0, Math.max(0, TEX_CONCURRENCY - state.loading.size))) if (state.enabled) load(c);
+    };
+    run();
+  }
+
+  return { state, update, evict, get active() { return state.resident.size; } };
+}
+
+async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoPanel = true, lod2 = null, tex = texRequested(), observed = true } = {}) {
   const buildings = geo.buildings || [];
   const heroIds = new Set((geo.heroes || []).map((h) => h.building_id));
   const byId = new Map(buildings.map((b) => [b.id, b]));
@@ -210,11 +325,15 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
   const glass = createCurtainWallMaterial({ wallAttr: true, seed: 3.0 });
   const roofMaterial = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.88, metalness: 0.02 });
   roofMaterial.name = 'cph-roof';
+  // Roughness / metalness by roof type hint (tagpap dark matte, tile, slate, metal, ...): per-vertex from the roof geometry
+  roofMaterial.roughnessNode = attribute('roofMat', 'vec2').x;
+  roofMaterial.metalnessNode = attribute('roofMat', 'vec2').y;
 
   const leaves = [];
   const pickables = [];
   const glassAcc = createAccumulator();
   let triangles = 0;
+  const texCandidates = [];
 
   // LoD2 roofs (tools/lod2): every building with a measured roofer record gets its pitched roof; the rest keep the flat
   // extrusion. The join is by building id, so the geodata compiler never needs to know about LoD2.
@@ -233,8 +352,13 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     const acc = createAccumulator();
     for (const { b } of leaf.items) {
       const glassy = b.wall_material === 'glas';
-      const added = addBuilding(acc, b, { ...(glassy ? { wallAcc: glassAcc } : {}), ...(lod2Records.has(b.id) ? { lod2: lod2Records.get(b.id) } : {}) });
+      const quads = tex && observed && !glassy && b.observed?.atlas?.walls?.length ? [] : null;
+      const added = addBuilding(acc, b, { ...(glassy ? { wallAcc: glassAcc } : {}), ...(lod2Records.has(b.id) ? { lod2: lod2Records.get(b.id) } : {}), ...(quads ? { quads } : {}), ...(observed ? {} : { observed: false }) });
       if (added) triangles += added.wallTriangles + added.roofTriangles;
+      if (added && quads) {
+        const walls = texturedWalls(b, quads, added.mapping);
+        if (walls) { const [cx, cz] = ringCentre(b.ring); texCandidates.push({ id: b.id, cx, cz, walls }); }
+      }
     }
     const group = new THREE.Group();
     group.name = 'buildings-cell';
@@ -299,6 +423,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     }
   }));
 
+  const texManager = tex ? createTexManager(root, texCandidates) : null;
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   const panel = withInfoPanel && typeof document !== 'undefined' ? createInfoPanel() : null;
@@ -307,6 +432,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
 
   /** Hides cells beyond STREAM_RADIUS (cheap: a few dozen cells). Called every frame with the camera position. */
   function update(x, z) {
+    if (texManager) texManager.update(camera ? camera.position.x : x, camera ? camera.position.z : z);
     for (const g of leaves) {
       const dx = g.userData.centre[0] - x;
       const dz = g.userData.centre[1] - z;
@@ -326,15 +452,16 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
       while (o && !o.userData.buildingId) o = o.parent;
       if (o?.userData.buildingId) return { id: o.userData.buildingId, point: hit.point, distance: hit.distance };
       const range = hit.object.userData.ranges && rangeAt(hit.object.userData.ranges, hit.faceIndex);
-      if (range) return { id: range.id, point: hit.point, distance: hit.distance };
+      if (range) return { id: range.id, point: hit.point, distance: hit.distance, surface: hit.object.name === 'roofs' ? 'roof' : 'wall' };
     }
     return null;
   }
 
-  function showBuilding(id, isPinned = false) {
+  function showBuilding(id, isPinned = false, hit = null) {
     const b = byId.get(id);
     if (!b || !panel) return null;
     const info = describeBuilding(b, lod2?.entry(id));
+    info.appearance = describeAppearance(b, hit?.surface || 'wall', hit?.point || null, { textured: !!texManager?.state.resident.has(id) });
     panel.show(info, isPinned);
     return info;
   }
@@ -354,22 +481,23 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
       if (now - last < 80) return;
       last = now;
       const hit = pick(...toNdc(e));
-      if (hit) showBuilding(hit.id); else panel?.hide();
+      if (hit) showBuilding(hit.id, false, hit); else panel?.hide();
     });
     domElement.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
     domElement.addEventListener('pointerup', (e) => {
       if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
       const hit = pick(...toNdc(e));
-      if (hit && hit.id !== pinned) { pinned = hit.id; showBuilding(hit.id, true); } else { pinned = null; if (!hit) panel?.hide(); }
+      if (hit && hit.id !== pinned) { pinned = hit.id; showBuilding(hit.id, true, hit); } else { pinned = null; if (!hit) panel?.hide(); }
     });
   }
 
   const stats = {
+    tex: texManager ? { candidates: texCandidates.length } : null,
     buildings: buildings.length - heroIds.size, heroes: heroStatus, cells: leaves.length, triangles, lod2: lod2Records.size,
     meshes: pickables.length + heroGroups.reduce((n, g) => n + g.children[0].children.length, 0)
   };
 
-  return { group: root, leaves, update, pick, attach, showBuilding, stats, byId, heroGroups, heroStatus };
+  return { group: root, leaves, update, pick, attach, showBuilding, stats, byId, heroGroups, heroStatus, texManager };
 }
 
 export { buildRealBuildings, loadHero, describeBuilding, rangeAt, mergeByMaterial };
