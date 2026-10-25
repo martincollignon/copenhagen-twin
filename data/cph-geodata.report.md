@@ -1,6 +1,6 @@
 # cph-geodata provenance report
 
-Generated: 2026-10-25T19:08:56+00:00  
+Generated: 2026-10-25T19:10:13+00:00  
 Schema: `cph-geodata/1`, origin [723900.0, 6176500.0, 6.84], bbox [-750.0, -750.0, 750.0, 750.0]
 
 ## Counts per layer
@@ -30,14 +30,15 @@ Caveat: the footprints themselves come from KK's open copy of GeoDanmark `Bygnin
 
 ## Building heights and attributes
 
-- Buildings with a DSM-measured height: **0 / 2517 (0.0%)**
+- Buildings with a DSM-measured height: **1905 / 2517 (75.7%)**
 - Buildings with any height source: 2517 / 2517
-  - kk:bygning:tagrendehoejde_estimat: 2275
-  - default:outbuilding-height: 199
-  - default:storeys*3.0: 43
+  - dsm:p60-p95: 1905
+  - kk:bygning:tagrendehoejde_estimat: 481
+  - default:outbuilding-height: 105
+  - default:storeys*3.0: 26
 - With BBR UUID link: 1682 / 2517
 - Storeys inferred (no BBR value): 1154
-- Ground measured (DTM): 0; otherwise ground = 0 (flat-district assumption, conf inferred)
+- Ground measured (DTM): 1905; otherwise ground = 0 (flat-district assumption, conf inferred)
 - Facade presets: outbuilding=1146, karre-1900=679, pre-1870=378, funk-brick-1945=154, commercial-box=62, slab-1960s=50, modern-2000=46, other=2
 - Roof kind: pitched=1296, unknown=1086, flat=135
 - Heroes: ['gdk:1064715171']
@@ -64,7 +65,7 @@ Road notes: {'oneway_kk_only': 42}
 
 ## Failed / empty layers
 
-- `dhm:wcs`: no DHM token available (set DHM_TERRAIN_TOKEN or pass --env-file); heights fall back to KK tagrendehoejde_estimat
+None.
 
 ## Conventions
 
