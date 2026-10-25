@@ -146,7 +146,7 @@ class GamepadControls {
     const mode = this.controller.activeMode;
     let drive = -movement.y;
     let vertical = 0;
-    if (mode === 'car' || mode === 'cyclist') {
+    if (mode === 'car' || mode === 'cyclist' || mode === 'cargobike') {
       drive = Math.max(0, drive, buttonValue(pad, 7)) - Math.max(0, -drive, buttonValue(pad, 6));
     } else if (mode === 'helicopter') {
       vertical = buttonValue(pad, 7) - buttonValue(pad, 6);

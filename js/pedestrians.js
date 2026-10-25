@@ -1425,7 +1425,7 @@ class PersonRig {
    * Riding a bicycle: `root` (Object3D) is the bike frame (pose in its parent's space, e.g. the scene), `crank` the
    * pedal crank angle. Seat, bars and bottom bracket in the frame's space (metres, +Z forward).
    */
-  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17 }) {
+  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17, steerAngle = 0, steerPivot = null, upright = 0 }) {
     const s = this.s;
     const j = this.bind;
     this.gait = 0;
@@ -1434,9 +1434,10 @@ class PersonRig {
     root.matrixWorld.decompose(_rootPos, _qRoot, _v);
     const toWorld = (local) => local.applyQuaternion(_qRoot).add(_rootPos);
 
-    // Pelvis on the saddle, leaning forward; chest further forward, head up looking ahead
-    qX(_qPelvis, 0.42).premultiply(_qRoot);
-    _pelvis.set(0, seat.y + 0.055 * s, seat.z + 0.03);
+    // Riders lift off the saddle and straighten under power; zero upright preserves the seated pose.
+    upright = Math.max(0, Math.min(1, upright));
+    qX(_qPelvis, 0.42 - upright * 0.25).premultiply(_qRoot);
+    _pelvis.set(0, seat.y + 0.055 * s + 0.14 * upright * s, seat.z + 0.03 + 0.09 * upright);
     toWorld(_pelvis);
     this.writeBone(BONE.PELVIS, _qPelvis, _pelvis);
     _qChest.copy(_qPelvis).multiply(qX(_q, 0.2));
@@ -1455,6 +1456,7 @@ class PersonRig {
       const side = SIDES[i];
       _shoulder.copy(j[LIMB.upperArm[i]]).sub(j[BONE.CHEST]).multiplyScalar(s).applyQuaternion(_qChest).add(_chest);
       _target.set(side * gripHalf, bars.y + 0.02, bars.z - 0.07);
+      if (steerPivot && steerAngle) _target.sub(steerPivot).applyAxisAngle(_yAxis, steerAngle).add(steerPivot);
       toWorld(_target);
       const l1 = UPPER_ARM * s;
       const l2 = (FOREARM + 0.07) * s;
