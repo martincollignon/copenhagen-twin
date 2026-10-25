@@ -8,7 +8,7 @@ import { bikePhase, vehiclePhase, walkPhase, signalOffset, CYCLE, GREEN, BIKE_LE
 const geo = JSON.parse(readFileSync(new URL('../data/cph-geodata.json', import.meta.url), 'utf8'));
 const log = console.info;
 console.info = () => {};
-const network = buildRoadNetwork([], [], geo.points.signals, { cph: true, roadGraph: geo.roadGraph });
+const network = buildRoadNetwork(geo.points.signals, { cph: true, roadGraph: geo.roadGraph });
 console.info = log;
 
 test('the road network builds from the roadGraph with at least 95% of vehicular links usable', () => {

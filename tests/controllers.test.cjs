@@ -19,13 +19,13 @@ function eventTarget() {
   };
 }
 
-function keyboardHarness(nyc = {}) {
+function keyboardHarness(overrides = {}) {
   const window = eventTarget();
   const document = { ...eventTarget(), hidden: false };
   const config = {
-    streetZ: () => 0,
+    TELEPORT_LOCATIONS: { ns37: { z: 0 } },
     isTypingInField: (event) => ['INPUT', 'SELECT'].includes(event.target?.tagName),
-    ...nyc
+    ...overrides
   };
   const { ThirdPersonControllerManager } = loadModule(source, {
     globals: { window, document },
@@ -35,8 +35,7 @@ function keyboardHarness(nyc = {}) {
       './tsl-materials.js': {},
       './actor-models.js': {},
       './pedestrians.js': {},
-      './vehicle-lights.js': {},
-      './landmark-state.js': { landmarkState: {} }
+      './vehicle-lights.js': {}
     }
   });
   // Exercise the production event handlers without constructing the scene's 3D models.

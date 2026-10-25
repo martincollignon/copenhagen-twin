@@ -1,5 +1,5 @@
 // js/quadtree.js
-// Spatial 2D quadtree shared by the Manhattan lot streamer (buildings.js) and the Copenhagen real buildings
+// Spatial 2D quadtree used by the Copenhagen real buildings
 // (buildings-real.js). Items need `cx` / `cz` (centre) fields.
 
 /**

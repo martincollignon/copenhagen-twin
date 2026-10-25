@@ -5,60 +5,80 @@ const test = require('node:test');
 const vm = require('node:vm');
 
 const read = (path) => readFileSync(join(__dirname, '..', path), 'utf8');
-let TELEPORT_LOCATIONS, LANDMARK_SITES, blockAt, nearestRoads, getIslandBoundsAtZ;
+let TELEPORT_LOCATIONS, ISLAND_BOUNDS;
 test.before(async () => {
-  ({ TELEPORT_LOCATIONS, LANDMARK_SITES, blockAt, nearestRoads, getIslandBoundsAtZ } = await import('../js/city-config-nyc.js'));
+  ({ TELEPORT_LOCATIONS, ISLAND_BOUNDS } = await import('../js/city-config.js'));
 });
 
-test('every teleport button has a destination on a real roadway inside Manhattan', () => {
+// Distance from (x, z) to the nearest roadGraph link carrying `name`
+function distanceToStreet(geo, name, x, z) {
+  const rg = geo.roadGraph;
+  const N = rg.nodes;
+  let best = Infinity;
+  for (const l of rg.links) {
+    if (rg.names[l[6]] !== name) continue;
+    const ax = N[2 * l[0]], az = N[2 * l[0] + 1], bx = N[2 * l[1]], bz = N[2 * l[1] + 1];
+    const dx = bx - ax, dz = bz - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+    best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z));
+  }
+  return best;
+}
+
+test('every teleport button has a Copenhagen destination inside the district', () => {
   const buttons = [...read('index.html').matchAll(/data-teleport="([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(Object.keys(TELEPORT_LOCATIONS).sort(), buttons.sort());
+  assert.ok(buttons.length >= 5);
   for (const [name, point] of Object.entries(TELEPORT_LOCATIONS)) {
     assert.ok(Number.isFinite(point.heading), `${name} has a heading`);
-    assert.equal(blockAt(point.x, point.z), null, `${name} lands outside building blocks`);
-    const shore = getIslandBoundsAtZ(point.z);
-    assert.ok(point.x > shore.westX + 8 && point.x < shore.eastX - 8, `${name} stays on the island`);
-    const nearby = nearestRoads(point.x, point.z, 20);
-    assert.ok(nearby.some(({ road, dist }) => dist < road.w / 2), `${name} lands within a street's width`);
+    assert.ok(point.x > ISLAND_BOUNDS.minX && point.x < ISLAND_BOUNDS.maxX, `${name} inside the district in x`);
+    assert.ok(point.z > ISLAND_BOUNDS.minZ && point.z < ISLAND_BOUNDS.maxZ, `${name} inside the district in z`);
   }
 });
 
-test('One World Trade Center arrives on Vesey Street facing the tower', () => {
-  const point = TELEPORT_LOCATIONS.owtc;
-  const tower = LANDMARK_SITES['One World Trade Center'];
-  assert.ok(nearestRoads(point.x, point.z, 20).some(({ road, dist }) => road.name === 'Vesey St' && dist < 1));
-  const distance = Math.hypot(tower.x - point.x, tower.z - point.z);
-  assert.ok(distance > 100 && distance < 220, 'leave space for the tower view');
-  const alignment = ((tower.x - point.x) * Math.sin(point.heading) + (tower.z - point.z) * Math.cos(point.heading)) / distance;
-  assert.ok(alignment > 0.999, 'face the tower rather than the neighboring buildings');
+test('street teleports land on the street they name', () => {
+  const geo = JSON.parse(read('data/cph-geodata.json'));
+  const streets = {
+    dlb: 'Dronning Louises Bro', peblinge: 'Peblinge Dossering', nbro: 'Nørrebrogade', blaag: 'Blågårds Plads'
+  };
+  for (const [key, street] of Object.entries(streets)) {
+    const p = TELEPORT_LOCATIONS[key];
+    assert.ok(distanceToStreet(geo, street, p.x, p.z) < 12, `${key} is within 12 m of ${street}`);
+  }
 });
 
-test('preset and map teleports share arrival resets and mark the resolved landing point', () => {
+test('no New York destinations or labels remain in the teleport and camera menus', () => {
+  const html = read('index.html');
+  const menus = html.slice(html.indexOf('id="teleport-popover"'), html.indexOf('id="camera-popover"') + 3000);
+  assert.ok(!/Empire|Times Square|Chrysler|Bryant|Central Park|Manhattan|Taxi/i.test(menus));
+  assert.ok(!/NYC|mph/.test(html));
+  assert.match(html, /<title>Copenhagen Twin<\/title>/);
+  assert.match(html, /km\/h/);
+});
+
+test('every scenic camera button maps to a preset and the teleport presets have a camera', () => {
+  const ids = [...read('index.html').matchAll(/data-camera="([^"]+)"/g)].map((match) => match[1]);
+  const src = read('js/cameras.js');
+  for (const id of ids) assert.match(src, new RegExp(`id: '${id}'`), `${id} is a camera preset`);
+  for (const key of Object.keys(TELEPORT_LOCATIONS)) assert.ok(ids.includes(key), `${key} has a scenic camera`);
+});
+
+test('preset teleports share arrival resets', () => {
   const main = read('js/main.js');
   const start = main.indexOf('  function teleportTo(');
-  const end = main.indexOf('  const openMapBtn', start);
+  const end = main.indexOf('  if (hudToggleBtn) {', start);
+  assert.ok(start > 0 && end > start);
   const handlers = new Map();
   const calls = [];
-  const landed = { x: -305.7, z: 5210 };
-  let map;
   const environment = {
     TELEPORT_LOCATIONS,
     controllerManager: {
-      teleportActiveTo: (...args) => { calls.push(['teleport', ...args]); return landed; }
+      teleportActiveTo: (...args) => { calls.push(['teleport', ...args]); return { x: 0, z: 0 }; }
     },
     touchControls: { reset: () => calls.push(['touch']) },
     gamepadControls: { reset: () => calls.push(['gamepad']) },
     cameraSystem: { resetForTeleport: () => calls.push(['camera']) },
     selectCamera: (...args) => calls.push(['selectCamera', ...args]),
-    getLocationLabel: (x, z) => `${x}, ${z}`,
-    cityBlocks: { allBlocks: [] },
-    trafficSystem: {},
-    world: {
-      createMapSystem: (options) => {
-        map = { onTeleport: options.onTeleport };
-        return map;
-      }
-    },
     teleportButtons: Object.keys(TELEPORT_LOCATIONS).map((key) => ({
       getAttribute: () => key,
       addEventListener: (_event, handler) => handlers.set(key, handler)
@@ -72,12 +92,5 @@ test('preset and map teleports share arrival resets and mark the resolved landin
     assert.deepEqual(calls, [
       ['teleport', point.x, point.z, point.heading], ['touch'], ['gamepad'], ['camera'], ['selectCamera', 'chase', true]
     ]);
-    assert.equal(map.waypoint.x, landed.x);
-    assert.equal(map.waypoint.z, landed.z);
   }
-  map.waypoint = { x: 100, z: 200, name: 'inside a building' };
-  map.onTeleport(100, 200);
-  assert.equal(map.waypoint.x, landed.x, 'map marker follows the safe position returned by the controller');
-  assert.equal(map.waypoint.z, landed.z);
-  assert.equal(map.waypoint.name, `${landed.x}, ${landed.z}`);
 });

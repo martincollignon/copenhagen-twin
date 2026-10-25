@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
+const { readFileSync, readdirSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
 
@@ -8,7 +8,7 @@ const importMap = html.match(/<script type="importmap">([^]*?)<\/script>/);
 const preloads = [...html.matchAll(/<link rel="modulepreload" href="([^"]+)"\s*\/>/g)];
 const entries = [...html.matchAll(/<script type="module" src="([^"]+)"><\/script>/g)];
 
-test('city module preloads start after the import map and before stylesheets', () => {
+test('module preloads start after the import map and before stylesheets', () => {
   assert.ok(importMap);
   assert.ok(preloads.length > 0);
   const stylesheetIndex = html.indexOf('rel="stylesheet"');
@@ -26,13 +26,14 @@ test('city module preloads start after the import map and before stylesheets', (
 
 test('native module entry and imports share canonical preloaded URLs on GitHub Pages', () => {
   const links = preloads.map((match) => match[1]);
-  assert.equal(links.length, 20, 'engine-core modules only; city worlds load dynamically');
+  const modules = readdirSync(join(__dirname, '../js')).filter((file) => file.endsWith('.js'));
+  assert.equal(links.length, modules.length, 'every module of the single static import graph is preloaded');
   assert.equal(new Set(links).size, links.length, 'each module is preloaded once');
   assert.equal(entries.length, 1);
   assert.equal(entries[0][1], './js/main.js');
   assert.ok(links.includes(entries[0][1]));
   assert.equal([...html.matchAll(/<script\b/g)].length, 2, 'only the import map and native entry are needed');
-  const base = 'https://example.test/slop-newyork/';
+  const base = 'https://example.test/cph-twin/';
   const urls = new Set(links.map((src) => new URL(src, base).href));
   for (const src of links) {
     assert.match(src, /^\.\/js\/[\w-]+\.js$/, 'preloads use the same unversioned paths as native imports');

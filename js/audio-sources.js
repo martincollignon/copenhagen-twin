@@ -1,4 +1,4 @@
-import { signalPhase, walkSignal } from './city-config.js';
+import { vehiclePhase } from './signal-plan.js';
 
 const MOTOR_RANGE = 180;
 const SIREN_RANGE = 220;
@@ -83,14 +83,13 @@ class NearestSources {
 // Read at audio's control rate (10 Hz), after simulation updates. Snapshots remain valid until the next collect().
 // IDs are the simulation objects, independent of pooled record order, so voices survive ranking changes/recycling.
 class CityAudioSources {
-  constructor({ controllerManager, trafficSystem, highwayTraffic, streetDetails }) {
+  constructor({ controllerManager, trafficSystem, audioSignals = [] }) {
     this.controllers = controllerManager;
     this.players = Object.values(controllerManager.entities);
     this.cars = trafficSystem.cars;
     this.buses = trafficSystem.buses;
     this.peds = trafficSystem.peds;
-    this.highwayCars = highwayTraffic.cars;
-    this.signalSites = streetDetails.audioSignals;
+    this.signalSites = audioSignals; // [{ x, y, z, walk(elapsed) }]
     this.motors = new NearestSources(10);
     this.sirens = new NearestSources(2);
     this.people = new NearestSources(6);
@@ -147,15 +146,15 @@ class CityAudioSources {
       const v = vehicles[i];
       if (!v.edge) continue;
       const d2 = this.distanceSq(v.x, 0.7, v.z);
-      const range = v.isPolice ? SIREN_RANGE : MOTOR_RANGE;
+      const range = MOTOR_RANGE;
       if (!Number.isFinite(d2) || d2 > range * range) continue;
       if (d2 <= MOTOR_RANGE * MOTOR_RANGE) {
         this.snapshot.traffic += (1 - d2 / (MOTOR_RANGE * MOTOR_RANGE)) * (0.2 + 0.8 * unit(v.speed / 12));
       }
-      const green = !v.edge.to.signal || signalPhase(elapsed, v.edge.axisIndex === 0) === 'green';
+      const green = !v.edge.to.signal || vehiclePhase(v.edge.to.sigOffset, v.edge.axisIndex, elapsed) === 'green';
       const blocked = v.wait > 2 && v.speed < 0.5 && v.gap < 8 && v.leaderSpeed < 0.5 && green && !v.conn && !v.yielding;
       this.motor(v, v.bus ? 'bus' : v.isSUV ? 'suv' : 'sedan', v.x, 0.7, v.z,
-        v.speed, roadLoad(v.speed, v.acc, v.driver.a), v.yaw + v.yawOffset, !!v.isPolice, false, seedAt(seedOffset + i), blocked);
+        v.speed, roadLoad(v.speed, v.acc, v.driver.a), v.yaw + v.yawOffset, false, false, seedAt(seedOffset + i), blocked);
     }
   }
 
@@ -193,16 +192,6 @@ class CityAudioSources {
 
     this.streetVehicles(this.cars, elapsed, 100);
     this.streetVehicles(this.buses, elapsed, 1000);
-    for (let i = 0; i < this.highwayCars.length; i++) {
-      const car = this.highwayCars[i];
-      // Lane ends sink into the road and the Battery tunnel is underground; neither should sound above ground.
-      if (!car.placed || car.y < -0.05) continue;
-      const d2 = this.distanceSq(car.x, car.y + 0.7, car.z);
-      if (!Number.isFinite(d2) || d2 > MOTOR_RANGE * MOTOR_RANGE) continue;
-      this.snapshot.traffic += (1 - d2 / (MOTOR_RANGE * MOTOR_RANGE)) * (0.2 + 0.8 * unit(car.v / 12));
-      this.motor(car, car.kind === 'suv' ? 'suv' : 'sedan', car.x, car.y + 0.7, car.z,
-        car.v, roadLoad(car.v, car.acc, 1.6), car.yaw, false, false, seedAt(2000 + i), car.v < 0.5);
-    }
     this.snapshot.traffic = unit(this.snapshot.traffic / 16);
 
     for (let i = 0; i < this.peds.length; i++) {
@@ -222,7 +211,7 @@ class CityAudioSources {
       item.x = site.x;
       item.y = site.y;
       item.z = site.z;
-      item.walk = walkSignal(elapsed, site.isAvenue);
+      item.walk = !!site.walk?.(elapsed);
       item.seed = seedAt(10000 + i);
     }
     return this.snapshot;

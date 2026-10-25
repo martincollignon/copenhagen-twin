@@ -1,23 +1,31 @@
 import * as THREE from 'three/webgpu';
-import { landmarkState } from './landmark-state.js';
+import { TELEPORT_LOCATIONS } from './city-config.js';
 
 // js/cameras.js
 // Multi-camera system supporting Third-Person Chase (with mouse/touch orbit + zoom),
-// Low-Angle Action Cam, POV/Cockpit Cam, 7 Iconic NYC Architectural Cameras, and Auto-Director Drone.
+// Low-Angle Action Cam, POV/Cockpit Cam, 5 Copenhagen vantage cameras, and Auto-Director Drone.
 
 const CAMERA_PRESETS = [
   { id: 'chase',       name: '3rd-Person Chase',         short: 'Chase',       category: 'follow', fov: 56 },
   { id: 'action',      name: 'Low-Angle Action',         short: 'Action',      category: 'follow', fov: 60 },
   { id: 'pov',         name: 'First-Person / Cockpit',   short: 'POV / Dash',  category: 'follow', fov: 68 },
-  { id: 'centralPark', name: 'Central Park Oasis',       short: 'Central Pk',  category: 'scenic', fov: 52 },
-  { id: 'fifthAve',    name: '5th Ave & Empire State',   short: '5th Ave',     category: 'scenic', fov: 48 },
-  { id: 'timesSquare', name: 'Times Square Crossroads',  short: 'Times Sq',    category: 'scenic', fov: 58 },
-  { id: 'chryslerGCT', name: '42nd St · Chrysler & GCT', short: 'Chrysler',    category: 'scenic', fov: 50 },
-  { id: 'observatory', name: 'Empire State 86th Deck',   short: '86th Deck',   category: 'scenic', fov: 52 },
-  { id: 'bryantPark',  name: 'Bryant Park & NYPL',       short: 'Bryant Pk',   category: 'scenic', fov: 52 },
-  { id: 'waterfront',  name: 'East River & Skyline',     short: 'Skyline',     category: 'scenic', fov: 46 },
+  { id: 'dlb',         name: 'Dronning Louises Bro',     short: 'Louises Bro', category: 'scenic', fov: 52 },
+  { id: 'ns37',        name: 'Nørre Søgade 37',          short: 'NS37',        category: 'scenic', fov: 56 },
+  { id: 'peblinge',    name: 'Peblinge Sø',              short: 'Peblinge',    category: 'scenic', fov: 50 },
+  { id: 'nbro',        name: 'Nørrebrogade',             short: 'Nørrebro',    category: 'scenic', fov: 54 },
+  { id: 'blaag',       name: 'Blågårds Plads',           short: 'Blågård',     category: 'scenic', fov: 56 },
   { id: 'drone',       name: 'Auto-Director Aerial',     short: 'Director',    category: 'scenic', fov: 50 }
 ];
+
+// Scenic vantage points: stand `back` metres behind and `up` metres above the teleport location (looking along its
+// heading), or at a fixed `pos`, and look at the point `ahead` metres in front of it, `lookY` metres up.
+const SCENIC_VIEWS = {
+  dlb: { back: 26, up: 7, ahead: 60, lookY: 6, sway: 3 },
+  ns37: { pos: [-7.2, 5.5, -7.5], look: [18.2, 9, 4.3], sway: 1.2 },
+  peblinge: { back: 30, up: 9, ahead: 70, lookY: 4, sway: 3.5 },
+  nbro: { back: 22, up: 6, ahead: 60, lookY: 7, sway: 2.5 },
+  blaag: { back: 24, up: 8, ahead: 50, lookY: 8, sway: 2 }
+};
 
 class CameraSystem {
   constructor(domElement, controllerManager) {
@@ -28,7 +36,7 @@ class CameraSystem {
       56,
       window.innerWidth / window.innerHeight,
       0.35,
-      60000 // at 1:1 the boroughs & harbor run out ~20-40 km to the fogged horizon (reversed float depth keeps precision)
+      60000 // out to the fogged horizon (reversed float depth keeps precision)
     );
 
     this.activePresetId = 'chase';
@@ -255,74 +263,37 @@ class CameraSystem {
         break;
       }
 
-      case 'centralPark': {
-        // Inside Central Park South looking across The Pond, Gapstow Bridge, The Mall, Sheep Meadow & UWS/UES Skylines
-        const sway = Math.sin(elapsed * 0.22) * 3.5;
-        desiredPos.set(-70.0 + sway, 14.0, -1425.0);
-        desiredLook.set(-250.0, 6.5, -1690.0);
-        break;
-      }
-
-      case 'fifthAve': {
-        // 5th Avenue & 42nd St looking South down the 5th Ave canyon toward the Empire State Building
-        const sway = Math.sin(elapsed * 0.25) * 1.8;
-        desiredPos.set(0.0 + sway, 6.5, -20.0);
-        desiredLook.set(-60.0, 150.0, 686.0);
-        break;
-      }
-
-      case 'timesSquare': {
-        // Times Square & Broadway looking across Duffy Square red steps and One Times Square billboards
-        const sway = Math.sin(elapsed * 0.3) * 3.0;
-        desiredPos.set(-603.0 + sway, 5.5, -290.0);
-        desiredLook.set(-566.0, 40.0, -40.0);
-        break;
-      }
-
-      case 'chryslerGCT': {
-        // Park Ave & 42nd St intersection looking straight at Grand Central, MetLife, and Chrysler Building Crown
-        const sway = Math.cos(elapsed * 0.22) * 2.5;
-        desiredPos.set(300.0 + sway, 9.5, 95.0);
-        desiredLook.set(470.0, 120.0, -50.0);
-        break;
-      }
-
-      case 'observatory': {
-        // Empire State Building 86th Floor Deck looking North-East across Midtown skyline
-        const pan = Math.sin(elapsed * 0.18) * 80.0;
-        desiredPos.set(-58.0, 322.0, 660.0);
-        desiredLook.set(420.0 + pan, 150.0, -200.0);
-        break;
-      }
-
-      case 'bryantPark': {
-        // Inside Bryant Park Great Lawn looking East toward NYPL portico, One Vanderbilt & Chrysler Building
-        const sway = Math.sin(elapsed * 0.25) * 1.5;
-        const lawn = landmarkState.bryantParkLawn || { minX: -260, maxX: -150, minZ: 40, maxZ: 120, top: 1.3 };
-        const lz = (lawn.minZ + lawn.maxZ) * 0.5;
-        desiredPos.set(lawn.minX + 18.0, lawn.top + 1.7, lz + sway);
-        desiredLook.set(lawn.maxX + 260.0, 70.0, lz - 60.0);
-        break;
-      }
-
-      case 'waterfront': {
-        // Over the shimmering East River looking across the FDR Drive, Queensboro Bridge & Midtown Skyline
-        const drift = Math.sin(elapsed * 0.15) * 40.0;
-        desiredPos.set(1640.0, 60.0, 60.0 + drift);
-        desiredLook.set(150.0, 150.0, -150.0);
+      case 'dlb':
+      case 'ns37':
+      case 'peblinge':
+      case 'nbro':
+      case 'blaag': {
+        const view = SCENIC_VIEWS[this.activePresetId];
+        const loc = TELEPORT_LOCATIONS[this.activePresetId];
+        const sway = Math.sin(elapsed * 0.24) * view.sway;
+        if (view.pos) {
+          desiredPos.set(view.pos[0] + sway, view.pos[1], view.pos[2]);
+          desiredLook.set(...view.look);
+        } else {
+          const fx = Math.sin(loc.heading);
+          const fz = Math.cos(loc.heading);
+          desiredPos.set(loc.x - fx * view.back + fz * sway, view.up, loc.z - fz * view.back - fx * sway);
+          desiredLook.set(loc.x + fx * view.ahead, view.lookY, loc.z + fz * view.ahead);
+        }
         break;
       }
 
       case 'drone': {
+        // Slow orbit above the district (Søerne, Nørrebro, Peblinge Sø)
         const angle = elapsed * 0.07 + 0.65;
-        const radius = 720.0 + Math.sin(elapsed * 0.23) * 140.0;
-        const alt = 330.0 + Math.cos(elapsed * 0.19) * 90.0;
+        const radius = 380.0 + Math.sin(elapsed * 0.23) * 90.0;
+        const alt = 230.0 + Math.cos(elapsed * 0.19) * 60.0;
         desiredPos.set(
-          Math.cos(angle) * radius + 60.0,
+          Math.cos(angle) * radius - 60.0,
           alt,
-          Math.sin(angle) * radius + 250.0
+          Math.sin(angle) * radius - 300.0
         );
-        desiredLook.set(60.0, 160.0, 250.0);
+        desiredLook.set(-60.0, 10.0, -300.0);
         break;
       }
     }

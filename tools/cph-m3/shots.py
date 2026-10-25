@@ -1,7 +1,7 @@
 import json, os
 os.makedirs('/Users/martincollignon/conductor/cph-twin-m3/docs/m3', exist_ok=True)
 OUT='/Users/martincollignon/conductor/cph-twin-m3/docs/m3/'
-pg.goto(f'http://127.0.0.1:{port}/index.html?hooks&city=cph')
+pg.goto(f'http://127.0.0.1:{port}/index.html?hooks')
 pg.wait_for_function('window.__twin !== undefined', timeout=60000)
 pg.wait_for_timeout(3000)
 junc = pg.evaluate('''() => { const ts=window.__twin.trafficSystem; const c=ts.signalNodes.filter(n=>n.arms.filter(a=>a.lead===a).length>=4).sort((a,b)=>Math.hypot(a.x,a.z)-Math.hypot(b.x,b.z))[0]; return {x:c.x,z:c.z,n:ts.signalNodes.length,arms:c.arms.map(a=>[a.ux,a.uz])}; }''')

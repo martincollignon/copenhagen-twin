@@ -1,6 +1,6 @@
 // Small, lazily connected sidewalk tracks. Junctions only connect points on the same curb island;
 // crossing the roadway is a separate, signal-controlled track owned by traffic.js.
-function createPedestrianRoutes({ walkable, onSidewalk, cph = false, extraOffset = null }, blockAt) {
+function createPedestrianRoutes({ walkable, extraOffset = null }, blockAt) {
   const sidewalks = new Map(), crossings = new Map(), junctions = new Map(), connections = new WeakMap();
   const point = (track, end) => ({ x: track.ax + track.ux * track.len * end, z: track.az + track.uz * track.len * end });
   const segment = (a, b, extra = {}) => {
@@ -28,12 +28,11 @@ function createPedestrianRoutes({ walkable, onSidewalk, cph = false, extraOffset
     // Two walking lines on each side leave room for people to pass or stop together.
     for (const sign of [-1, 1]) {
       for (const inset of [1.7, 2.8]) {
-        const off = sign * (e.half + inset + (cph && extraOffset ? extraOffset(e, sign) : 0));
+        const off = sign * (e.half + inset + (extraOffset ? extraOffset(e, sign) : 0));
         const a = { x: e.sx + e.rx * off, z: e.sz + e.rz * off };
         const b = { x: a.x + e.dx * e.len, z: a.z + e.dz * e.len };
         const block = blockAt(a.x, a.z);
         if (!block || blockAt(b.x, b.z) !== block || !clear(a, b, block)) continue;
-        if (!e.general && (!onSidewalk(a.x, a.z) || !onSidewalk(b.x, b.z))) continue;
         result.push(segment(a, b, { edge: e, from: e.from, to: e.to, block }));
       }
     }
@@ -45,24 +44,10 @@ function createPedestrianRoutes({ walkable, onSidewalk, cph = false, extraOffset
     const result = [];
     crossings.set(n, result);
     if (!n.signal) return result;
-    if (cph) return acrossArms(n, result);
-    for (let side = 0; side < 4; side++) {
-      const road = n.road[side];
-      if (!road) continue;
-      const avenue = side >= 2, sign = side % 2 === 0 ? 1 : -1;
-      for (const line of avenue ? [sign * 0.75] : [-0.75, 0.75]) {
-        const a = { x: avenue ? road.x0 - road.half - 2 : n.x + sign * (n.hx + 1.25) + line,
-          z: avenue ? n.z + sign * (n.hz + 1.25) + line : road.z0 - road.half - 2 };
-        const len = road.half * 2 + 4;
-        const b = { x: a.x + (avenue ? len : 0), z: a.z + (avenue ? 0 : len) };
-        if (!onSidewalk(a.x, a.z) || !onSidewalk(b.x, b.z) || !clear(a, b)) continue;
-        result.push(segment(a, b, { node: n, side, line, from: n, to: n }));
-      }
-    }
-    return result;
+    return acrossArms(n, result);
   }
 
-  // Copenhagen: junctions of any shape. A crosswalk spans each arm's roadway between its stop lines and the junction,
+  // Junctions of any shape. A crosswalk spans each arm's roadway between its stop lines and the junction,
   // on two lines either side of the middle, and runs along the arm's lateral axis (the same both ways, as traffic.js's
   // laneCoord measures) so a walker's `coord` compares with the lanes' there.
   function acrossArms(n, result) {

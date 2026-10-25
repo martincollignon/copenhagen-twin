@@ -1,61 +1,55 @@
 // js/city-config.js
-// City dispatcher. The engine core imports './city-config.js'; this resolves it to the Manhattan configuration
-// (js/city-config-nyc.js, which pulls in the 1 MB nyc-geodata.js) with `?city=nyc`, or to the Copenhagen frame
-// (js/city-config-cph.js) otherwise. Names missing from the Copenhagen config are undefined there: only
-// Manhattan-only modules use them, and those are never loaded in Copenhagen mode.
-import { IS_NYC } from './city.js';
+// Copenhagen spatial configuration: the local frame, the playable bounds and the teleport presets the engine core
+// (controllers, cameras, materials, gamepad) relies on. The frame follows docs/cph-geodata-schema.md.
+//
+// Local frame: 1 unit = 1 m, x = east, z = south (north = -z), y up. Source CRS EPSG:25832, vertical DVR90.
+//   x = E - origin[0];  z = -(N - origin[1]);  y = DVR90 - origin[2]
 
-const config = IS_NYC ? await import('./city-config-nyc.js') : await import('./city-config-cph.js');
+export const CPH_FRAME = Object.freeze({
+  epsg: 25832,
+  vertical: 'DVR90',
+  origin: Object.freeze([723900.0, 6176500.0, 6.84]), // near Norre Sogade 37
+  axes: 'x=east, z=south, y=up',
+  bbox: Object.freeze([-750, -750, 750, 750]) // [minX, minZ, maxX, maxZ]
+});
 
-export const AVENUES = config.AVENUES;
-export const ALL_AVENUES = config.ALL_AVENUES;
-export const CENTRAL_PARK_BOUNDS = config.CENTRAL_PARK_BOUNDS;
-export const getIslandBoundsAtZ = config.getIslandBoundsAtZ;
-export const MANHATTAN_COASTLINE = config.MANHATTAN_COASTLINE;
-export const getBroadwayX = config.getBroadwayX;
-export const BROADWAY_LINE = config.BROADWAY_LINE;
-export const WATERFRONT_PIERS = config.WATERFRONT_PIERS;
-export const ROOSEVELT_ISLAND_POLYGON = config.ROOSEVELT_ISLAND_POLYGON;
-export const GOVERNORS_ISLAND_POLYGON = config.GOVERNORS_ISLAND_POLYGON;
-export const NJ_SHORELINE_POLYGON = config.NJ_SHORELINE_POLYGON;
-export const LONG_ISLAND_POLYGON = config.LONG_ISLAND_POLYGON;
-export const LONG_ISLAND_POLYGONS = config.LONG_ISLAND_POLYGONS;
-export const BROOKLYN_POLYGONS = config.BROOKLYN_POLYGONS;
-export const QUEENS_POLYGONS = config.QUEENS_POLYGONS;
-export const BRONX_POLYGONS = config.BRONX_POLYGONS;
-export const WESTCHESTER_POLYGON = config.WESTCHESTER_POLYGON;
-export const NASSAU_POLYGON = config.NASSAU_POLYGON;
-export const UPPER_MANHATTAN_POLYGON = config.UPPER_MANHATTAN_POLYGON;
-export const BRONX_POLYGON = config.BRONX_POLYGON;
-export const STATEN_ISLAND_POLYGON = config.STATEN_ISLAND_POLYGON;
-export const RANDALLS_ISLAND_POLYGON = config.RANDALLS_ISLAND_POLYGON;
-export const LIBERTY_ISLAND_POLYGON = config.LIBERTY_ISLAND_POLYGON;
-export const LIBERTY_STATUE_POS = config.LIBERTY_STATUE_POS;
-export const ELLIS_ISLAND_POLYGON = config.ELLIS_ISLAND_POLYGON;
-export const MILL_ROCK_POLYGON = config.MILL_ROCK_POLYGON;
-export const EAST_RIVER_BRIDGES = config.EAST_RIVER_BRIDGES;
-export const OUTER_BRIDGES = config.OUTER_BRIDGES;
-export const STREETS = config.STREETS;
-export const ALL_STREETS = config.ALL_STREETS;
-export const ROADS = config.ROADS;
-export const NYC_LANDMARKS = config.NYC_LANDMARKS;
-export const LANDMARK_SITES = config.LANDMARK_SITES;
-export const TELEPORT_LOCATIONS = config.TELEPORT_LOCATIONS;
-export const ISLAND_BOUNDS = config.ISLAND_BOUNDS;
-export const LANDMARK_BLOCKS = config.LANDMARK_BLOCKS;
-export const BLOCKS = config.BLOCKS;
-export const CUT_Z = config.CUT_Z;
-export const SIGNAL_TIMING = config.SIGNAL_TIMING;
-export const streetZ = config.streetZ;
-export const avenueX = config.avenueX;
-export const avenueNameAt = config.avenueNameAt;
-export const districtAt = config.districtAt;
-export const blockAt = config.blockAt;
-export const blocksInRect = config.blocksInRect;
-export const nearestRoads = config.nearestRoads;
-export const getBlockBounds = config.getBlockBounds;
-export const getLocationLabel = config.getLocationLabel;
-export const fromOldFrame = config.fromOldFrame;
-export const isTypingInField = config.isTypingInField;
-export const signalPhase = config.signalPhase;
-export const walkSignal = config.walkSignal;
+const [BX0, BZ0, BX1, BZ1] = CPH_FRAME.bbox;
+
+/** EPSG:25832 (E, N, DVR90 height) to the local frame. */
+export function toLocal(e, n, h = CPH_FRAME.origin[2]) {
+  return { x: e - CPH_FRAME.origin[0], y: h - CPH_FRAME.origin[2], z: -(n - CPH_FRAME.origin[1]) };
+}
+
+/** Local frame to EPSG:25832 (E, N, DVR90 height). */
+export function toEtrs(x, z, y = 0) {
+  return { e: x + CPH_FRAME.origin[0], n: CPH_FRAME.origin[1] - z, h: y + CPH_FRAME.origin[2] };
+}
+
+// The playable district. Players may roam a margin beyond it (controllers.js clamps to these bounds).
+const ISLAND_BOUNDS = { minX: BX0, maxX: BX1, minZ: BZ0, maxZ: BZ1, sidewalkHeight: 0.15, waterLevel: -2.2 };
+const getIslandBoundsAtZ = () => ({ westX: BX0, eastX: BX1 });
+
+// Teleport presets (local frame; positions and headings taken from the roadGraph centrelines of the named streets,
+// heading = direction of travel along the street: forward is (sin h, cos h)). The scenic cameras (cameras.js) frame
+// the same places.
+const TELEPORT_LOCATIONS = {
+  ns37: { name: 'Nørre Søgade 37', sub: 'Søerne · start', x: 0, z: 0, heading: Math.PI },
+  dlb: { name: 'Dronning Louises Bro', sub: 'Søerne · Sankt Jørgens Sø', x: 97, z: -476.7, heading: -2.12 },
+  peblinge: { name: 'Peblinge Sø', sub: 'Peblinge Dossering', x: -76.8, z: -320, heading: -0.45 },
+  nbro: { name: 'Nørrebrogade', sub: 'Nørrebro · cycle street', x: -147.3, z: -620.1, heading: -2.1 },
+  blaag: { name: 'Blågårds Plads', sub: 'Nørrebro · square', x: -314.6, z: -448, heading: 1.04 }
+};
+
+function isTypingInField(event) {
+  const target = event?.target;
+  if (!target) return false;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!target.isContentEditable;
+}
+
+export {
+  ISLAND_BOUNDS,
+  getIslandBoundsAtZ,
+  TELEPORT_LOCATIONS,
+  isTypingInField
+};

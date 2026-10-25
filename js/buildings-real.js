@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Quadtree } from './quadtree.js';
 import { createPreWarBuildingMaterial, createCurtainWallMaterial } from './tsl-materials.js';
 import { createAccumulator, addBuilding } from './building-geometry.js';
-import { CPH_FRAME, toLocal } from './city-config-cph.js';
+import { CPH_FRAME, toLocal } from './city-config.js';
 
 // js/buildings-real.js
 // Copenhagen's real buildings (M2): every geodata building is extruded from its measured footprint (rings with holes)

@@ -1,5 +1,5 @@
 import json
-pg.goto(f'http://127.0.0.1:{port}/index.html?hooks&city=cph')
+pg.goto(f'http://127.0.0.1:{port}/index.html?hooks')
 pg.wait_for_function('window.__twin !== undefined', timeout=60000)
 pg.wait_for_timeout(4000)
 FOCI = json.loads(sys.argv[2]) if len(sys.argv)>2 else [[0,0],[150,-300]]

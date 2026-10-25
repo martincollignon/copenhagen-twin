@@ -29,7 +29,7 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 // Realistic 3D Lofted Vehicle Geometry + TSL Materials (the skinned, animated people are in pedestrians.js)
 // Ported and adapted from Three.js webgpu_generator_city:
 // - LoftGeometry.js (skinning 3D cross-section rings with arc-length UVs, smooth seam normals & Newell caps)
-// - CarGenerator.js (lofted sedan/taxi/SUV/NYPD bodies with circular wheel arches, curved cabin windscreens,
+// - CarGenerator.js (lofted sedan/SUV bodies with circular wheel arches, curved cabin windscreens,
 //   crowned roofs, LatheGeometry tyres & recessed 5-spoke alloy wheels, side mirrors, roof signs & TSL fascia/seams)
 
 const _vector = new THREE.Vector3();
@@ -197,7 +197,7 @@ function part(geometry, id) {
 // (monotone cubic splines) plus elliptical roundings into the nose and tail: rounded plan-view corners, a hood that
 // rolls down into the fascia, a tucked-in sill, crowned hood & deck, fender flares and circular wheel arches. A second,
 // open loft sits on the belt line as the glasshouse (raked windshield & backlight, tumblehome side glass, crowned roof
-// with rounded rails). All the detail (glass, seals, pillars, lamps, grilles, plates, door seams, NYPD & taxi liveries,
+// with rounded rails). All the detail (glass, seals, pillars, lamps, grilles, plates, door seams,
 // brake lights & turn signals) is painted by one TSL material from object-space position & normal, so each body type
 // stays a single instanced draw call.
 const CAR_PARTS = {
@@ -258,7 +258,6 @@ const BODY_SPECS = {
     bumpers: [[0.46, 0.03], [0.49, 0.035]], // front / rear trim: centre height, half-height
     chrome: true, // chrome strip along the side windows' sills
     cladding: 0, // height of the unpainted lower body cladding (SUVs)
-    sign: false,
     rails: false,
     rearWiper: false
   },
@@ -305,12 +304,10 @@ const BODY_SPECS = {
     bumpers: [[0.56, 0.04], [0.56, 0.04]],
     chrome: false,
     cladding: 0.5,
-    sign: false,
     rails: true,
     rearWiper: true
   }
 };
-BODY_SPECS.taxi = Object.assign({}, BODY_SPECS.sedan, { name: 'taxi', sign: true });
 for (const spec of Object.values(BODY_SPECS)) {
   // Kept for code that places lamp flares: lamp heights (front, rear) and centres across the car
   spec.lamps = [spec.headlight[1], spec.taillight[1]];
@@ -781,41 +778,6 @@ function buildRoofRails(spec) {
   return list;
 }
 
-// NYC medallion roof light: a lit, gently tapered box on a black mount
-function taxiSignPlacement(spec) {
-  const L = carLayout(spec);
-  const cab = spec.cabin;
-  const z = lerp(cab.roofFront, cab.roofRear, 0.45);
-  const c = L.cabin(z);
-  return { z, y: c.railY + c.h };
-}
-
-function buildTaxiSign(spec) {
-  const { z, y } = taxiSignPlacement(spec);
-  const shape = new THREE.Shape();
-  const hw0 = 0.3;
-  const hw1 = 0.27;
-  const h = 0.15;
-  const r = 0.035;
-  shape.moveTo(-hw0, 0);
-  shape.lineTo(hw0, 0);
-  shape.lineTo(hw1, h - r);
-  shape.quadraticCurveTo(hw1 - 0.004, h, hw1 - r, h);
-  shape.lineTo(-hw1 + r, h);
-  shape.quadraticCurveTo(-hw1 + 0.004, h, -hw1, h - r);
-  shape.lineTo(-hw0, 0);
-  const sign = new THREE.ExtrudeGeometry(shape, {
-    depth: 0.12,
-    bevelEnabled: true,
-    bevelThickness: 0.025,
-    bevelSize: 0.012,
-    bevelSegments: 2,
-    curveSegments: 3
-  }).translate(0, y + 0.03, z - 0.06);
-  const mount = new THREE.BoxGeometry(0.46, 0.04, 0.12).translate(0, y + 0.012, z);
-  return [part(sign, CAR_PARTS.SIGN), part(mount, CAR_PARTS.TRIM)];
-}
-
 // Wrap the bumper strips around the nose and tail. Six rectangular sections cost just 44 triangles each;
 // the inner faces sit in the body, while the outer faces stand 2.5 cm proud of the tips.
 function buildBumpers(spec) {
@@ -852,12 +814,11 @@ function buildCarGeometry(spec, includeWheels = true) {
     }
   }
   if (spec.rails) parts.push(...buildRoofRails(spec));
-  if (spec.sign) parts.push(...buildTaxiSign(spec));
   return mergeGeometries(parts);
 }
 
 // A ~250-triangle stand-in for distant cars (a few pixels tall): the same body & glasshouse lofted from a handful of
-// coarse sections, dark wheel blocks and the taxi's roof sign. Same attributes (partId, uv, normal) as the full
+// coarse sections and dark wheel blocks. Same attributes (partId, uv, normal) as the full
 // model, so it renders with the same material and per-instance paint.
 function buildCarProxyGeometry(spec) {
   const parts = [buildCarBody(spec, 0), buildCarCabin(spec, 0)];
@@ -867,58 +828,7 @@ function buildCarProxyGeometry(spec) {
       parts.push(part(new THREE.BoxGeometry(r * 0.6, r * 1.7, r * 1.7).translate(side * spec.wheelX, r * 0.88, z), CAR_PARTS.TYRE));
     }
   }
-  if (spec.sign) {
-    const { z, y } = taxiSignPlacement(spec);
-    parts.push(part(new THREE.BoxGeometry(0.58, 0.16, 0.16).translate(0, y + 0.1, z), CAR_PARTS.SIGN));
-  }
   return mergeGeometries(parts);
-}
-
-// NYPD roof light bar (red on the -x half, blue on the +x half) for a body spec's roof, lit by createLightbarMaterial
-function buildLightbarGeometry(spec = BODY_SPECS.sedan) {
-  const L = carLayout(spec);
-  const cab = spec.cabin;
-  const z = lerp(cab.roofFront, cab.roofRear, 0.32);
-  const c = L.cabin(z);
-  const y = c.railY + c.h;
-  const bar = roundedBox(0.13, 0.045, 1.12, 0.04, 0.02).rotateY(Math.PI / 2).translate(0, y + 0.075, z);
-  const parts = [part(bar, CAR_PARTS.SIGN)];
-  for (const side of [-1, 1]) {
-    parts.push(part(new THREE.BoxGeometry(0.06, 0.05, 0.16).translate(side * 0.42, y + 0.02, z), CAR_PARTS.TRIM));
-  }
-  return mergeGeometries(parts);
-}
-
-let _lightbarMat = null;
-
-// Light bar lenses: red & blue halves flashing in alternation (double strobes), each car on its own phase
-function createLightbarMaterial() {
-  if (_lightbarMat) return _lightbarMat;
-  const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.18, metalness: 0.1 });
-  const lightbar = () => {
-    const p = attribute('position', 'vec3');
-    const partId = attribute('partId', 'float');
-    const isLens = step(abs(partId.sub(CAR_PARTS.SIGN)), 0.25);
-    const phase = fract(float(instanceIndex).mul(0.61803)).toVar();
-    const t = fract(time.mul(1.6).add(phase)).toVar();
-    const strobe = step(0.5, fract(t.mul(6.0)));
-    const redOn = step(t, 0.5).mul(strobe);
-    const blueOn = step(0.5, t).mul(strobe);
-    const isRed = step(p.x, -0.035);
-    const isBlue = step(0.035, p.x);
-    return { isLens, redOn, blueOn, isRed, isBlue };
-  };
-  mat.colorNode = Fn(() => {
-    const s = lightbar();
-    const lens = mix(mix(color(0xd8dde2), color(0x8a0d12), s.isRed), color(0x0f3c9a), s.isBlue);
-    return mix(color(0x15181b), lens, s.isLens);
-  })();
-  mat.emissiveNode = Fn(() => {
-    const s = lightbar();
-    return color(0xff1a22).mul(s.isRed.mul(s.redOn).mul(6.0)).add(color(0x2a6cff).mul(s.isBlue.mul(s.blueOn).mul(7.0))).mul(s.isLens);
-  })();
-  _lightbarMat = mat;
-  return mat;
 }
 
 // Filter-width anti-aliased 2D rounded rectangle SDF (ported from CarGenerator.js)
@@ -977,13 +887,17 @@ function carPlateTexture() {
   canvas.width = 128;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#f2b718';
+  // Danish-style plates: white with a red border and generic, made-up registrations
+  ctx.fillStyle = '#f4f4ef';
   ctx.fillRect(0, 0, 128, 256);
+  ctx.strokeStyle = '#c8102e';
+  ctx.lineWidth = 6;
+  for (let row = 0; row < 4; row++) ctx.strokeRect(3, row * 64 + 3, 122, 58);
   ctx.fillStyle = '#17212c';
   ctx.font = 'bold 25px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ['4KM 728', '7TR 319', '2BJ 506', '6XL 842'].forEach((label, row) => ctx.fillText(label, 64, row * 64 + 33));
+  ['XA 10 001', 'XB 20 002', 'XC 30 003', 'XD 40 004'].forEach((label, row) => ctx.fillText(label, 64, row * 64 + 33));
   _carPlateTexture = new THREE.CanvasTexture(canvas);
   _carPlateTexture.colorSpace = THREE.SRGBColorSpace;
   return _carPlateTexture;
@@ -992,7 +906,7 @@ function carPlateTexture() {
 /**
  * Creates the TSL material for lofted vehicles.
  * Instanced traffic reads the per-instance `paintColor` (vec3) and `carState` (vec4: brake, left (+x) & right (-x)
- * turn signal, livery: 1 = NYPD) attributes; with a fixed `fixedColorHex` (the player's taxi, wheels) the state is the
+ * turn signal) attributes; with a fixed `fixedColorHex` (the player's car, wheels) the state is the
  * `material.userData.carState` uniform instead.
  * Every mask is built once and shared by the colour, roughness, metalness & emissive graphs (TSL turns nodes used
  * more than once into temporaries), so the fragment shader evaluates each SDF a single time.
@@ -1039,7 +953,6 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const rearZone = spec.zRear + 0.55;
   const sillY = spec.sill[1][1];
   const rearSill = spec.tail.sill[1];
-  const signY = taxiSignPlacement(spec).y + 0.105;
   const one = float(1.0);
 
   const p = attribute('position', 'vec3');
@@ -1052,7 +965,6 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const isAlloy = isPart(CAR_PARTS.ALLOY);
   const isTrim = isPart(CAR_PARTS.TRIM);
   const isMirror = isPart(CAR_PARTS.MIRROR);
-  const isSign = isPart(CAR_PARTS.SIGN);
   const ax = abs(p.x);
   const isSide = smoothstep(0.45, 0.7, abs(n.x));
   const front = smoothstep(0.12, 0.38, n.z).mul(step(frontZone, p.z)).mul(isBody);
@@ -1134,8 +1046,6 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     .mul(smoothstep(cab.cowl - 0.04, cab.cowl - 0.02, p.z))
     .mul(step(0.6, n.y))
     .mul(isBody);
-  const signFace = smoothstep(0.55, 0.75, abs(n.z)).mul(isSign);
-  const signGlyph = step(0.42, sin(p.x.mul(90.0))).mul(step(ax, 0.17)).mul(smoothstep(0.045, 0.04, abs(p.y.sub(signY))));
   const mirrorGlass = isMirror.mul(step(0.55, n.z.negate()));
   const lamp = max(headlight, taillight);
   const plates = max(plateFront, plateRear);
@@ -1171,32 +1081,8 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   );
 
   // ---- Colour ---------------------------------------------------------------------------------------------------
-  // Liveries: NYPD (white with blue & light-blue side stripes, lettering on the front doors); the taxi's door badges
-  // and medallion number
-  const isPolice = step(0.5, state.w).mul(isSide).mul(isBody);
-  const doorMid = (spec.doors[0] + spec.doors[1]) / 2;
-  const along = smoothstep(spec.zRear + 0.22, spec.zRear + 0.3, p.z).mul(smoothstep(spec.zFront - 0.28, spec.zFront - 0.36, p.z));
-  const band = smoothstep(0.495, 0.5, p.y).mul(smoothstep(0.645, 0.64, p.y)).mul(along);
-  const pin = smoothstep(0.663, 0.667, p.y).mul(smoothstep(0.687, 0.683, p.y)).mul(along);
-  const lettering = step(0.45, sin(p.z.mul(70.0)))
-    .mul(smoothstep(0.725, 0.73, p.y))
-    .mul(smoothstep(0.81, 0.805, p.y))
-    .mul(step(abs(p.z.sub(doorMid)), 0.22));
-  let painted = mix(mix(paint, color(0x1d3f8f), max(band, lettering).mul(isPolice)), color(0x6fa8dc), pin.mul(isPolice));
-  if (spec.sign) {
-    const badge = roundedRect(vec2(p.z.sub(doorMid), p.y.sub(0.66)), vec2(0.21, 0.052), 0.012).mul(isSide).mul(isBody);
-    const emblem = smoothstep(0.042, 0.036, length(vec2(abs(p.z.sub(doorMid)).sub(0.15), p.y.sub(0.66))));
-    const letters = step(0.35, sin(p.z.mul(95.0)))
-      .mul(step(abs(p.z.sub(doorMid)), 0.1))
-      .mul(smoothstep(0.03, 0.026, abs(p.y.sub(0.66))));
-    const medallion = step(0.3, sin(p.z.mul(150.0)))
-      .mul(step(abs(p.z.sub(spec.zRear + 0.6)), 0.075))
-      .mul(smoothstep(0.016, 0.013, abs(p.y.sub(0.8))))
-      .mul(isSide)
-      .mul(isBody);
-    painted = mix(mix(painted, color(0x121417), badge), color(0xffbe14), max(emblem, letters).mul(badge));
-    painted = mix(painted, color(0x121417), medallion);
-  }
+  // Plain paint: the instance's colour
+  const painted = paint;
 
   // Panel shading: soft occlusion low down & under the arch lips; unpainted cladding (SUVs); door shut lines &
   // handles; trunk / hood shut lines; black cowl panel under the windshield
@@ -1230,7 +1116,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   body = mix(body, body.mul(pocketShade), platePocket);
   body = mix(body, color(0x303438), trunkHandle);
   body = mix(body, color(0x24292d), plateRecess);
-  body = mix(body, color(0xf2b718), plates);
+  body = mix(body, color(0xf4f4ef), plates);
   const plateVariant = floor(fract(paint.r.mul(7).add(paint.g.mul(13)).add(paint.b.mul(17))).mul(4));
   const plateUV = vec2(p.x.div(-0.31).add(0.5), p.y.sub(plateR).div(0.12).add(0.5));
   const plateColor = texture(carPlateTexture(), vec2(plateUV.x, plateUV.y.add(plateVariant).div(4))).rgb;
@@ -1242,9 +1128,8 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   let windowCol = mix(mix(mix(mix(paint, color(0x111315), seal), glassCol, glass), color(0xc9ced3), chromeBelt), color(0x6a0a0e), chmsl);
   windowCol = mix(windowCol, color(0x15181b), rearWiper);
 
-  // Mirror caps (paint, glass facing back), taxi roof light, trims, alloys & tyres
+  // Mirror caps (paint, glass facing back), trims, alloys & tyres
   const mirrorCol = mix(paint, color(0x7c8a94), mirrorGlass);
-  const signCol = mix(color(0xf3efe2), mix(color(0xfff1b8), color(0x15181b), signGlyph), signFace);
   const alloyCol = mix(color(0x0b0e12), color(0xd8e0e8), alloyMetal);
   const treadZone = smoothstep(wheelR.mul(0.74), wheelR.mul(0.83), wheelDist);
   const tyreBase = smoothstep(wheelR.mul(0.85), wheelR.mul(0.94), wheelDist).mul(0.22).add(0.78);
@@ -1252,7 +1137,6 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
 
   let col = mix(body, windowCol, isWindow);
   col = mix(col, mirrorCol, isMirror);
-  col = mix(col, signCol, isSign);
   col = mix(col, color(0x1b1e21), isTrim);
   col = mix(col, alloyCol, isAlloy);
   col = mix(col, tyreCol, isTyre);
@@ -1262,7 +1146,6 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const glossy = max(max(max(glass, chromeBelt), mirrorGlass), lamp);
   let rough = mix(float(0.26), float(0.15), glossy);
   rough = mix(rough, float(0.4), plates);
-  rough = mix(rough, float(0.35), isSign);
   rough = mix(rough, float(0.82), max(matte, isAlloy.sub(alloySpokes)));
 
   let metal = mix(float(0.34), float(0.14), glass);
@@ -1270,9 +1153,9 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   metal = mix(metal, float(0.95), chromeBelt);
   metal = mix(metal, float(0.86), alloySpokes);
   metal = mix(metal, float(0.08), plates);
-  metal = mix(metal, float(0.04), max(matte, isSign));
+  metal = mix(metal, float(0.04), matte);
 
-  // ---- Emissive: running lights, tail / brake lights & CHMSL, turn signals, taxi roof light -----------------------
+  // ---- Emissive: running lights, tail / brake lights & CHMSL, turn signals -----------------------------------
   const brake = state.x;
   const blink = max(state.y.mul(step(0.0, p.x)), state.z.mul(step(p.x, 0.0)));
   const nightHeadlamp = smoothstep(0.60, 1.15, cityUniforms.uInteriorGlow);
@@ -1283,14 +1166,13 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const tail = color(0xff0a12).mul(redLens.mul(tailShade).mul(brake.mul(2.1).add(nightHeadlamp.mul(0.4))));
   const stop = color(0xff0a12).mul(chmsl.mul(brake).mul(2.1));
   const turn = color(0xff9a14).mul(max(turnFront, turnRear).mul(blink).mul(2.2));
-  const sign = color(0xffe28a).mul(signFace.mul(one.sub(signGlyph.mul(0.9))).mul(1.65));
 
   const mat = new THREE.MeshStandardNodeMaterial();
   if (fixed) mat.userData.carState = stateUniform;
   mat.colorNode = col;
   mat.roughnessNode = rough;
   mat.metalnessNode = metal;
-  mat.emissiveNode = headlamps.add(tail).add(stop).add(turn).add(sign);
+  mat.emissiveNode = headlamps.add(tail).add(stop).add(turn);
 
   _carMaterialCache.set(cacheKey, mat);
   return mat;
@@ -1319,9 +1201,9 @@ function limbSections(joints, segments = 6, phase = 0) {
 }
 
 // ============================================================================
-// 4. LOFTED MTA BUS GEOMETRY & TSL MATERIAL
+// 4. LOFTED CITY BUS GEOMETRY & TSL MATERIAL
 // ============================================================================
-// A 40-ft low-floor MTA bus lofted with the car body machinery: rounded plan-view corners, a raked windshield, a
+// A 40-ft low-floor city bus lofted with the car body machinery: rounded plan-view corners, a raked windshield, a
 // tight roof radius and arches over the wheels; bumpers, the folded front bike rack, stalk mirrors and the roof AC &
 // battery pods are separate pieces of the same mesh (partId). Windows, doors, livery & lamps are painted by
 // createLoftedBusMaterial(); destination signs are textured panels (buildBusSignGeometry).
@@ -1505,13 +1387,13 @@ function createBusWheelMaterial() {
 let _busLoftedMat = null;
 
 /**
- * Creates the TSL procedural material for MTA buses:
+ * Creates the TSL procedural material for city buses:
  * - Wraparound split windshield with gasket & centre post, destination sign band above it; rear window & engine
  *   louvres on the rear face
  * - Continuous side window band with mullions, the driver's window, glazed curb-side front & rear doors
- * - MTA livery: pearl white with the vivid blue band & cyan ribbon below the windows and a dark skirt
+ * - Plain yellow livery with a red band & white ribbon below the windows and a dark skirt
  * - Headlamps, turn signals (per-instance `busState`: brake, left (+x), right (-x)), tail / brake light columns,
- *   NY plates; black trims & light-grey roof pods
+ *   plates; black trims & light-grey roof pods
  */
 function createLoftedBusMaterial() {
   if (_busLoftedMat) return _busLoftedMat;
@@ -1561,12 +1443,12 @@ function createLoftedBusMaterial() {
   const glass = clamp(max(max(frontGlass, rearGlass), max(max(sideBand.mul(mullion), driverWin), max(d0.glass, d1.glass))), 0.0, 1.0);
   const seal = clamp(max(max(frontSeal, rearSeal), max(max(sideSeal, signBand), doorFrame)), 0.0, 1.0);
 
-  // MTA livery
+  // Plain city-bus livery: yellow body with a red band below the windows and a dark skirt (no operator marks)
   const shadeY = smoothstep(0.34, 1.2, p.y).mul(0.2).add(0.8);
-  const blueStripe = smoothstep(0.9, 0.93, p.y).mul(smoothstep(1.2, 1.17, p.y));
-  const cyanRibbon = smoothstep(0.84, 0.86, p.y).mul(smoothstep(0.885, 0.865, p.y));
+  const redBand = smoothstep(0.9, 0.93, p.y).mul(smoothstep(1.2, 1.17, p.y));
+  const whiteRibbon = smoothstep(0.84, 0.86, p.y).mul(smoothstep(0.885, 0.865, p.y));
   const skirt = smoothstep(0.53, 0.5, p.y);
-  const livery = mix(mix(mix(color(0xf0f4f8), color(0x0058b8), blueStripe), color(0x00a8e8), cyanRibbon), color(0x1c2026), skirt).mul(shadeY);
+  const livery = mix(mix(mix(color(0xf2c230), color(0xc8102e), redBand), color(0xf4f4ef), whiteRibbon), color(0x1c2026), skirt).mul(shadeY);
 
   // Lamps: twin round headlamps & amber turn signals in black pods; red tail / brake light columns, amber turn &
   // white reverse lamps at the rear corners; plates
@@ -1589,7 +1471,7 @@ function createLoftedBusMaterial() {
   body = mix(body, color(0x9a0d14), tailLamp);
   body = mix(body, color(0xc8641a), turnRear);
   body = mix(body, color(0xe8eef2), reverse);
-  body = mix(body, color(0xf2b718), plate);
+  body = mix(body, color(0xf4f4ef), plate);
   const glassTint = mix(color(0x0e1a26), color(0x1b3046), clamp(p.y.sub(1.3).mul(0.8), 0.0, 1.0));
   body = mix(body, glassTint, glass);
 
@@ -1614,7 +1496,7 @@ function createLoftedBusMaterial() {
 }
 
 // ============================================================================
-// 5. 3D LOFTED MANHATTAN SIGHTSEEING HELICOPTER GEOMETRY & TSL MATERIAL
+// 5. 3D LOFTED SIGHTSEEING HELICOPTER GEOMETRY & TSL MATERIAL
 // ============================================================================
 const HELI_PARTS = {
   FUSELAGE: 0,
@@ -1865,7 +1747,7 @@ let _heliLoftedMat = null;
  * Creates the TSL procedural material for the 3D Lofted Sightseeing Helicopter:
  * - Renders wrap-around panoramic windscreen, chin bubble windows, sightseeing cabin side windows,
  *   and overhead skylight glass using anti-aliased `roundedRect` SDFs with rubber seals & frame pillars.
- * - Renders a sleek flush executive NYC Sightseeing livery (Pearl Aviation White upper cabin,
+ * - Renders a sleek flush executive sightseeing livery (Pearl Aviation White upper cabin,
  *   Deep Midnight Navy belly/tailboom, and a sweeping Metallic Gold & Crimson accent stripe).
  * - Renders slatted turbine air intakes on the engine cowling and high-visibility yellow tips on rotor blades.
  */
@@ -1924,7 +1806,7 @@ function createLoftedHelicopterMaterial() {
       .mul(isFuselage)
       .toVar();
 
-    // 2. Flush Executive NYC Sightseeing Livery (Aviation White + Midnight Navy + Sweeping Gold Ribbon)
+    // 2. Flush Executive Sightseeing Livery (Aviation White + Midnight Navy + Sweeping Gold Ribbon)
     const navyCurveY = float(1.00).add(p.z.mul(-0.085));
     const edgeW = max(fwidth(p.y), 0.008);
     const isLowerNavy = smoothstep(navyCurveY.add(edgeW), navyCurveY.sub(edgeW), p.y);
@@ -2042,8 +1924,6 @@ export {
   buildCarGeometry,
   buildCarProxyGeometry,
   createLoftedCarMaterial,
-  buildLightbarGeometry,
-  createLightbarMaterial,
   BUS_SPEC,
   buildLoftedBusBodyGeometry,
   buildBusSignGeometry,

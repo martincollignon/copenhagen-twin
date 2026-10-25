@@ -1,6 +1,6 @@
 /* css/style.css */
-/* NYC HUD design system: quiet graphite glass in the corners of the screen, taxi yellow for whatever is active,
-   NYC DOT green for street names, so that the city itself stays the star */
+/* Copenhagen Twin HUD: quiet graphite glass in the corners of the screen, accent yellow for whatever is active,
+   blue-and-white street-name plates, so that the city itself stays the star */
 
 :root {
   /* Surfaces */
@@ -18,9 +18,9 @@
   --text-3: rgba(246, 245, 242, 0.44);
 
   /* Accents */
-  --taxi: #ffc21a;
-  --taxi-ink: #17140a;
-  --sign-green: #0b6a46;
+  --accent: #ffc21a;
+  --accent-ink: #17140a;
+  --sign-blue: #1b4f9c;
   --highway: #c08a3e;
   --ok: #5ee08f;
   --warn: #ffc857;
@@ -191,7 +191,7 @@ body::after {
   animation: rise-in 0.8s var(--ease-out) both;
 }
 
-.mta-bullet.loader-bullet {
+.brand-mark.loader-bullet {
   width: 56px;
   height: 56px;
   margin-bottom: 22px;
@@ -203,6 +203,15 @@ body::after {
   font-weight: 650;
   letter-spacing: -0.03em;
   line-height: 1.1;
+}
+
+.loader-credit {
+  max-width: 420px;
+  margin-top: 18px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--text-3);
 }
 
 .loader-track {
@@ -219,7 +228,7 @@ body::after {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: var(--taxi);
+  background: var(--accent);
   transform-origin: left center;
   transform: scaleX(0);
   transition: transform 0.3s ease;
@@ -333,12 +342,12 @@ body.hud-minimized .toolbar > :not(#btn-toggle-hud) {
   padding: 0 18px 0 9px;
 }
 
-.mta-bullet {
+.brand-mark {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: var(--taxi);
-  color: var(--taxi-ink);
+  background: var(--accent);
+  color: var(--accent-ink);
   font-weight: 800;
   font-size: 12.5px;
   letter-spacing: -0.02em;
@@ -397,7 +406,7 @@ body.hud-minimized .toolbar > :not(#btn-toggle-hud) {
 #hud-fps.fps-bad { color: var(--bad); }
 
 /* ------------------------------------------------------------------------------------------------------------------
-   Top right: toolbar (time of day, teleport, map, clean view)
+   Top right: toolbar (time of day, teleport, clean view)
    ------------------------------------------------------------------------------------------------------------------ */
 .toolbar {
   display: flex;
@@ -623,7 +632,7 @@ body.hud-minimized .icon-show {
 }
 
 /* ------------------------------------------------------------------------------------------------------------------
-   Bottom left: NYC street-name signs over the GPS radar
+   Bottom left: street-name plate
    ------------------------------------------------------------------------------------------------------------------ */
 .location {
   display: flex;
@@ -663,7 +672,7 @@ body.hud-minimized .icon-show {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
 }
 
-/* Green blade, white inset border, Highway Gothic lettering: the sign on every Manhattan corner */
+/* Blue plate with a white inset border: the street-name sign */
 .street-sign {
   max-width: 210px;
   overflow: hidden;
@@ -676,79 +685,11 @@ body.hud-minimized .icon-show {
   line-height: 1.05;
   letter-spacing: 0.01em;
   color: #ffffff;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 55%), var(--sign-green);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 55%), var(--sign-blue);
   border-radius: 6px;
   outline: 1.5px solid rgba(255, 255, 255, 0.92);
   outline-offset: -4px;
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35), 0 10px 22px -10px rgba(0, 0, 0, 0.75);
-}
-
-.radar {
-  position: relative;
-  width: 288px;
-  height: 184px;
-  overflow: hidden;
-  border-radius: 18px;
-  background: #0a1118;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  cursor: pointer;
-  transition: transform 0.35s var(--ease-out);
-}
-
-.radar:hover {
-  transform: translateY(-2px);
-}
-
-/* Inner rim: a soft vignette so the map sinks into the frame */
-.radar::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 0 30px rgba(0, 0, 0, 0.55);
-}
-
-#minimap-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.radar-north {
-  position: absolute;
-  top: 7px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 17px;
-  height: 17px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-size: 9px;
-  font-weight: 800;
-  line-height: 1;
-  color: #ffffff;
-  background: rgba(10, 12, 15, 0.72);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
-  pointer-events: none;
-}
-
-.radar-key {
-  position: absolute;
-  top: 9px;
-  right: 9px;
-  z-index: 1;
-  color: rgba(255, 255, 255, 0.85);
-  background: rgba(10, 12, 15, 0.6);
-  transition: background-color 0.2s ease, color 0.2s ease;
-}
-
-.radar:hover .radar-key {
-  color: var(--taxi-ink);
-  background: var(--taxi);
-  box-shadow: none;
 }
 
 /* ------------------------------------------------------------------------------------------------------------------
@@ -793,7 +734,7 @@ body.hud-minimized .icon-show {
   padding: 5px;
 }
 
-/* The taxi-yellow pill glides to the selected mode (positioned by main.js) */
+/* The accent-yellow pill glides to the selected mode (positioned by main.js) */
 .mode-indicator {
   position: absolute;
   z-index: 0;
@@ -803,7 +744,7 @@ body.hud-minimized .icon-show {
   width: var(--ind-w, 0px);
   transform: translateX(var(--ind-x, 0px));
   border-radius: 12px;
-  background: var(--taxi);
+  background: var(--accent);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -1px 0 rgba(0, 0, 0, 0.12), 0 4px 12px -4px rgba(0, 0, 0, 0.5);
   transition: transform 0.45s var(--ease-out), width 0.45s var(--ease-out);
 }
@@ -835,7 +776,7 @@ body.hud-minimized .icon-show {
 
 .mode-btn.active,
 .mode-btn.active:hover {
-  color: var(--taxi-ink);
+  color: var(--accent-ink);
   background: transparent;
 }
 
@@ -940,7 +881,7 @@ body[data-mode='helicopter'] .gauge-alt {
   overflow: hidden;
 }
 
-/* Speed as a share of the mode's top speed; it turns taxi yellow on boost */
+/* Speed as a share of the mode's top speed; it turns accent yellow on boost */
 #hud-speed-meter {
   position: absolute;
   inset: 0;
@@ -952,7 +893,7 @@ body[data-mode='helicopter'] .gauge-alt {
 }
 
 body.is-boosting #hud-speed-meter {
-  background: var(--taxi);
+  background: var(--accent);
 }
 
 .camera-switch {
@@ -1010,262 +951,6 @@ body.is-boosting #hud-speed-meter {
   white-space: nowrap;
 }
 
-/* ------------------------------------------------------------------------------------------------------------------
-   Full-screen interactive street map ([M])
-   ------------------------------------------------------------------------------------------------------------------ */
-.fullmap-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  background: #0a1118;
-  transition: opacity 0.25s ease, visibility 0.25s ease;
-}
-
-.fullmap-modal.hidden {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.fullmap-canvas-wrap {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  cursor: crosshair;
-}
-
-.fullmap-canvas-wrap.is-panning {
-  cursor: grabbing;
-}
-
-#fullmap-canvas {
-  touch-action: none;
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.fullmap-header {
-  position: absolute;
-  top: var(--edge);
-  left: var(--edge);
-  right: var(--edge);
-  display: flex;
-  align-items: stretch;
-  gap: 10px;
-  pointer-events: none;
-}
-
-.fullmap-header > * {
-  pointer-events: auto;
-}
-
-.fullmap-modal:not(.hidden) .fullmap-header,
-.fullmap-modal:not(.hidden) .map-controls,
-.fullmap-modal:not(.hidden) .fullmap-footer {
-  animation: rise-in 0.45s var(--ease-out) both;
-}
-
-.fullmap-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  padding: 9px 20px 9px 11px;
-}
-
-.fullmap-title h2 {
-  font-size: 14.5px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.fullmap-subtitle {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--text-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.fullmap-search-wrap {
-  flex: 0 1 440px;
-  min-width: 180px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 16px;
-  color: var(--text-3);
-  cursor: text;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-}
-
-.fullmap-search-wrap:focus-within {
-  color: var(--text-2);
-  border-color: rgba(255, 255, 255, 0.24);
-  background: var(--grain), var(--glass-strong);
-}
-
-.fullmap-search {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  background: none;
-  border: 0;
-  outline: none;
-  color: var(--text);
-  font: inherit;
-  font-size: 13.5px;
-  user-select: text;
-}
-
-.fullmap-search::placeholder {
-  color: var(--text-3);
-}
-
-.fullmap-close {
-  margin-left: auto;
-  height: auto;
-  padding: 0 14px 0 12px;
-  border-radius: var(--r-panel);
-}
-
-.fullmap-close:hover {
-  background: var(--grain), var(--glass-strong);
-}
-
-/* (centred with `translate`, which the rise-in entrance animation on `transform` leaves alone) */
-.map-controls {
-  position: absolute;
-  top: 50%;
-  right: var(--edge);
-  translate: 0 -50%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
-.map-compass {
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-}
-
-.map-compass svg {
-  width: 44px;
-  height: 44px;
-}
-
-.map-compass text {
-  font: 800 7.5px var(--font-sans);
-  fill: #ffffff;
-}
-
-.map-zoom {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 4px;
-  border-radius: 14px;
-}
-
-.fullmap-footer {
-  position: absolute;
-  left: 50%;
-  bottom: var(--edge);
-  translate: -50% 0;
-  display: flex;
-  max-width: min(560px, calc(100% - 2 * var(--edge) - 2 * 200px));
-}
-
-.fullmap-status {
-  min-width: 0;
-  padding: 10px 16px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.fullmap-legend {
-  position: absolute;
-  right: var(--edge);
-  bottom: var(--edge);
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 16px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-2);
-  white-space: nowrap;
-}
-
-.fullmap-modal:not(.hidden) .fullmap-legend {
-  animation: rise-in 0.45s var(--ease-out) both;
-}
-
-.legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.legend-swatch {
-  flex: none;
-  display: inline-block;
-}
-
-.player-swatch {
-  width: 10px;
-  height: 11px;
-  background: #ffffff;
-  clip-path: polygon(50% 0, 100% 100%, 50% 78%, 0 100%);
-}
-
-.landmark-swatch {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 0 0 2px #0b0f14, 0 0 0 3px rgba(255, 255, 255, 0.35);
-}
-
-.gps-swatch,
-.bridge-swatch {
-  width: 16px;
-  height: 4px;
-  border-radius: 2px;
-}
-
-.gps-swatch { background: var(--taxi); }
-.bridge-swatch { background: var(--highway); }
-
-.legend-counts {
-  padding-left: 14px;
-  border-left: 1px solid var(--divider);
-  color: var(--text-3);
-}
-
-/* ------------------------------------------------------------------------------------------------------------------
-   Responsive
-   ------------------------------------------------------------------------------------------------------------------ */
-@media (max-width: 1800px) {
-  .legend-counts { display: none; }
-}
-
-@media (max-width: 1360px) {
-  .fullmap-legend { display: none; }
-}
-
 @media (max-width: 1240px) {
   .controls-hint { display: none; }
   .mode-btn kbd { display: none; }
@@ -1276,30 +961,23 @@ body.is-boosting #hud-speed-meter {
   .tool-label,
   .tool-btn kbd { display: none; }
   .mode-btn { padding: 0 12px; }
-  .tool-btn:not(.icon-only):not(.fullmap-close) { gap: 4px; padding: 0 9px; }
 }
 
 @media (max-width: 820px) {
   :root { --edge: 12px; }
   .hud-top-left { top: calc(max(var(--edge), env(safe-area-inset-top)) + 62px); }
-  .brand > .mta-bullet,
+  .brand > .brand-mark,
   .brand-heading h1,
   .brand-subtitle { display: none; }
   .brand { height: 44px; padding: 0 12px; }
   .repo-link { display: flex; align-items: center; gap: 4px; min-height: 44px; font-size: 12px; }
-  .radar { width: 220px; height: 148px; }
   .cluster { width: 220px; }
   #hud-speed { font-size: 34px; }
-  .fullmap-title > div { display: none; }
-  .fullmap-title { padding: 9px; }
-  .fullmap-footer { max-width: calc(100% - 2 * var(--edge)); bottom: calc(var(--edge) + 34px); }
-  .map-controls { top: auto; bottom: calc(var(--edge) + 96px); translate: none; }
 }
 
 @media (max-width: 620px) {
   .time-btn.active .seg-label { display: none; }
   .time-btn.active { padding: 0 9px; gap: 0; }
-  .radar { display: none; }
   .hud-bottom-right { bottom: calc(var(--edge) + 64px); }
   .gauge { display: none; }
   .camera-switch { border-top: 0; }
@@ -1360,7 +1038,7 @@ body.is-boosting #hud-speed-meter {
   pointer-events: none;
 }
 
-#touch-stick.is-pressed #touch-stick-knob { background: var(--taxi); border-color: var(--taxi); }
+#touch-stick.is-pressed #touch-stick-knob { background: var(--accent); border-color: var(--accent); }
 
 .touch-caption,
 .touch-look-hint {
@@ -1401,11 +1079,10 @@ body.is-boosting #hud-speed-meter {
   touch-action: none;
 }
 .touch-action > [aria-hidden] { font-size: 23px; line-height: 1; }
-.touch-boost { grid-column: 2; border-color: rgba(255, 194, 26, 0.65); color: var(--taxi); }
-.touch-action.is-pressed { color: var(--taxi-ink); background: var(--taxi); border-color: var(--taxi); }
+.touch-boost { grid-column: 2; border-color: rgba(255, 194, 26, 0.65); color: var(--accent); }
+.touch-action.is-pressed { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 
 body.touch-enabled .controls-hint,
-body.touch-enabled .radar,
 body.touch-enabled .gauge,
 body.touch-enabled kbd,
 body.touch-enabled .toolbar-divider,
@@ -1425,8 +1102,6 @@ body.touch-enabled .cluster { width: 230px; }
 body.touch-enabled .camera-switch { border: 0; }
 body.touch-enabled .camera-switch .icon-btn { width: 44px; height: 44px; }
 body.touch-enabled .hud-bottom-left { left: max(var(--edge), env(safe-area-inset-left)); bottom: calc(max(var(--edge), env(safe-area-inset-bottom)) + 254px); max-width: calc(100% - 2 * var(--edge)); }
-body.touch-enabled .fullmap-header { top: max(var(--edge), env(safe-area-inset-top)); left: max(var(--edge), env(safe-area-inset-left)); right: max(var(--edge), env(safe-area-inset-right)); }
-body.touch-enabled .map-controls .icon-btn { width: 44px; height: 44px; }
 body.touch-enabled .pop-item { min-height: 44px; }
 
 @media (max-width: 360px) {
@@ -1450,7 +1125,3 @@ body.touch-enabled .pop-item { min-height: 44px; }
     transition-duration: 0.01ms !important;
   }
 }
-
-/* Copenhagen mode (M0): the Manhattan street atlas minimap and full map are not available yet */
-body.city-cph #minimap-card,
-body.city-cph #btn-open-map { display: none; }

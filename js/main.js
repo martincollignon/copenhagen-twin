@@ -3,8 +3,8 @@ import { pass, mrt, output, normalView, positionView, metalness, roughness, vec2
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 import { createPostProcessing } from './post-processing.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
-import { CITY, IS_NYC } from './city.js';
-import { getLocationLabel, isTypingInField, ROADS, NYC_LANDMARKS, TELEPORT_LOCATIONS } from './city-config.js';
+import { isTypingInField, TELEPORT_LOCATIONS } from './city-config.js';
+import { buildWorld } from './world.js';
 import { ThirdPersonControllerManager } from './controllers.js';
 import { TouchControls } from './touch-controls.js';
 import { GamepadControls } from './gamepad-controls.js';
@@ -15,12 +15,9 @@ import { CityAudioSystem } from './audio-system.js';
 
 // js/main.js
 // Main entry point in Three.js WebGPURenderer & TSL (three.js dev, see index.html).
-// `?city=cph` (default) boots the Copenhagen twin (js/world-cph.js); `?city=nyc` boots the original Manhattan build
-// (js/world-nyc.js). The world modules are imported dynamically so each mode only fetches its own.
+// Boots the Copenhagen twin (js/world.js builds the city from data/cph-geodata.json).
 
 async function initApp() {
-  document.body.classList.add(`city-${CITY}`);
-  if (!IS_NYC) document.title = 'Copenhagen Twin';
   const container = document.getElementById('canvas-container');
   const loadingOverlay = document.getElementById('loading-overlay');
   const loadingStatus = document.getElementById('loading-status');
@@ -67,24 +64,22 @@ async function initApp() {
   markInit('lighting');
 
   if (loadingStatus) {
-    loadingStatus.textContent = IS_NYC ? 'Constructing Manhattan Grid, Landmarks & Streetscape...' : 'Constructing Copenhagen...';
+    loadingStatus.textContent = 'Constructing Copenhagen...';
   }
 
-  // 3. Build the city: Manhattan (nyc) or the Copenhagen ground plane (cph); both return the same interface
-  const world = IS_NYC
-    ? (await import('./world-nyc.js')).buildNycWorld(scene, { markInit })
-    : await (await import('./world-cph.js')).buildCphWorld(scene, {
-      markInit,
-      debug: new URLSearchParams(location.search).get('debug') || ''
-    });
-  const { boroughs, cityBlocks, streetDetails, trafficSystem, highwayTraffic } = world;
+  // 3. Build the city from the Copenhagen geodata
+  const world = await buildWorld(scene, {
+    markInit,
+    debug: new URLSearchParams(location.search).get('debug') || ''
+  });
+  const { trafficSystem } = world;
   const allColliders = world.colliders;
 
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
   // Reuse teleport placement so saved players return at rest, close to their last positions.
   try {
-    const saved = JSON.parse(localStorage.getItem(`${CITY}-player-state`));
+    const saved = JSON.parse(localStorage.getItem('cph-player-state'));
     if (saved?.version === 1) {
       for (const mode of Object.keys(controllerManager.entities)) {
         const p = saved.entities?.[mode];
@@ -101,7 +96,7 @@ async function initApp() {
       const entities = Object.fromEntries(Object.entries(controllerManager.entities).map(([mode, entity]) => [mode, {
         x: entity.position.x, y: entity.position.y, z: entity.position.z, heading: entity.heading
       }]));
-      localStorage.setItem(`${CITY}-player-state`, JSON.stringify({ version: 1, activeMode: controllerManager.activeMode, entities }));
+      localStorage.setItem('cph-player-state', JSON.stringify({ version: 1, activeMode: controllerManager.activeMode, entities }));
     } catch { /* Storage may be disabled or full. */ }
   }
 
@@ -109,7 +104,7 @@ async function initApp() {
   world.attach?.({ camera: cameraSystem.camera, domElement: renderer.domElement });
   const touchControls = new TouchControls(controllerManager);
   const soundButton = document.getElementById('btn-sound');
-  const audioSystem = new CityAudioSystem({ controllerManager, trafficSystem, highwayTraffic, streetDetails }, {
+  const audioSystem = new CityAudioSystem({ controllerManager, trafficSystem, audioSignals: world.audioSignals }, {
     onStateChange: updateSoundButton
   });
   function updateSoundButton() {
@@ -215,9 +210,7 @@ async function initApp() {
       const modes = ['person', 'car', 'cyclist', 'helicopter'];
       selectMode(modes[(modes.indexOf(controllerManager.activeMode) + step + modes.length) % modes.length]);
     },
-    onCycleCamera: cycleCamera,
-    onToggleMap: () => mapSystem.toggleFullMap(!mapSystem.isFullMapOpen),
-    onCloseMap: () => mapSystem.toggleFullMap(false)
+    onCycleCamera: cycleCamera
   });
 
   // Keyboard guide for each mode: [keys, action]
@@ -227,8 +220,8 @@ async function initApp() {
     cyclist: [[['W', 'S'], 'Pedal / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Sprint'], [['Drag'], 'Orbit']],
     helicopter: [[['W', 'S'], 'Pitch'], [['A', 'D'], 'Yaw'], [['Space', 'E'], 'Ascend'], [['Q', 'C'], 'Descend'], [['Shift'], 'Boost']]
   };
-  // Boosted top speeds in mph (controllers.js caps them at 8.2, 36, 19 & 52 m/s): full scale of the speed meter
-  const topSpeedMph = { person: 18, car: 81, cyclist: 43, helicopter: 116 };
+  // Boosted top speeds in km/h (controllers.js caps them at 8.2, 36, 19 & 52 m/s): full scale of the speed meter
+  const topSpeedKmh = { person: 30, car: 130, cyclist: 68, helicopter: 187 };
 
   function renderControlHints(mode) {
     if (!elControlsHint) return;
@@ -249,7 +242,7 @@ async function initApp() {
     elControlsHint.replaceChildren(...items);
   }
 
-  // The taxi-yellow pill under the selected mode glides from button to button
+  // The accent-coloured pill under the selected mode glides from button to button
   function placeModeIndicator() {
     const active = modeSwitch ? modeSwitch.querySelector('.mode-btn.active') : null;
     if (!active) return;
@@ -369,9 +362,7 @@ async function initApp() {
     if (btn && e.detail > 0) btn.blur();
   });
 
-  // Where you are: the place's name over its street corner, drawn as a pair of NYC street-name signs
-  const roadNames = new Set(ROADS.map((r) => r.name));
-  const placeNames = new Set(NYC_LANDMARKS.map((l) => l.name));
+  // Where you are: the street's name, drawn as a street-name sign
   let locationText = '';
   function renderLocation(label) {
     if (!elLocation || label === locationText) return;
@@ -382,7 +373,7 @@ async function initApp() {
     if (split >= 0) {
       place = label.slice(0, split);
       streets = label.slice(split + 3);
-    } else if (placeNames.has(label) || (!label.includes(' & ') && !roadNames.has(label))) {
+    } else {
       place = label;
       streets = '';
     }
@@ -420,32 +411,11 @@ async function initApp() {
     gamepadControls.reset();
     cameraSystem.resetForTeleport();
     selectCamera('chase', true);
-    mapSystem.waypoint = {
-      x: destination.x,
-      z: destination.z,
-      name: getLocationLabel(destination.x, destination.z)
-    };
     return destination;
   }
 
-  const mapSystem = world.createMapSystem({
-    controllerManager,
-    cameraSystem,
-    trafficSystem,
-    onToggle: (open) => {
-      controllerManager.resetInput();
-      touchControls.setEnabled(!open);
-      gamepadControls.setEnabled(!open);
-      const mapHint = document.getElementById('fullmap-hover-info');
-      if (open && touchControls.available && mapHint) {
-        mapHint.textContent = 'Tap to teleport · Drag to pan · Use + / − to zoom';
-      }
-    },
-    onTeleport: teleportTo
-  });
-
   teleportButtons.forEach((btn) => {
-    // The markup lists the NYC destinations; hide the ones this city has no location for
+    // Hide the buttons that have no location
     if (!TELEPORT_LOCATIONS[btn.getAttribute('data-teleport')]) btn.hidden = true;
     btn.addEventListener('click', () => {
       const key = btn.getAttribute('data-teleport');
@@ -456,9 +426,6 @@ async function initApp() {
       closePopovers();
     });
   });
-
-  const openMapBtn = document.getElementById('btn-open-map');
-  if (openMapBtn) openMapBtn.addEventListener('click', () => mapSystem.toggleFullMap(true));
 
   if (hudToggleBtn) {
     hudToggleBtn.addEventListener('click', () => {
@@ -497,13 +464,13 @@ async function initApp() {
         selectCamera('pov', true);
         break;
       case 'Digit8':
-        selectCamera('fifthAve', true);
+        selectCamera('dlb', true);
         break;
       case 'Digit9':
-        selectCamera('timesSquare', true);
+        selectCamera('ns37', true);
         break;
       case 'Digit0':
-        selectCamera('chryslerGCT', true);
+        selectCamera('peblinge', true);
         break;
       case 'KeyV':
         cycleCamera(e.shiftKey ? -1 : 1);
@@ -515,7 +482,7 @@ async function initApp() {
         if (!e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) audioSystem.setEnabled(!audioSystem.enabled);
         break;
       case 'KeyB':
-        if (!e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !mapSystem.isFullMapOpen) audioSystem.honk(controllerManager.getActiveEntity());
+        if (!e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) audioSystem.honk(controllerManager.getActiveEntity());
         break;
     }
   });
@@ -524,13 +491,9 @@ async function initApp() {
     cameraSystem.onResize(window.innerWidth, window.innerHeight);
     renderer.setSize(window.innerWidth, window.innerHeight);
     placeModeIndicator();
-    if (mapSystem.isFullMapOpen) {
-      mapSystem.resizeFullCanvas();
-      mapSystem.renderFullMap();
-    }
   });
 
-  // Initialize the UI and chase camera around the restored player, or the default taxi on a first visit.
+  // Initialize the UI and chase camera around the restored player, or the default car on a first visit.
   selectMode(controllerManager.activeMode);
   selectCamera('chase', true);
   selectTime('golden');
@@ -664,7 +627,6 @@ async function initApp() {
     gamepadControls.update(dt);
     controllerManager.update(dt, elapsed);
     cameraSystem.update(dt, elapsed);
-    streetDetails.signalClock.value = elapsed;
     trafficSystem.update(
       dt,
       elapsed,
@@ -673,17 +635,12 @@ async function initApp() {
       controllerManager.activeMode,
       cameraSystem.camera
     );
-    highwayTraffic.update(dt, cameraSystem.camera, controllerManager.getActiveEntity(), controllerManager.activeMode);
     if (!document.hidden && now >= nextPlayerSave) {
       savePlayerState();
       nextPlayerSave = now + 5000;
     }
-    if (boroughs.update) boroughs.update(elapsed); // Roosevelt Island Tramway cabins
-    cityBlocks.update(cameraSystem.currentPos.x, cameraSystem.currentPos.z);
-    if (cityBlocks.updateLights) cityBlocks.updateLights(cameraSystem.camera);
-    if (streetDetails.update) streetDetails.update(cameraSystem.camera);
+    world.update(cameraSystem.currentPos.x, cameraSystem.currentPos.z);
     lightingSystem.update(cameraSystem.currentPos);
-    mapSystem.update();
     audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.activePresetId === 'midnight');
     if (warmedUp) updateSceneCulling(cameraSystem.camera.position); // the warm-up frame draws every chunk
 
@@ -735,20 +692,20 @@ async function initApp() {
 
       const activeEnt = controllerManager.getActiveEntity();
       const mode = controllerManager.activeMode;
-      const mph = Math.round(Math.abs(activeEnt.speed) * 2.237);
-      const altFt = Math.max(0, Math.round(activeEnt.position.y * 3.281));
+      const kmh = Math.round(Math.abs(activeEnt.speed) * 3.6);
+      const altM = Math.max(0, Math.round(activeEnt.position.y));
 
       if (elFps) {
         elFps.textContent = String(currentFps);
         elFps.className = currentFps >= 50 ? 'fps-ok' : currentFps >= 30 ? 'fps-warn' : 'fps-bad';
       }
-      if (elSpeed) elSpeed.textContent = String(mph);
-      if (elSpeedMeter) elSpeedMeter.style.transform = `scaleX(${Math.min(1, mph / (topSpeedMph[mode] || 80))})`;
-      document.body.classList.toggle('is-boosting', controllerManager.keys.boost && mph > 0);
-      if (elAltitude) elAltitude.textContent = altFt.toLocaleString('en-US');
+      if (elSpeed) elSpeed.textContent = String(kmh);
+      if (elSpeedMeter) elSpeedMeter.style.transform = `scaleX(${Math.min(1, kmh / (topSpeedKmh[mode] || 130))})`;
+      document.body.classList.toggle('is-boosting', controllerManager.keys.boost && kmh > 0);
+      if (elAltitude) elAltitude.textContent = altM.toLocaleString('en-US');
       // The street corner of the player on the follow cameras, of the camera itself on the scenic ones
       const where = cameraSystem.getActivePreset().category === 'follow' ? activeEnt.position : cameraSystem.currentPos;
-      renderLocation(getLocationLabel(where.x, where.z));
+      renderLocation(world.locationLabel(where.x, where.z));
     }
   });
 }

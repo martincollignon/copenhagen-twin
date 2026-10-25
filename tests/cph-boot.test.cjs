@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { readFileSync, existsSync } = require('node:fs');
+const { readFileSync, readdirSync, existsSync } = require('node:fs');
 const { join, normalize } = require('node:path');
 const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
@@ -7,65 +7,57 @@ const { loadModule } = require('./helpers/module.cjs');
 const root = join(__dirname, '..');
 const read = (path) => readFileSync(join(root, path), 'utf8');
 
-// Modules that carry Manhattan data or build Manhattan-only content
-const MANHATTAN_ONLY = [
-  'js/nyc-geodata.js', 'js/city-config-nyc.js', 'js/city-grid.js', 'js/boroughs.js', 'js/buildings.js',
-  'js/landmarks.js', 'js/fire-escapes.js', 'js/street-details.js', 'js/road-paint.js',
-  'js/nyc-map.js', 'js/trees.js',
-  'js/world-nyc.js'
+// Names of the removed New York modules and data: none may exist, be imported or be preloaded
+const REMOVED_MODULES = [
+  'city', 'city-config-nyc', 'city-config-cph', 'world-nyc', 'world-cph', 'nyc-geodata', 'nyc-map', 'city-grid',
+  'boroughs', 'landmarks', 'landmark-state', 'fire-escapes', 'street-details', 'road-paint', 'buildings', 'trees'
 ];
 
-// Every module reachable from js/main.js in Copenhagen mode: static imports plus dynamic import()s, except the ones
-// that are only taken when `?city=nyc` (the world-nyc.js import in main.js and the city-config-nyc.js one in the
-// city-config.js dispatcher).
-function reachableInCph() {
-  const nycOnlyEdges = new Set(['js/world-nyc.js', 'js/city-config-nyc.js']);
+// Every module reachable from js/main.js through static imports and dynamic import()s.
+function reachable() {
   const seen = new Set();
   const visit = (file) => {
     if (seen.has(file)) return;
     seen.add(file);
     const source = read(file);
-    const specifiers = [
-      ...[...source.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|^\s*import\s*)['"](\.[^'"]+)['"]/gm)].map((m) => m[1])
-    ];
-    for (const specifier of specifiers) {
-      const target = normalize(join('js', specifier));
-      if (nycOnlyEdges.has(target)) continue;
-      visit(target);
+    for (const m of source.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|^\s*import\s*)['"](\.[^'"]+)['"]/gm)) {
+      visit(normalize(join('js', m[1])));
     }
   };
   visit('js/main.js');
   return seen;
 }
 
-test('Copenhagen mode never reaches the Manhattan modules or geodata', () => {
-  const reachable = reachableInCph();
-  assert.ok(reachable.has('js/world-cph.js'));
-  assert.ok(reachable.has('js/city-config-cph.js'));
-  assert.ok(reachable.has('js/controllers.js') && reachable.has('js/cameras.js') && reachable.has('js/lighting.js'));
-  for (const file of MANHATTAN_ONLY) assert.ok(!reachable.has(file), `${file} must not load in cph mode`);
+test('Copenhagen is the only city: no New York modules exist, are imported or are preloaded', () => {
+  const graph = reachable();
+  assert.ok(graph.has('js/world.js') && graph.has('js/city-config.js'));
+  assert.ok(graph.has('js/controllers.js') && graph.has('js/cameras.js') && graph.has('js/lighting.js'));
+  const html = read('index.html');
+  for (const name of REMOVED_MODULES) {
+    assert.ok(!existsSync(join(root, `js/${name}.js`)), `js/${name}.js is deleted`);
+    assert.ok(!graph.has(`js/${name}.js`), `js/${name}.js is not imported`);
+    assert.ok(!html.includes(`href="./js/${name}.js"`), `js/${name}.js is not preloaded`);
+  }
+  for (const file of ['tools/build-geodata.mjs', 'tools/overpass.sh', 'tools/data']) {
+    assert.ok(!existsSync(join(root, file)), `${file} is deleted`);
+  }
 });
 
-test('the Manhattan world is imported only behind the nyc branch of main.js', () => {
-  const main = read('js/main.js');
-  assert.equal([...main.matchAll(/import\(['"]\.\/world-nyc\.js['"]\)/g)].length, 1);
-  assert.match(main, /IS_NYC\s*\n?\s*\?[^]*?world-nyc\.js[^]*?:[^]*?world-cph\.js/);
-  assert.ok(!/^import .*from '\.\/(city-grid|boroughs|landmarks|buildings|street-details|road-paint|nyc-map|nyc-geodata)\.js'/m.test(main));
-  assert.match(read('js/city-config.js'), /IS_NYC \? await import\('\.\/city-config-nyc\.js'\)/);
+test('every module in js/ is reachable from main.js (no dead modules)', () => {
+  const graph = reachable();
+  for (const file of readdirSync(join(root, 'js'))) assert.ok(graph.has(`js/${file}`), `js/${file} is imported by something`);
 });
 
-test('?city selects cph by default and nyc on request', async () => {
-  const { resolveCity, CITY } = await import('../js/city.js');
-  assert.equal(CITY, 'cph', 'no location (node) falls back to cph');
-  assert.equal(resolveCity(''), 'cph');
-  assert.equal(resolveCity('?city=nyc'), 'nyc');
-  assert.equal(resolveCity('?city=NYC&debug=footprints'), 'nyc');
-  assert.equal(resolveCity('?city=cph'), 'cph');
-  assert.equal(resolveCity('?city=atlantis'), 'cph');
+test('there is no ?city switch and no NYC strings in the shipped sources', () => {
+  const files = ['index.html', 'css/style.css', ...readdirSync(join(root, 'js')).map((f) => `js/${f}`)];
+  for (const file of files) {
+    const source = read(file);
+    assert.ok(!/\?city=|IS_NYC|resolveCity|NYC_LANDMARKS|Slop New York|\bmph\b|NYC Yellow Taxi|NYPD|MTA\b/.test(source.replace(/Based on Slop New York by mrdoob \(MIT\)/g, '')), `${file} has New York leftovers`);
+  }
 });
 
 test('the Copenhagen frame matches docs/cph-geodata-schema.md', async () => {
-  const { CPH_FRAME, toLocal, toEtrs, ISLAND_BOUNDS, TELEPORT_LOCATIONS } = await import('../js/city-config-cph.js');
+  const { CPH_FRAME, toLocal, toEtrs, ISLAND_BOUNDS, TELEPORT_LOCATIONS } = await import('../js/city-config.js');
   assert.deepEqual([...CPH_FRAME.origin], [723900.0, 6176500.0, 6.84]);
   assert.equal(CPH_FRAME.epsg, 25832);
   assert.deepEqual([...CPH_FRAME.bbox], [-750, -750, 750, 750]);
@@ -75,27 +67,23 @@ test('the Copenhagen frame matches docs/cph-geodata-schema.md', async () => {
   const back = toEtrs(p.x, p.z, p.y);
   assert.ok(Math.abs(back.e - 724000) < 1e-9 && Math.abs(back.n - 6176540) < 1e-9 && Math.abs(back.h - 9.84) < 1e-9);
   assert.deepEqual([ISLAND_BOUNDS.minX, ISLAND_BOUNDS.minZ, ISLAND_BOUNDS.maxX, ISLAND_BOUNDS.maxZ], [-750, -750, 750, 750]);
-  assert.deepEqual(Object.keys(TELEPORT_LOCATIONS), ['origin']);
+  assert.deepEqual(Object.keys(TELEPORT_LOCATIONS), ['ns37', 'dlb', 'peblinge', 'nbro', 'blaag']);
 });
 
-test('the city-config dispatcher resolves to the Copenhagen config without loading Manhattan data', async () => {
+test('the city config is the Copenhagen one', async () => {
   const config = await import('../js/city-config.js');
   assert.equal(config.ISLAND_BOUNDS.maxX, 750);
-  assert.equal(config.blockAt(0, 0), null);
-  assert.deepEqual(config.ROADS, []);
-  assert.deepEqual(config.NYC_LANDMARKS, []);
-  assert.equal(config.streetZ(37), 0);
-  assert.match(config.getLocationLabel(10, -20), /^Copenhagen/);
   assert.equal(config.isTypingInField({ target: { tagName: 'INPUT' } }), true);
   assert.equal(config.isTypingInField({ target: { tagName: 'DIV' } }), false);
+  assert.equal(config.TELEPORT_LOCATIONS.ns37.x, 0, 'start at Nørre Søgade 37, the frame origin');
 });
 
 test('geodata is optional: absent data boots the empty plane, present data is exposed', async () => {
-  const { CPH_FRAME } = await import('../js/city-config-cph.js');
+  const { CPH_FRAME } = await import('../js/city-config.js');
   const warnings = [];
-  const { loadCphGeodata } = loadModule(read('js/world-cph.js'), {
+  const { loadCphGeodata } = loadModule(read('js/world.js'), {
     imports: {
-      'three/webgpu': {}, './city-config-cph.js': { CPH_FRAME }, './traffic.js': {}, './road-surfaces-cph.js': {},
+      'three/webgpu': {}, './city-config.js': { CPH_FRAME }, './traffic.js': {}, './road-surfaces-cph.js': {},
       './cyclists.js': {}, './signal-heads-cph.js': {}, './walk-space-cph.js': {}, './buildings-real.js': { buildRealBuildings: async () => null }
     },
     globals: { console: { warn: (...a) => warnings.push(a), info() {} }, globalThis: {}, document: {} }
@@ -109,10 +97,4 @@ test('geodata is optional: absent data boots the empty plane, present data is ex
   assert.equal(warnings.filter((w) => /frame origin/.test(w[0])).length, 0);
   await loadCphGeodata('x', reply(true, { ...geo, frame: { origin: [1, 2, 3] } }));
   assert.equal(warnings.filter((w) => /frame origin/.test(w[0])).length, 1, 'a mismatched frame is flagged');
-});
-
-test('preloads cover only the engine core in index.html', () => {
-  const html = read('index.html');
-  for (const file of MANHATTAN_ONLY) assert.ok(!html.includes(`href="./${file}"`), `${file} is not preloaded`);
-  assert.ok(existsSync(join(root, 'js/world-cph.js')));
 });

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { CPH_FRAME } from './city-config-cph.js';
+import { CPH_FRAME } from './city-config.js';
 import { buildRealBuildings } from './buildings-real.js';
 import { createTrafficSystem } from './traffic.js';
 import { buildCphRoadSurfaces } from './road-surfaces-cph.js';
@@ -7,11 +7,10 @@ import { createCyclistSystem } from './cyclists.js';
 import { buildSignalHeads } from './signal-heads-cph.js';
 import { createWalkSpace } from './walk-space-cph.js';
 
-// js/world-cph.js
-// The Copenhagen world for M0: an empty ground plane in the Copenhagen frame (docs/cph-geodata-schema.md) plus an
-// optional load of data/cph-geodata.json, exposed as `world.geo` (and globalThis.CPH_GEO) for the later milestones.
-// Roads, traffic, pedestrians, cyclists and signals (M3) are built from the geodata when it is present; the map is
-// still an inert null object.
+// js/world.js
+// The Copenhagen world: a ground plane in the Copenhagen frame (docs/cph-geodata-schema.md) plus data/cph-geodata.json,
+// exposed as `world.geo` (and globalThis.CPH_GEO). Buildings, roads, traffic, pedestrians, cyclists and signals are
+// built from the geodata when it is present; the engine boots to the bare ground plane without it.
 // With `?debug=footprints` the geodata's buildings, water and parks are drawn as flat debug polygons.
 
 const CPH_GEODATA_URL = './data/cph-geodata.json';
@@ -28,7 +27,7 @@ async function loadCphGeodata(url = CPH_GEODATA_URL, fetchImpl = globalThis.fetc
     }
     const o = geo.frame?.origin;
     if (o && o.some((v, i) => Math.abs(v - CPH_FRAME.origin[i]) > 1e-6)) {
-      console.warn('[cph] geodata frame origin differs from city-config-cph.js', o, CPH_FRAME.origin);
+      console.warn('[cph] geodata frame origin differs from city-config.js', o, CPH_FRAME.origin);
     }
     return geo;
   } catch (error) {
@@ -159,8 +158,7 @@ async function buildCphTraffic(scene, geo, { markInit }) {
   const walk = createWalkSpace(geo);
   let cyclists = null;
   const bikeLaneNear = (x, z, r) => !!cyclists && cyclists.network.lanes.some((l) => l.src && nearLane(l, x, z, r));
-  const traffic = createTrafficSystem(scene, [], [], geo.points?.signals || [], {
-    cph: true,
+  const traffic = createTrafficSystem(scene, geo.points?.signals || [], {
     roadGraph: geo.roadGraph,
     walkable: walk.walkable,
     onSidewalk: walk.onSidewalk,
@@ -202,16 +200,52 @@ function nearLane(lane, x, z, r) {
   return false;
 }
 
-const nullMap = () => ({
-  waypoint: null,
-  isFullMapOpen: false,
-  update() {},
-  toggleFullMap() {},
-  resizeFullCanvas() {},
-  renderFullMap() {}
-});
+// Name of the nearest named street (roadGraph link) within 40 m, for the HUD location sign
+function createLocator(geo) {
+  const rg = geo?.roadGraph;
+  if (!rg) return () => 'Copenhagen';
+  const N = rg.nodes;
+  const CELL = 64;
+  const cells = new Map();
+  const key = (ix, iz) => ix * 100003 + iz;
+  for (const l of rg.links) {
+    const name = rg.names[l[6]];
+    if (!name) continue;
+    const seg = [N[2 * l[0]], N[2 * l[0] + 1], N[2 * l[1]], N[2 * l[1] + 1], name];
+    const x0 = Math.min(seg[0], seg[2]);
+    const x1 = Math.max(seg[0], seg[2]);
+    const z0 = Math.min(seg[1], seg[3]);
+    const z1 = Math.max(seg[1], seg[3]);
+    for (let ix = Math.floor(x0 / CELL); ix <= Math.floor(x1 / CELL); ix++) {
+      for (let iz = Math.floor(z0 / CELL); iz <= Math.floor(z1 / CELL); iz++) {
+        const k = key(ix, iz);
+        if (!cells.has(k)) cells.set(k, []);
+        cells.get(k).push(seg);
+      }
+    }
+  }
+  return (x, z) => {
+    let best = 40;
+    let name = '';
+    for (let ix = Math.floor((x - 40) / CELL); ix <= Math.floor((x + 40) / CELL); ix++) {
+      for (let iz = Math.floor((z - 40) / CELL); iz <= Math.floor((z + 40) / CELL); iz++) {
+        for (const [ax, az, bx, bz, n] of cells.get(key(ix, iz)) || []) {
+          const dx = bx - ax;
+          const dz = bz - az;
+          const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+          const d = Math.hypot(ax + dx * t - x, az + dz * t - z);
+          if (d < best) {
+            best = d;
+            name = n;
+          }
+        }
+      }
+    }
+    return name ? `Copenhagen · ${name}` : 'Copenhagen';
+  };
+}
 
-async function buildCphWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH_GEODATA_URL } = {}) {
+async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH_GEODATA_URL } = {}) {
   const ground = buildGround(scene);
   markInit('ground');
 
@@ -236,20 +270,19 @@ async function buildCphWorld(scene, { markInit = () => {}, debug = '', geoUrl = 
 
   return {
     colliders: [],
-    boroughs: {},
-    cityBlocks: { update: (x, z) => buildings?.update(x, z), allBlocks: [], colliders: [] },
-    streetDetails: { audioSignals: [], signalClock: { value: 0 }, footprints: [], signalIntersections: [], update() {} },
+    // the player's surroundings: buildings stream in around the camera
+    update: (x, z) => buildings?.update(x, z),
+    audioSignals: [],
+    locationLabel: createLocator(geo),
     trafficSystem: traffic ? traffic.traffic : nullTraffic(),
-    highwayTraffic: { cars: [], update() {} },
     cullingRoots: ['CopenhagenDebugFootprints'],
     roadSurfaces: traffic?.surfaces || null,
     ground,
     debugFootprints,
     buildings,
     attach: (context) => buildings?.attach(context),
-    geo,
-    createMapSystem: nullMap
+    geo
   };
 }
 
-export { CPH_GEODATA_URL, loadCphGeodata, buildCphWorld };
+export { CPH_GEODATA_URL, loadCphGeodata, buildWorld };
