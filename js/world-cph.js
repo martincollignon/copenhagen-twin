@@ -164,6 +164,7 @@ async function buildCphTraffic(scene, geo, { markInit }) {
     walkable: walk.walkable,
     onSidewalk: walk.onSidewalk,
     blockAt: walk.blockAt,
+    debug: (globalThis.__cphDebug = {}),
     // pedestrians walk outside the cycle track beside a carriageway
     extraOffset: (e, sign) => {
       const mx = e.sx + e.dx * e.len * 0.5 + e.rx * sign * (e.half + 1.4);
@@ -177,12 +178,14 @@ async function buildCphTraffic(scene, geo, { markInit }) {
   markInit('cyclists');
   const heads = buildSignalHeads(scene, signalNodes);
   markInit('signalHeads');
-  const update = (dt, elapsed, focusPos, playerEntity, activeMode, camera) => {
-    traffic.update(dt, elapsed, focusPos, playerEntity, activeMode, camera);
+  const trafficUpdate = traffic.update;
+  traffic.update = (dt, elapsed, focusPos, playerEntity, activeMode, camera) => {
+    trafficUpdate(dt, elapsed, focusPos, playerEntity, activeMode, camera);
     cyclists.update(dt, elapsed, focusPos || { x: 0, z: 0 }, null);
     heads.update(elapsed, focusPos);
   };
-  return { surfaces, traffic: { ...traffic, update, cyclists: cyclists.riders, cyclistSystem: cyclists, signalNodes }, heads };
+  Object.assign(traffic, { cyclists: cyclists.riders, cyclistSystem: cyclists, signalNodes });
+  return { surfaces, traffic, heads };
 }
 
 // distance from (x, z) to a lane polyline <= r

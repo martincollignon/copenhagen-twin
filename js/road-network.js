@@ -5,6 +5,7 @@ import {
   getIslandBoundsAtZ,
   BLOCKS
 } from './city-config.js';
+import { carriagewayFromLanes } from './road-width-cph.js';
 
 // js/road-network.js
 // Drivable road graph derived from the ground layout that city-grid.js actually builds: avenue corridors
@@ -1189,6 +1190,7 @@ function buildRoadNetwork(sidewalks, obstacles, signalIntersections = [], option
 // [a, b, nameIdx, width, lanes, dir, inner, chainId].
 const CPH_VEHICULAR = new Set(['primary', 'secondary', 'residential', 'service']);
 const CPH_LANE = 3.0;
+// (carriagewayFromLanes: the data's width is a clamped kerb-to-kerb spacing, see road-width-cph.js)
 
 function cphVehicularLinks(rg) {
   const out = [];
@@ -1284,11 +1286,12 @@ function cphLanes(l) {
   const twoWay = (n) => Array.from({ length: n }, (_, i) => CPH_LANE / 2 + i * CPH_LANE);
   const nf = Math.min(4, info.along);
   const nb = Math.min(4, info.against);
+  const width = carriagewayFromLanes(l.w, info.along + (l.dir === 0 ? info.against : 0), info.cls);
   if (l.dir !== 0) {
     const lanes = oneWay(l.dir > 0 ? nf : nb);
-    return { half: Math.max(l.w / 2, lanes.length * CPH_LANE / 2), axis: major ? 'ave' : 'st', fwd: l.dir > 0 ? lanes : [], back: l.dir < 0 ? lanes : [] };
+    return { half: Math.max(width / 2, lanes.length * CPH_LANE / 2), axis: major ? 'ave' : 'st', fwd: l.dir > 0 ? lanes : [], back: l.dir < 0 ? lanes : [] };
   }
-  const half = Math.max(l.w / 2, Math.max(nf, nb) * CPH_LANE);
+  const half = Math.max(width / 2, Math.max(nf, nb) * CPH_LANE);
   return { half, axis: major ? 'ave' : 'st', fwd: twoWay(nf), back: twoWay(nb) };
 }
 

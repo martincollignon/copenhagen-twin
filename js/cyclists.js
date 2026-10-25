@@ -10,7 +10,7 @@ import { signalOffset } from './signal-plan.js';
 // wheels, cranks) with a skinned PersonRig on it, the same models as the player's cyclist. Bicycles beyond DRAW_RADIUS
 // or outside the view are not drawn; their riders keep riding.
 
-const NUM_CYCLISTS = 64;
+const NUM_CYCLISTS = 96;
 const DRAW_RADIUS = 220;
 const PALETTE = [0x1b1d21, 0x2d3a4a, 0x7a2f2b, 0x3d4a3a, 0xc9c6bd, 0x1f4e79, 0x575a5e, 0x8a6d3b];
 
@@ -126,7 +126,7 @@ export function createCyclistSystem(scene, geo, signalNodes = []) {
   const q = new THREE.Quaternion();
 
   function update(dt, elapsed, focus, visible = null) {
-    sim.update(dt, elapsed, focus);
+    sim.update(dt, elapsed, focus, 300);
     crowd.begin();
     let drawn = 0;
     for (let i = 0; i < bikes.length; i++) {

@@ -4,6 +4,8 @@
 // Frame: x east, z south, y up. `buildRoadSurfaceArrays` is pure (no three.js) so it can be tested headless;
 // `buildCphRoadSurfaces` turns the arrays into merged meshes.
 
+import { carriagewayWidth } from './road-width-cph.js';
+
 export const SURFACE_Y = { asphalt: 0.02, paint: 0.035, cycle: 0.09, kerb: 0.12, sidewalk: 0.15 };
 const VEHICULAR = new Set(['primary', 'secondary', 'residential', 'service']);
 const KERB_W = 0.18;
@@ -136,7 +138,7 @@ export function buildRoadSurfaceArrays(geo) {
 
   for (const r of geo.roads || []) {
     if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4) continue;
-    const w = r.width || 7;
+    const w = carriagewayWidth(r);
     const h = w / 2;
     ribbon(asphalt, r.pts, -h, h, SURFACE_Y.asphalt);
     for (const s of [-1, 1]) ribbon(kerb, r.pts, s * h, s * (h + KERB_W), SURFACE_Y.kerb);
