@@ -30,3 +30,16 @@ def test_marking_kinds_cover_every_kk_type():
     for t in ("Hvidafmærkning", "Fodgængerfelt", "Blå cykelfelt", "Pileafmærkning", "Parkering", "Symboler på kørebane"):
         assert t in MARKING_KIND
     assert MARKING_KIND["Blå cykelfelt"] == "bluecycle"
+
+
+def test_sanitize_repairs_bowtie_and_keeps_valid_polygons():
+    import pytest  # noqa: PLC0415
+
+    pytest.importorskip("shapely")
+    from surfaces import sanitize  # noqa: PLC0415
+
+    valid = {"id": "v", "ring": [0, 0, 10, 0, 10, 10, 0, 10], "holes": [[2, 2, 4, 2, 4, 4, 2, 4]]}
+    assert sanitize(valid) == [valid]
+    bowtie = {"id": "b", "ring": [0, 0, 10, 10, 10, 0, 0, 10]}
+    parts = sanitize(bowtie)
+    assert len(parts) == 2 and {p["id"] for p in parts} == {"b", "b~1"}

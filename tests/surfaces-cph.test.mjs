@@ -1,8 +1,9 @@
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createKerbFrame } from '../js/walk-space-cph.js';
 import { buildPavementBuckets, createSurfaceIndex, sidewalkClass } from '../js/pavement-cph.js';
-import { bridgeHoles, earClip, ringArea } from '../js/polygon-cph.js';
+import { triangulatePolygon, trianglesArea, ringArea } from '../js/polygon-cph.js';
 import { buildRoadSurfaceArrays } from '../js/road-surfaces-cph.js';
 
 // a carriageway at 30 degrees from the x axis (local frame: z south), 7 m wide
@@ -73,17 +74,27 @@ test('class lookup and plaza inference', () => {
   assert.equal(sidewalkClass([0, 0, 30, 0, 30, 30, 0, 30]), 'raadhus', 'a plaza-sized block reads as a square');
 });
 
-test('polygon holes are bridged and triangulated', () => {
+test('polygon holes are carved out by the triangulation', () => {
   const outer = [0, 0, 20, 0, 20, 20, 0, 20];
   const hole = [5, 5, 5, 10, 10, 10, 10, 5];
-  const ring = bridgeHoles(outer, [hole]);
-  const idx = earClip(ring);
-  let area = 0;
-  for (let i = 0; i < idx.length; i += 3) {
-    const [p, q, s] = [idx[i], idx[i + 1], idx[i + 2]];
-    area += Math.abs((ring[2 * q] - ring[2 * p]) * (ring[2 * s + 1] - ring[2 * p + 1]) - (ring[2 * s] - ring[2 * p]) * (ring[2 * q + 1] - ring[2 * p + 1])) / 2;
+  const { pts, idx } = triangulatePolygon(outer, [hole]);
+  assert.ok(Math.abs(trianglesArea(pts, idx) - (ringArea(outer) - ringArea(hole))) < 1e-6);
+});
+
+test('every KK register surface and marking triangulates to its polygon area (+-0.5%)', () => {
+  const doc = JSON.parse(readFileSync(new URL('../data/cph-surfaces.json', import.meta.url), 'utf8'));
+  let withHoles = 0;
+  const bad = [];
+  for (const s of [...doc.surfaces, ...doc.markings]) {
+    if (!s.ring || s.ring.length < 6) continue;
+    if (s.holes?.length) withHoles++;
+    const { pts, idx } = triangulatePolygon(s.ring, s.holes);
+    const want = ringArea(s.ring) - (s.holes || []).reduce((a, h) => a + ringArea(h), 0);
+    const got = trianglesArea(pts, idx);
+    if (Math.abs(got - want) > 0.005 * Math.abs(want) + 1e-6) bad.push(`${s.id} want ${want.toFixed(2)} got ${got.toFixed(2)}`);
   }
-  assert.ok(Math.abs(area - (ringArea(outer) - ringArea(hole))) < 1e-6);
+  assert.ok(withHoles > 500, 'the hole polygons are present');
+  assert.deepEqual(bad, []);
 });
 
 test('cycle tracks: raised dark asphalt with granite kerbs, blue only through junctions', () => {

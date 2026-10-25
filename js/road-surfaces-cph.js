@@ -7,8 +7,10 @@
 // `buildCphRoadSurfaces` turns the arrays into merged meshes.
 
 import { carriagewayWidth } from './road-width-cph.js';
-import { bridgeHoles, earClip } from './polygon-cph.js';
-import { buildPavementBuckets } from './pavement-cph.js';
+import { triangulatePolygon } from './polygon-cph.js';
+import { buildPavementBuckets, createSurfaceIndex } from './pavement-cph.js';
+import { createHeightGrid } from './ground-height-cph.js';
+import { computeMouthLayouts, subtractIntervals } from './junction-mouths-cph.js';
 
 // Heights (m): carriageway -> (10 cm kerb) -> cycle track -> (8 cm kerb) -> pavement
 export const SURFACE_Y = { asphalt: 0.02, paint: 0.035, cycle: 0.12, cyclePaint: 0.128, kerbTop: 0.002, sidewalk: 0.2, ground: 0.014 };
@@ -28,6 +30,14 @@ class Layer {
     if (uvs) for (const q of uvs) this.uv.push(q[0], q[1]);
     else for (let i = 0; i < 4; i++) this.uv.push(0, 0);
     this.idx.push(o, o + 1, o + 2, o, o + 2, o + 3);
+  }
+  // a sloped quad: four (x, z) corners with a height each, wound so it faces up
+  quadY(pts, ys) {
+    const o = this.pos.length / 3;
+    const cross = (pts[1][0] - pts[0][0]) * (pts[2][1] - pts[0][1]) - (pts[1][1] - pts[0][1]) * (pts[2][0] - pts[0][0]);
+    for (let k = 0; k < 4; k++) { this.pos.push(pts[k][0], ys[k], pts[k][1]); this.uv.push(0, 0); }
+    if (cross >= 0) this.idx.push(o, o + 1, o + 2, o, o + 2, o + 3);
+    else this.idx.push(o, o + 2, o + 1, o, o + 3, o + 2);
   }
   // a vertical quad over the (x, z) edge a-b between heights y0 and y1
   wall(a, b, y0, y1, u0 = 0, u1 = 0) {
@@ -152,13 +162,13 @@ function dashed(layer, pts, o, w, dash, period, y) {
 }
 
 function fillRing(layer, ring, y, holes) {
-  if (holes?.length) ring = bridgeHoles(ring, holes);
+  const { pts, idx } = triangulatePolygon(ring, holes);
   const o = layer.pos.length / 3;
-  for (let i = 0; i < ring.length; i += 2) {
-    layer.pos.push(ring[i], y, ring[i + 1]);
+  for (let i = 0; i < pts.length; i += 2) {
+    layer.pos.push(pts[i], y, pts[i + 1]);
     layer.uv.push(0, 0);
   }
-  for (const t of earClip(ring)) layer.idx.push(o + t);
+  for (const t of idx) layer.idx.push(o + t);
 }
 
 const ringCentroid = (ring) => {
@@ -231,6 +241,27 @@ export function cycleTrackIndex(geo) {
   return idx;
 }
 
+// Side-street mouth layouts of a geodata set (memoised: the surface arrays, the pavement buckets and the height field
+// all read the same layouts). Keyed by the roads array so a test geo is recomputed.
+const layoutCache = new WeakMap();
+export function mouthLayouts(geo) {
+  let l = layoutCache.get(geo.roads);
+  if (!l) {
+    const sw = createSurfaceIndex((geo.sidewalks || []).map((s) => ({ ring: s.ring, cls: 'sidewalk' })));
+    // how deep (m from a0) the pavement beside a mouth runs: probe just outside both edges of the side street
+    const depth = (at, hS, a0) => {
+      let last = a0;
+      for (let a = a0; a <= a0 + 6; a += 0.25) {
+        if ([-1, 1].some((sgn) => { const p = at(a, sgn * (hS + 0.5)); return sw.classAt(p[0], p[1]); })) last = a;
+      }
+      return last - a0 + 0.2;
+    };
+    l = computeMouthLayouts(geo.roads || [], { depth });
+    layoutCache.set(geo.roads, l);
+  }
+  return l;
+}
+
 /**
  * Pavement + register-ground triangles (see pavement-cph.js), with the cycle tracks cut out of the pavement.
  * @returns {Map<string, object>} bucket per material class
@@ -242,8 +273,46 @@ export function buildGroundBuckets(geo, surfacesDoc) {
     y: SURFACE_Y.sidewalk,
     groundY: SURFACE_Y.ground,
     skip: (x, z) => cycles.near(x, z, -0.3),
-    nearCycle: (x, z) => cycles.near(x, z, 6)
+    nearCycle: (x, z) => cycles.near(x, z, 6),
+    extraPavement: [...mouthLayouts(geo).values()].flat().flatMap((m) => m.plateaus)
   });
+}
+
+/**
+ * Walking height of the surface model above (SURFACE_Y: carriageway, cycle track, pavement, ramps) as a 0.5 m grid.
+ * @returns {{ heightAt: (x: number, z: number) => number }}
+ */
+export function buildGroundHeightField(geo, surfaces = null) {
+  let x0 = Infinity;
+  let z0 = Infinity;
+  let x1 = -Infinity;
+  let z1 = -Infinity;
+  for (const list of [geo.roads || [], geo.sidewalks || []]) {
+    for (const it of list) {
+      const a = it.pts || it.ring || [];
+      for (let i = 0; i + 1 < a.length; i += 2) { x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]); z0 = Math.min(z0, a[i + 1]); z1 = Math.max(z1, a[i + 1]); }
+    }
+  }
+  if (!Number.isFinite(x0)) return { heightAt: () => 0 };
+  const grid = createHeightGrid({ bbox: [x0 - 20, z0 - 20, x1 + 20, z1 + 20], cell: 0.5 });
+  for (const s of surfaces?.surfaces || []) if (s.ring && s.cls !== 'grass') grid.polygon(s.ring, SURFACE_Y.ground, s.holes || []);
+  for (const r of geo.roads || []) if (VEHICULAR.has(r.class) && r.pts?.length >= 4) grid.ribbon(r.pts, -carriagewayWidth(r) / 2, carriagewayWidth(r) / 2, SURFACE_Y.asphalt);
+  for (const s of geo.sidewalks || []) grid.polygon(s.ring, SURFACE_Y.sidewalk);
+  for (const r of geo.roads || []) {
+    if (!VEHICULAR.has(r.class) || !(r.pts?.length >= 4)) continue;
+    const h = carriagewayWidth(r) / 2;
+    const cs = cycleSides(r);
+    if (cs.right) grid.ribbon(r.pts, h + KERB_W, h + KERB_W + CYCLE_W, SURFACE_Y.cycle);
+    if (cs.left) grid.ribbon(r.pts, -h - KERB_W - CYCLE_W, -h - KERB_W, SURFACE_Y.cycle);
+  }
+  for (const c of geo.cycleTracks || []) if (c.pts?.length >= 4) grid.ribbon(c.pts, -(c.width || CYCLE_W) / 2, (c.width || CYCLE_W) / 2, SURFACE_Y.cycle);
+  for (const list of mouthLayouts(geo).values()) {
+    for (const m of list) {
+      for (const rp of m.ramps) grid.slope(rp.quad, rp.ys);
+      for (const q of m.plateaus) grid.polygon(q, SURFACE_Y.sidewalk);
+    }
+  }
+  return grid;
 }
 
 /**
@@ -288,6 +357,12 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false 
   }
 
   const pavementY = SURFACE_Y.sidewalk;
+  const layouts = mouthLayouts(geo);
+  const roadIndex = new Map((geo.roads || []).map((r, i) => [r, i]));
+  // pieces of [from, to] along a road that the mouths on `side` leave standing (kind: 'inner' | 'outer')
+  const standing = (lay, side, kind, from, to) => subtractIntervals(to - from, lay.filter((m) => m.mouth.side === side && m[kind]).map((m) => [m[kind][0] - from, m[kind][1] - from]))
+    .map(([a, b]) => [a + from, b + from]);
+  const piecesOf = (pts, list, fn) => { for (const [a, b] of list) { const q = slicePts(pts, a, b); if (q.length >= 4) fn(q, a); } };
   for (const r of geo.roads || []) {
     if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4) continue;
     const w = carriagewayWidth(r);
@@ -299,6 +374,8 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false 
     const vShift = r.oneway && fwd % 2 === 1 ? 1.5 : 0;
     ribbon(asphalt, r.pts, -h, h, SURFACE_Y.asphalt, { vShift });
     const cs = cycleSides(r);
+    const ri = roadIndex.get(r);
+    const lay = layouts.get(ri) || [];
     const x0 = r.pts[0];
     const z0 = r.pts[1];
     const x1 = r.pts[r.pts.length - 2];
@@ -314,18 +391,22 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false 
       if (!on) {
         // kerb straight from the carriageway up to the pavement
         const a = side * h;
-        kerbRun(kerb, kerbPts, Math.min(a, a + side * KERB_W), Math.max(a, a + side * KERB_W), pavementY + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.asphalt : null, side > 0 ? null : SURFACE_Y.asphalt, kt0);
+        piecesOf(r.pts, standing(lay, side, 'inner', kt0, L - kt1), (q, a0) => kerbRun(kerb, q, Math.min(a, a + side * KERB_W), Math.max(a, a + side * KERB_W), pavementY + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.asphalt : null, side > 0 ? null : SURFACE_Y.asphalt, a0));
         continue;
       }
       // road kerb (cycle-track height), the cycle track, the outer kerb (pavement height)
       const o1 = h + KERB_W;
       const o2 = o1 + CYCLE_W;
       const sd = (a, b) => (side > 0 ? [a, b] : [-b, -a]);
-      kerbRun(kerb, mid, ...sd(h, o1), SURFACE_Y.cycle + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.asphalt : null, side > 0 ? null : SURFACE_Y.asphalt, trim0);
-      ribbon(cycle, mid, ...sd(o1, o2), SURFACE_Y.cycle, { u0: trim0 });
-      kerbRun(kerb, mid, ...sd(o2, o2 + KERB_W), pavementY + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.cycle : null, side > 0 ? null : SURFACE_Y.cycle, trim0);
+      const inner = standing(lay, side, 'inner', trim0, L - trim1);
+      const outer = standing(lay, side, 'outer', trim0, L - trim1);
+      piecesOf(r.pts, inner, (q, a0) => kerbRun(kerb, q, ...sd(h, o1), SURFACE_Y.cycle + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.asphalt : null, side > 0 ? null : SURFACE_Y.asphalt, a0));
+      piecesOf(r.pts, outer, (q, a0) => {
+        ribbon(cycle, q, ...sd(o1, o2), SURFACE_Y.cycle, { u0: a0 });
+        kerbRun(kerb, q, ...sd(o2, o2 + KERB_W), pavementY + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.cycle : null, side > 0 ? null : SURFACE_Y.cycle, a0);
+      });
       // white edge line along the carriageway side of the track
-      ribbon(paint, mid, ...sd(o1 + 0.12, o1 + 0.12 + 0.1), SURFACE_Y.cyclePaint);
+      piecesOf(r.pts, inner, (q) => ribbon(paint, q, ...sd(o1 + 0.12, o1 + 0.12 + 0.1), SURFACE_Y.cyclePaint));
       // blue through the junction crossing, where KK has no blue polygon there
       for (const [ts, te, jx, jz] of [[0, trim0, x0, z0], [L - trim1, L, x1, z1]]) {
         if (te - ts < 1 || blueNear(jx, jz, 25)) continue;
@@ -351,6 +432,24 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false 
       for (let k = 1; k < back; k++) dashed(paint, r.pts, -k * LANE_W, LINE_W, 2, 6, SURFACE_Y.paint);
     } else if (r.oneway && fwd > 1) {
       for (let k = 1; k < fwd; k++) dashed(paint, r.pts, (k - fwd / 2) * LANE_W, LINE_W, 2, 6, SURFACE_Y.paint);
+    }
+  }
+
+  // side-street mouths: kerb returns round the corners of through streets, ramps up to the raised crossings of the
+  // small ones (their pavement-level plateaus are pavement-cph.js triangles)
+  for (const list of layouts.values()) {
+    for (const m of list) {
+      for (const arc of m.arcs) {
+        // the carriageway side of the arc: toward the junction centre
+        const t = [arc[arc.length - 2] - arc[0], arc[arc.length - 1] - arc[1]];
+        const toRoad = (-t[1]) * (m.mouth.x - arc[0]) + t[0] * (m.mouth.z - arc[1]);
+        if (toRoad > 0) kerbRun(kerb, arc, -KERB_W, 0, pavementY + SURFACE_Y.kerbTop, null, SURFACE_Y.asphalt);
+        else kerbRun(kerb, arc, 0, KERB_W, pavementY + SURFACE_Y.kerbTop, SURFACE_Y.asphalt, null);
+      }
+      for (const rp of m.ramps) {
+        const q = [[rp.quad[0], rp.quad[1]], [rp.quad[2], rp.quad[3]], [rp.quad[4], rp.quad[5]], [rp.quad[6], rp.quad[7]]];
+        asphalt.quadY(q, rp.ys);
+      }
     }
   }
 
@@ -420,5 +519,5 @@ export async function buildCphRoadSurfaces(scene, geo, { surfaces = null } = {})
     stats.pavementTriangles += bucket.vertexCount / 3;
   }
   scene.add(group);
-  return { group, stats };
+  return { group, stats, groundHeight: buildGroundHeightField(geo, surfaces) };
 }

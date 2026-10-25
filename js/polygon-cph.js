@@ -1,54 +1,69 @@
 // js/polygon-cph.js
+import earcut from './earcut.js';
+
 // Small pure polygon helpers shared by the ground-surface builders (flat [x0, z0, x1, z1, ...] rings, x east, z south).
 
-export function earClip(ring) {
-  const n = ring.length / 2;
-  if (n < 3) return [];
-  let area = 0;
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    area += ring[2 * i] * ring[2 * j + 1] - ring[2 * j] * ring[2 * i + 1];
+/**
+ * Triangulate a polygon with holes (flat rings, x east, z south) with earcut (ISC, js/earcut.js).
+ * Handles either winding (the rings are normalised: outer counter-clockwise, holes clockwise in x/z), drops degenerate
+ * holes and returns the merged vertex list plus triangle indices into it.
+ * @returns {{ pts: number[], idx: number[] }}
+ */
+export function triangulatePolygon(ring, holes = []) {
+  const signed = (r) => {
+    let a = 0;
+    for (let i = 0; i < r.length; i += 2) { const j = (i + 2) % r.length; a += r[i] * r[j + 1] - r[j] * r[i + 1]; }
+    return a;
+  };
+  const orient = (r, sign) => {
+    if (Math.sign(signed(r)) === sign) return Array.from(r);
+    const out = [];
+    for (let i = r.length - 2; i >= 0; i -= 2) out.push(r[i], r[i + 1]);
+    return out;
+  };
+  // drop a duplicated closing vertex
+  const open = (r) => (r.length > 6 && r[0] === r[r.length - 2] && r[1] === r[r.length - 1] ? r.slice(0, -2) : r);
+  const outerOpen = open(ring);
+  const holesOpen = (holes || []).map(open).filter((h) => h.length >= 6 && Math.abs(signed(h)) >= 1e-9);
+  if (outerOpen.length < 6 || Math.abs(signed(outerOpen)) < 1e-9) return { pts: Array.from(outerOpen), idx: [] };
+  const want = Math.abs(signed(outerOpen)) / 2 - holesOpen.reduce((a, h) => a + Math.abs(signed(h)) / 2, 0);
+  // earcut's hole bridging is a heuristic that can lose area on slivery polygons with many holes; it is exact for one
+  // of the winding conventions in practice, so try the input as given, then normalised, then reversed and keep the
+  // first whose triangulated area matches the polygon area.
+  const rev = (r) => { const out = []; for (let i = r.length - 2; i >= 0; i -= 2) out.push(r[i], r[i + 1]); return out; };
+  const variants = [
+    (r) => Array.from(r),
+    (r, isHole) => orient(r, isHole ? -1 : 1),
+    (r, isHole) => orient(r, isHole ? 1 : -1),
+    (r) => rev(r)
+  ];
+  let best = null;
+  for (const make of variants) {
+    const pts = make(outerOpen, false);
+    const holeStarts = [];
+    for (const h of holesOpen) { holeStarts.push(pts.length / 2); pts.push(...make(h, true)); }
+    const idx = earcut(pts, holeStarts, 2);
+    const err = Math.abs(trianglesArea(pts, idx) - want);
+    if (!best || err < best.err) best = { pts, idx, err };
+    if (err <= 1e-4 * Math.abs(want) + 1e-9) break;
   }
-  const order = [...Array(n).keys()];
-  if (area < 0) order.reverse();
-  const P = (i) => [ring[2 * i], ring[2 * i + 1]];
-  const cross = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
-  const tris = [];
-  let guard = n * n + 10;
-  while (order.length > 3 && guard-- > 0) {
-    let clipped = false;
-    for (let k = 0; k < order.length; k++) {
-      const a = order[(k + order.length - 1) % order.length];
-      const b = order[k];
-      const c = order[(k + 1) % order.length];
-      const A = P(a);
-      const B = P(b);
-      const C = P(c);
-      const cr = cross(A, B, C);
-      if (Math.abs(cr) <= 1e-9) { // collinear or a zero-width bridge spike: drop the vertex, no area lost
-        order.splice(k, 1);
-        clipped = true;
-        break;
-      }
-      if (cr < 0) continue;
-      let inside = false;
-      for (const q of order) {
-        if (q === a || q === b || q === c) continue;
-        const Q = P(q);
-        // a vertex coincident with a triangle corner (a hole bridge's twin) never blocks the ear
-        if ((Q[0] === A[0] && Q[1] === A[1]) || (Q[0] === B[0] && Q[1] === B[1]) || (Q[0] === C[0] && Q[1] === C[1])) continue;
-        if (cross(A, B, Q) >= 0 && cross(B, C, Q) >= 0 && cross(C, A, Q) >= 0) { inside = true; break; }
-      }
-      if (inside) continue;
-      tris.push(a, b, c);
-      order.splice(k, 1);
-      clipped = true;
-      break;
-    }
-    if (!clipped) break; // degenerate ring: drop the remainder
+  const { pts, idx } = best;
+  // same facing as the old ear clipper: positive cross product (x, z) for every triangle
+  for (let i = 0; i < idx.length; i += 3) {
+    const [p, q, r] = [idx[i], idx[i + 1], idx[i + 2]];
+    if ((pts[2 * q] - pts[2 * p]) * (pts[2 * r + 1] - pts[2 * p + 1]) - (pts[2 * r] - pts[2 * p]) * (pts[2 * q + 1] - pts[2 * p + 1]) < 0) { idx[i + 1] = r; idx[i + 2] = q; }
   }
-  if (order.length === 3) tris.push(order[0], order[1], order[2]);
-  return tris;
+  return { pts, idx };
+}
+
+/** Triangulated area of the output of triangulatePolygon. */
+export function trianglesArea(pts, idx) {
+  let a = 0;
+  for (let i = 0; i < idx.length; i += 3) {
+    const [p, q, r] = [idx[i], idx[i + 1], idx[i + 2]];
+    a += Math.abs((pts[2 * q] - pts[2 * p]) * (pts[2 * r + 1] - pts[2 * p + 1]) - (pts[2 * r] - pts[2 * p]) * (pts[2 * q + 1] - pts[2 * p + 1])) / 2;
+  }
+  return a;
 }
 
 export function ringArea(ring) {
@@ -77,53 +92,4 @@ export function pointInRing(ring, x, z) {
     if ((ring[i + 1] > z) !== (ring[j + 1] > z) && x < ((ring[j] - ring[i]) * (z - ring[i + 1])) / (ring[j + 1] - ring[i + 1]) + ring[i]) c = !c;
   }
   return c;
-}
-
-const segCross = (ax, az, bx, bz, cx, cz, dx, dz) => {
-  const d1 = (bx - ax) * (cz - az) - (bz - az) * (cx - ax);
-  const d2 = (bx - ax) * (dz - az) - (bz - az) * (dx - ax);
-  const d3 = (dx - cx) * (az - cz) - (dz - cz) * (ax - cx);
-  const d4 = (dx - cx) * (bz - cz) - (dz - cz) * (bx - cx);
-  return d1 * d2 < -1e-12 && d3 * d4 < -1e-12;
-};
-
-/**
- * Merge hole rings into the outer ring with zero-width bridges so earClip can triangulate a polygon with holes.
- * Each hole is joined at the closest outer/hole vertex pair whose connecting segment crosses no ring edge.
- */
-export function bridgeHoles(outer, holes) {
-  let ring = Array.from(outer);
-  const signed = (r) => { let a = 0; for (let i = 0; i < r.length; i += 2) { const j = (i + 2) % r.length; a += r[i] * r[j + 1] - r[j] * r[i + 1]; } return a; };
-  const outerSign = Math.sign(signed(ring)) || 1;
-  const rest = holes.filter((h) => h.length >= 6).map((h) => (Math.sign(signed(h)) === outerSign ? holeReverse(h) : Array.from(h)));
-  const edges = (rings) => { const e = []; for (const r of rings) for (let i = 0; i < r.length; i += 2) { const j = (i + 2) % r.length; e.push([r[i], r[i + 1], r[j], r[j + 1]]); } return e; };
-  const all = [ring, ...rest];
-  for (const hole of rest.sort((a, b) => Math.max(...b.filter((_, i) => i % 2 === 0)) - Math.max(...a.filter((_, i) => i % 2 === 0)))) {
-    const E = edges(all);
-    let best = null;
-    for (let i = 0; i < ring.length; i += 2) {
-      for (let j = 0; j < hole.length; j += 2) {
-        const d = Math.hypot(ring[i] - hole[j], ring[i + 1] - hole[j + 1]);
-        if (best && d >= best.d) continue;
-        let ok = true;
-        for (const [ax, az, bx, bz] of E) {
-          if (segCross(ring[i], ring[i + 1], hole[j], hole[j + 1], ax, az, bx, bz)) { ok = false; break; }
-        }
-        if (ok) best = { d, i, j };
-      }
-    }
-    if (!best) continue; // no clean bridge: leave the hole filled rather than corrupt the outline
-    const { i, j } = best;
-    const h = [];
-    for (let k = 0; k <= hole.length / 2; k++) { const q = (j + 2 * k) % hole.length; h.push(hole[q], hole[q + 1]); }
-    ring = [...ring.slice(0, i + 2), ...h, ring[i], ring[i + 1], ...ring.slice(i + 2)];
-    all[0] = ring;
-  }
-  return ring;
-}
-
-function holeReverse(h) {
-  const out = [];
-  for (let i = h.length - 2; i >= 0; i -= 2) out.push(h[i], h[i + 1]);
-  return out;
 }
