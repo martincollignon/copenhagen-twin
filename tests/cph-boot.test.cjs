@@ -10,8 +10,8 @@ const read = (path) => readFileSync(join(root, path), 'utf8');
 // Modules that carry Manhattan data or build Manhattan-only content
 const MANHATTAN_ONLY = [
   'js/nyc-geodata.js', 'js/city-config-nyc.js', 'js/city-grid.js', 'js/boroughs.js', 'js/buildings.js',
-  'js/landmarks.js', 'js/fire-escapes.js', 'js/street-details.js', 'js/road-network.js', 'js/road-paint.js',
-  'js/traffic.js', 'js/pedestrian-system.js', 'js/pedestrian-routes.js', 'js/nyc-map.js', 'js/trees.js',
+  'js/landmarks.js', 'js/fire-escapes.js', 'js/street-details.js', 'js/road-paint.js',
+  'js/nyc-map.js', 'js/trees.js',
   'js/world-nyc.js'
 ];
 
@@ -50,7 +50,7 @@ test('the Manhattan world is imported only behind the nyc branch of main.js', ()
   const main = read('js/main.js');
   assert.equal([...main.matchAll(/import\(['"]\.\/world-nyc\.js['"]\)/g)].length, 1);
   assert.match(main, /IS_NYC\s*\n?\s*\?[^]*?world-nyc\.js[^]*?:[^]*?world-cph\.js/);
-  assert.ok(!/^import .*from '\.\/(city-grid|boroughs|landmarks|buildings|street-details|traffic|road-paint|nyc-map|nyc-geodata)\.js'/m.test(main));
+  assert.ok(!/^import .*from '\.\/(city-grid|boroughs|landmarks|buildings|street-details|road-paint|nyc-map|nyc-geodata)\.js'/m.test(main));
   assert.match(read('js/city-config.js'), /IS_NYC \? await import\('\.\/city-config-nyc\.js'\)/);
 });
 
@@ -94,7 +94,10 @@ test('geodata is optional: absent data boots the empty plane, present data is ex
   const { CPH_FRAME } = await import('../js/city-config-cph.js');
   const warnings = [];
   const { loadCphGeodata } = loadModule(read('js/world-cph.js'), {
-    imports: { 'three/webgpu': {}, './city-config-cph.js': { CPH_FRAME } },
+    imports: {
+      'three/webgpu': {}, './city-config-cph.js': { CPH_FRAME }, './traffic.js': {}, './road-surfaces-cph.js': {},
+      './cyclists.js': {}, './signal-heads-cph.js': {}, './walk-space-cph.js': {}
+    },
     globals: { console: { warn: (...a) => warnings.push(a), info() {} }, globalThis: {}, document: {} }
   });
   const reply = (ok, body) => async () => ({ ok, json: async () => body });

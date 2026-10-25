@@ -1,10 +1,16 @@
 import * as THREE from 'three/webgpu';
 import { CPH_FRAME } from './city-config-cph.js';
+import { createTrafficSystem } from './traffic.js';
+import { buildCphRoadSurfaces } from './road-surfaces-cph.js';
+import { createCyclistSystem } from './cyclists.js';
+import { buildSignalHeads } from './signal-heads-cph.js';
+import { createWalkSpace } from './walk-space-cph.js';
 
 // js/world-cph.js
 // The Copenhagen world for M0: an empty ground plane in the Copenhagen frame (docs/cph-geodata-schema.md) plus an
 // optional load of data/cph-geodata.json, exposed as `world.geo` (and globalThis.CPH_GEO) for the later milestones.
-// Traffic, pedestrians, signals and the map are inert null objects until M3 puts a Copenhagen road network behind them.
+// Roads, traffic, pedestrians, cyclists and signals (M3) are built from the geodata when it is present; the map is
+// still an inert null object.
 // With `?debug=footprints` the geodata's buildings, water and parks are drawn as flat debug polygons.
 
 const CPH_GEODATA_URL = './data/cph-geodata.json';
@@ -145,6 +151,53 @@ const nullTraffic = () => ({
   update() {}
 });
 
+// Road surfaces, the drivable network, traffic, pedestrians, cyclists and signal heads from the geodata
+async function buildCphTraffic(scene, geo, { markInit }) {
+  const surfaces = await buildCphRoadSurfaces(scene, geo);
+  markInit('roadSurfaces');
+  const walk = createWalkSpace(geo);
+  let cyclists = null;
+  const bikeLaneNear = (x, z, r) => !!cyclists && cyclists.network.lanes.some((l) => l.src && nearLane(l, x, z, r));
+  const traffic = createTrafficSystem(scene, [], [], geo.points?.signals || [], {
+    cph: true,
+    roadGraph: geo.roadGraph,
+    walkable: walk.walkable,
+    onSidewalk: walk.onSidewalk,
+    blockAt: walk.blockAt,
+    // pedestrians walk outside the cycle track beside a carriageway
+    extraOffset: (e, sign) => {
+      const mx = e.sx + e.dx * e.len * 0.5 + e.rx * sign * (e.half + 1.4);
+      const mz = e.sz + e.dz * e.len * 0.5 + e.rz * sign * (e.half + 1.4);
+      return bikeLaneNear(mx, mz, 1.6) ? 2.4 : 0;
+    }
+  });
+  markInit('traffic');
+  const signalNodes = traffic.network.nodes.filter((n) => n.signal);
+  cyclists = createCyclistSystem(scene, geo, signalNodes);
+  markInit('cyclists');
+  const heads = buildSignalHeads(scene, signalNodes);
+  markInit('signalHeads');
+  const update = (dt, elapsed, focusPos, playerEntity, activeMode, camera) => {
+    traffic.update(dt, elapsed, focusPos, playerEntity, activeMode, camera);
+    cyclists.update(dt, elapsed, focusPos || { x: 0, z: 0 }, null);
+    heads.update(elapsed, focusPos);
+  };
+  return { surfaces, traffic: { ...traffic, update, cyclists: cyclists.riders, cyclistSystem: cyclists, signalNodes }, heads };
+}
+
+// distance from (x, z) to a lane polyline <= r
+function nearLane(lane, x, z, r) {
+  const p = lane.pts;
+  for (let i = 0; i + 3 < p.length; i += 2) {
+    const dx = p[i + 2] - p[i];
+    const dz = p[i + 3] - p[i + 1];
+    const l2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - p[i]) * dx + (z - p[i + 1]) * dz) / l2));
+    if (Math.hypot(p[i] + dx * t - x, p[i + 1] + dz * t - z) <= r) return true;
+  }
+  return false;
+}
+
 const nullMap = () => ({
   waypoint: null,
   isFullMapOpen: false,
@@ -165,14 +218,20 @@ async function buildCphWorld(scene, { markInit = () => {}, debug = '', geoUrl = 
   let debugFootprints = null;
   if (geo && debug.split(',').includes('footprints')) debugFootprints = buildDebugFootprints(scene, geo);
 
+  let traffic = null;
+  if (geo?.roadGraph && !debug.split(',').includes('noroads')) {
+    traffic = await buildCphTraffic(scene, geo, { markInit });
+  }
+
   return {
     colliders: [],
     boroughs: {},
     cityBlocks: { update() {}, allBlocks: [], colliders: [] },
     streetDetails: { audioSignals: [], signalClock: { value: 0 }, footprints: [], signalIntersections: [], update() {} },
-    trafficSystem: nullTraffic(),
+    trafficSystem: traffic ? traffic.traffic : nullTraffic(),
     highwayTraffic: { cars: [], update() {} },
     cullingRoots: ['CopenhagenDebugFootprints'],
+    roadSurfaces: traffic?.surfaces || null,
     ground,
     debugFootprints,
     geo,

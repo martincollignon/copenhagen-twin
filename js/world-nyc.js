@@ -6,6 +6,7 @@ import { buildStreetDetails } from './street-details.js';
 import { createTrafficSystem, createHighwayTraffic } from './traffic.js';
 import { buildRoadPaint } from './road-paint.js';
 import { NYCMapSystem } from './nyc-map.js';
+import { GEO } from './nyc-geodata.js';
 
 // js/world-nyc.js
 // The original slop-newyork world: Manhattan grid, boroughs, landmarks, synthetic lot buildings, street details,
@@ -33,7 +34,7 @@ export function buildNycWorld(scene, { markInit = () => {} } = {}) {
     ...cityGrid.footprints,
     ...streetDetails.footprints,
     ...colliders.filter((c) => !c.obb && (c.minY ?? 0) < 3.5)
-  ], streetDetails.signalIntersections);
+  ], streetDetails.signalIntersections, { geo: GEO });
   markInit('traffic');
   const highwayTraffic = createHighwayTraffic(scene, cityGrid.highwayLanes);
   buildRoadPaint(scene, trafficSystem.network);

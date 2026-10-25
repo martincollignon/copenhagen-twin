@@ -634,6 +634,23 @@ async function initApp() {
 
   if (elFps) elFps.textContent = '60';
 
+  // `?hooks` exposes the running twin to headless checks (tools/cph-m3-check.py): a free camera and the live systems
+  if (new URLSearchParams(location.search).has('hooks')) {
+    const updateCamera = cameraSystem.update.bind(cameraSystem);
+    globalThis.__twin = { THREE, scene, world, trafficSystem, controllerManager, cameraSystem, renderer, freeCam: null, frozen: false };
+    cameraSystem.update = (dt, time) => {
+      updateCamera(dt, time);
+      const f = globalThis.__twin.freeCam;
+      if (!f) return;
+      cameraSystem.camera.position.set(...f.pos);
+      cameraSystem.camera.lookAt(...f.target);
+      if (f.fov) cameraSystem.camera.fov = f.fov;
+      cameraSystem.camera.updateProjectionMatrix();
+      cameraSystem.camera.updateMatrixWorld(true);
+      cameraSystem.currentPos.set(...f.pos);
+    };
+  }
+
   renderer.setAnimationLoop((now) => {
     const rawDt = (now - lastTime) * 0.001;
     lastTime = now;

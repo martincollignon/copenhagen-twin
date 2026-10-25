@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { buildRoadNetwork } from './road-network.js';
 import { createPedestrianSystem } from './pedestrian-system.js';
 import { signalPhase, walkSignal } from './city-config.js';
+import { signalOffset, vehiclePhase, walkPhase } from './signal-plan.js';
 import { cityUniforms, createContactShadowMaterial, createCarFlareMaterial } from './tsl-materials.js';
 import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
 import {
@@ -70,7 +71,11 @@ function createBusDestinationTexture() {
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
-function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
+// `options` (Copenhagen): { cph: true, roadGraph, walkable, onSidewalk, blockAt } as road-network.js and the
+// pedestrian system take them; `geo` is the Manhattan GEO for its centreline streets. Cars and buses drive on the
+// signals' fixed-time plans (signal-plan.js) at the junctions the register places, not the avenue/street clock.
+function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections, options = {}) {
+  const CPH = !!options.cph;
   const group = new THREE.Group();
   group.name = 'ManhattanTrafficAndPedestrians';
   let collisionListener = null;
@@ -98,7 +103,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   // =========================================================================
   // 0. ROAD NETWORK
   // =========================================================================
-  const network = buildRoadNetwork(sidewalks, obstacles, signalIntersections);
+  const network = buildRoadNetwork(sidewalks, obstacles, signalIntersections, options);
   const { nodes, edges, connector, curvePoint } = network;
 
   // Sides of an intersection (road-network.js step 9): a grid intersection's are 0 east, 1 west, 2 south, 3 north;
@@ -107,6 +112,9 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   const laneCoord = (e, i) => (e.sx + e.rx * e.lanes[i]) * e.clx + (e.sz + e.rz * e.lanes[i]) * e.clz;
 
   for (const n of nodes) {
+    n.sigOffset = signalOffset(n.x, n.z);
+    n.sideGroup = [];
+    for (const a of n.arms || []) n.sideGroup[a.side] = a.group;
     n.box = new Array(n.groupCount).fill(0); // vehicles crossing it from each road (group: on the grid avenue 0, street 1)
     n.crossing = new Array(n.sideCount).fill(0); // vehicles crossing (or about to cross) the crosswalk on each side
     n.approach = new Array(n.sideCount).fill(null); // the edge arriving over each side's crosswalk
@@ -179,8 +187,8 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   let policeCount = 0;
 
   for (let i = 0; i < NUM_CARS; i++) {
-    const isPolice = (i % 40) === 6;
-    const isTaxi = !isPolice && (i % 5) === 0;
+    const isPolice = !CPH && (i % 40) === 6; // neutral cars in Copenhagen: no NYC taxi or NYPD liveries
+    const isTaxi = !CPH && !isPolice && (i % 5) === 0;
     const isSUV = !isPolice && !isTaxi && (i % 2 === 0);
 
     let bodyType = 'sedan';
@@ -315,7 +323,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   const nearEdges = [];
   const nearSignals = [];
   const pedestrianSystem = createPedestrianSystem(network, {
-    player, nearEdges, nearSignals, mayCross, walkOn, visible, nearView
+    player, nearEdges, nearSignals, mayCross, walkOn, visible, nearView, blockAt: options.blockAt
   });
   group.add(...pedestrianSystem.meshes);
 
@@ -368,7 +376,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   let stPhase = 'red';
   let aveWalk = true;
   let stWalk = false;
-  const phaseOf = (e) => (e.axisIndex === 0 ? avePhase : stPhase);
+  const phaseOf = CPH ? (e) => vehiclePhase(e.to.sigOffset, e.axisIndex, clock) : (e) => (e.axisIndex === 0 ? avePhase : stPhase);
   let focusX = 0;
   let focusZ = 140;
 
@@ -655,11 +663,11 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     const red = o.to.signal && phaseOf(o) === 'red';
     for (const list of o.occ) {
       const lead = leadOf(list);
-      if (!lead || (lead.v.edge === o && lead.v.move.turn === 'L')) continue;
+      if (!lead || (lead.v.edge === o && lead.v.move?.turn === 'L')) continue;
       if (red && !lead.v.isPolice) continue;
       if (!canStop(lead, o, impatient)) return true;
       const u = lead.v;
-      const j = u.edge === o ? u.move.out[u.lane] : -1;
+      const j = u.edge === o && u.move ? u.move.out[u.lane] : -1;
       if (v && v.wait > 0 && u.wait > v.wait && j >= 0 && o.len - lead.s - u.half < 2 && room(u.move.to, j, u)) return true;
     }
     return false;
@@ -697,7 +705,8 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
 
   // Do people on crosswalk `side` have the WALK? Across the avenue with the cross street's traffic, across the street
   // with the avenue's.
-  function walkOn(side) {
+  function walkOn(side, n = null) {
+    if (CPH) return !!n && walkPhase(n.sigOffset, n.sideGroup[side] ?? 0, clock);
     return side >= 2 ? stWalk : aveWalk;
   }
 
@@ -705,7 +714,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   // traffic arriving over it), once no vehicle is crossing it or committed to, and none is too close to stop
   function mayCross(p) {
     const n = p.node;
-    if (!walkOn(p.side) || n.crossing[p.side] > 0) return false;
+    if (!walkOn(p.side, n) || n.crossing[p.side] > 0) return false;
     const e = n.approach[p.side];
     if (!e) return true;
     for (const list of e.occ) {
@@ -874,7 +883,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   // pulling out of an intersection, nor in the last 12 m before the next.
   function changeLanes(v) {
     const e = v.edge;
-    if (v.conn || v.commit || Math.abs(v.dl) > 0.5 || v.s < v.half || e.len - v.s - v.half < 12) return;
+    if (!v.move || v.conn || v.commit || Math.abs(v.dl) > 0.5 || v.s < v.half || e.len - v.s - v.half < 12) return;
     let target = -1;
     if (v.move.out[v.lane] < 0) {
       const t = v.lane + Math.sign(nearestLane(v.move, v.lane) - v.lane);
@@ -946,7 +955,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
       const side = straddle(v);
       if (side) worst = Math.min(worst, follow(v, e.occ[v.lane + side], v.s));
       const d = e.len - v.s - v.half;
-      if (d < LOOKAHEAD) {
+      if (d < LOOKAHEAD && v.move) {
         const go = mayEnter(v, d);
         const f = v.move.to;
         const j = v.move.out[v.lane];
@@ -1013,6 +1022,13 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     claim(v); // at once, so vehicles deciding later this frame know
   }
 
+  function retire(v) {
+    v.edge = null;
+    v.move = null;
+    v.speed = 0;
+    v.conn = null;
+  }
+
   function leave(v) {
     v.s = v.cs - v.conn.len;
     v.edge = v.move.to;
@@ -1042,7 +1058,10 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     v.wait = v.speed < 0.5 ? v.wait + dt : 0;
     if (!v.conn) {
       v.s += ds;
-      if (v.s + v.half >= v.edge.len) enter(v);
+      if (v.s + v.half >= v.edge.len) {
+        if (v.move) enter(v);
+        else retire(v); // a road that only leads out of the district: respawned elsewhere
+      }
     } else {
       v.cs += ds;
       if (v.cs >= v.conn.len) leave(v);
@@ -1114,7 +1133,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     const steer = clamp(Math.atan((wheelbase * v.yawRate) / Math.max(v.speed, 0.5)), -0.6, 0.6);
     v.steer += (steer - v.steer) * Math.min(1, dt * 10);
 
-    const turn = v.move.turn;
+    const turn = v.move ? v.move.turn : 'S';
     if (Math.abs(v.dl) > 0.3 && Math.abs(v.dlv) > 0.05) v.blink = v.dl > 0 ? -1 : 1;
     else if (turn !== 'S' && (v.conn || v.edge.len - v.s < 35)) v.blink = turn === 'R' ? 1 : -1;
     else v.blink = 0;
@@ -1706,6 +1725,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
       v.prevZ = v.z;
       relateToPlayer(v);
       drive(v, dt);
+      if (!v.edge) continue;
       locate(v);
       knock(v, dt);
       pose(v, dt);
