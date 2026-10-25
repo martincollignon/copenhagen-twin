@@ -25,7 +25,7 @@ from urllib.parse import urlencode
 
 import numpy as np
 
-SKILL = Path("/Users/martincollignon/conductor/workspaces/dk-building-data/kolkata-v4/.claude/skills/building-case-to-3d/scripts")
+SKILL = Path(__file__).resolve().parents[2] / ".claude/skills/building-case-to-3d/scripts"
 sys.path.insert(0, str(SKILL))
 import skraafoto as S  # noqa: E402
 
