@@ -201,8 +201,8 @@ test('albedo: monotonic, scaled below the knee, never pure white', () => {
     assert.ok(a >= prev);
     prev = a;
   }
-  assert.ok(Math.abs(albedoFromLinear(0.2) - 0.2 * 0.84) < 1e-9);
-  assert.ok(albedoFromLinear(1) < 0.7);
+  assert.ok(Math.abs(albedoFromLinear(0.2) - 0.2 * 0.72) < 1e-9);
+  assert.ok(albedoFromLinear(1) < 0.6);
 });
 
 test('calibrated tone_cal is used when present and ?debug=nocal restores the raw tone', () => {

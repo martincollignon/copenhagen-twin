@@ -13,6 +13,7 @@ export const WATER = Object.freeze({
   copingW: 0.3, // coping ledge width beyond the wall face
   soffitY: -0.4, // underside of a bridge deck over water
   deckY: 0.02, // bridge deck (road surface layer)
+  extendMinArea: 20000, // m2: only the big lakes (Soerne) are continued to the horizon
   far: 2400, // lake outlines that touch the district bbox are continued to here: the water reaches the horizon
   shoreMax: 16, // distance-field range in metres
   cell: 1 // distance-field cell in metres
@@ -20,12 +21,23 @@ export const WATER = Object.freeze({
 
 const EDGE_EPS = 0.6;
 
+const shoelace = (ring) => {
+  let a = 0;
+  for (let i = 0; i < ring.length; i += 2) {
+    const j = (i + 2) % ring.length;
+    a += ring[i] * ring[j + 1] - ring[j] * ring[i + 1];
+  }
+  return a;
+};
+
+
 /**
  * A lake cut by the district edge runs on to the horizon: each run of ring vertices on the bbox boundary (the clip line)
  * is replaced by P_first, P_first pushed out to +-far, P_last pushed out, P_last. The shoreline inside the district is
  * untouched; the new edges lie on or beyond the boundary (no walls there, see `outsideEdge`).
  */
 export function extendBeyondBbox(ring, bbox, far = WATER.far) {
+  if (Math.abs(shoelace(ring)) / 2 < WATER.extendMinArea) return ring.slice(); // a small pond cut by the edge just ends there
   const [x0, z0, x1, z1] = bbox;
   const n = ring.length / 2;
   const onEdge = (k) => ring[2 * k] <= x0 + EDGE_EPS || ring[2 * k] >= x1 - EDGE_EPS || ring[2 * k + 1] <= z0 + EDGE_EPS || ring[2 * k + 1] >= z1 - EDGE_EPS;
@@ -55,15 +67,6 @@ export function extendBeyondBbox(ring, bbox, far = WATER.far) {
   }
   return out;
 }
-
-const shoelace = (ring) => {
-  let a = 0;
-  for (let i = 0; i < ring.length; i += 2) {
-    const j = (i + 2) % ring.length;
-    a += ring[i] * ring[j + 1] - ring[j] * ring[i + 1];
-  }
-  return a;
-};
 
 /** True when a ring edge lies on or beyond the district boundary: no wall there, the water just continues. */
 const outsideEdge = (ring, i, bbox) => {

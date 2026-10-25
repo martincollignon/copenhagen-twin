@@ -123,7 +123,7 @@ function createWaterMaterial({ sdf, bbox, planar }) {
   let reflection;
   let reflectorNode = null;
   if (planar) {
-    reflectorNode = reflector({ resolutionScale: planar.resolutionScale ?? 0.5, bounces: false });
+    reflectorNode = reflector({ resolutionScale: planar.resolutionScale ?? 0.4, bounces: false });
     reflectorNode.target.rotateX(-Math.PI / 2);
     reflectorNode.target.position.y = WATER.surfaceY;
     reflectorNode.uvNode = reflectorNode.uvNode.add(vec2(sx, sz).mul(0.06));
@@ -167,7 +167,7 @@ function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -75
   sdf.generateMipmaps = false;
   sdf.needsUpdate = true;
 
-  const { material, reflectorNode } = createWaterMaterial({ sdf, bbox, planar: planar ? { resolutionScale: 0.5 } : null });
+  const { material, reflectorNode } = createWaterMaterial({ sdf, bbox, planar: planar ? { resolutionScale: 0.4 } : null });
   const water = new THREE.Mesh(toGeometry(arrays.surface), material);
   water.name = 'lake-water';
   water.receiveShadow = true;

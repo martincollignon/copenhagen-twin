@@ -77,7 +77,7 @@ def test_finish_keeps_lightness_in_the_plausible_range_and_in_gamut():
     for rgb in ([1, 1, 1], [0.02, 0.02, 0.02], [0.9, 0.5, 0.2]):
         out, _ = finish(srgb_to_oklab(rgb))
         L = lch(srgb_to_oklab(out))[0]
-        assert 0.27 <= L <= 0.91
+        assert 0.27 <= L <= 0.85
         assert np.all(out >= 0) and np.all(out <= 1)
 
 

@@ -21,9 +21,9 @@ const wallRgb = (w) => (useCalibrated && isRgb(w.tone_cal) ? w.tone_cal : w.tone
 // The observed tone is what a camera recorded under sun and sky, not a reflectance: lit by the engine's sun it would be
 // lit twice. Photo exposure puts white plaster at ~0.9 sRGB (0.79 linear); real plaster reflects ~0.65, brick 0.2-0.35.
 // So the albedo is the linear tone scaled by ALBEDO_GAIN with a soft shoulder above ALBEDO_KNEE (no pure white walls).
-const ALBEDO_GAIN = 0.84;
-const ALBEDO_KNEE = 0.5;
-const ALBEDO_MAX = 0.68;
+const ALBEDO_GAIN = 0.72;
+const ALBEDO_KNEE = 0.4;
+const ALBEDO_MAX = 0.58;
 function albedoFromLinear(v) {
   const x = v * ALBEDO_GAIN;
   return x <= ALBEDO_KNEE ? x : ALBEDO_KNEE + (ALBEDO_MAX - ALBEDO_KNEE) * (1 - Math.exp(-(x - ALBEDO_KNEE) / (ALBEDO_MAX - ALBEDO_KNEE)));

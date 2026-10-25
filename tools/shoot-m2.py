@@ -12,6 +12,7 @@ ap.add_argument('--surfaces', action='store_true', help='M4 ground-surface close
 ap.add_argument('--fixes', action='store_true', help='M4 surface-fix close-ups (side-street mouth, facade sett strip, pedestrian feet, gravel polygon) into --out')
 ap.add_argument('--lod2', action='store_true', help='M4 LoD2 roofs: before (?debug=nolod2, flat extrusions) and after shots of pitched roofs into --out (default docs/m4-lod2)')
 ap.add_argument('--colours', action='store_true', help='M4 observed colours: before (?debug=noobserved) / after / ?tex=1 shots and fps into --out (default docs/m4-colours)')
+ap.add_argument('--water', action='store_true', help='M4 lakes + calibrated facade colours: Peblinge Soe from Dronning Louises Bro day/night, lake path, Norre Sogade facades and aerial before/after into --out (default docs/m4-water-colour)')
 ap.add_argument('--perf', action='store_true', help='unthrottled frame timing instead of captures')
 args = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -205,6 +206,21 @@ def lod2_views():
         out[f'pitched-{key}'] = ([cx + dx / dl * 48, b['eave'] + 26, cz + dz / dl * 48], [cx, b['eave'] + 1, cz], 55)
         out[f'pitched-{key}-low'] = ([cx + dx / dl * 34, 1.7, cz + dz / dl * 34], [cx, b['eave'] + 4, cz], 66)
     return out
+def water_views():
+    """Camera setups for the lakes / calibrated-colour shots (positions from the data: DLB teleport, Peblinge path)."""
+    import math
+    out = {}
+    # Dronning Louises Bro (97, -476.7): on the south parapet looking south-west down Peblinge Soe
+    out['peblinge-from-dlb'] = ([97 - 6, 3.2, -476.7 + 10], [-20, -0.5, -250], 62)
+    out['peblinge-from-dlb-high'] = ([60, 22, -440], [-60, -1, -250], 58)
+    # lake path at eye level along Peblinge Dossering (Norre Sogade side): path at x~-60, z~-300
+    out['lake-path-eye'] = ([-70.5, 1.7, -300], [-110, 0, -240], 68)
+    out['lake-path-wall'] = ([-70.5, 1.5, -300], [-84, -0.5, -300], 70)
+    out['under-bridge'] = ([30, 1.2, -470], [97, -0.4, -480], 70)
+    return out
+def facade_views():
+    c = colour_views()
+    return {k: c[k] for k in ('norre-sogade-a-street', 'norre-sogade-b-street', 'norre-sogade-a-aerial', 'aerial', 'aerial-close') if k in c}
 try:
     with sync_playwright() as p:
         browser = p.chromium.launch(args=['--enable-unsafe-webgpu', '--use-angle=metal', '--ignore-gpu-blocklist'] + (['--disable-frame-rate-limit', '--disable-gpu-vsync'] if args.perf else []))
@@ -219,6 +235,51 @@ try:
         def shot(name):
             page.wait_for_timeout(2500)
             page.screenshot(path=f'{args.out}/{name}.png')
+        if args.water:
+            out_dir = args.out if args.out != 'docs/m2' else 'docs/m4-water-colour'
+            os.makedirs(out_dir, exist_ok=True)
+            def load(q):
+                page.goto(f'http://127.0.0.1:{port}/index.html?{q}')
+                page.wait_for_function('globalThis.__twin && globalThis.__twin.world', timeout=120000)
+                page.wait_for_timeout(4000)
+            def time_of_day(tid):
+                page.evaluate("(t) => { const l = globalThis.__twin.lightingSystem; l.applyPreset(t); }", tid)
+                page.wait_for_timeout(1500)
+            load('hooks')
+            print('lakes', json.dumps(page.evaluate('() => globalThis.__twin.world.lakes && globalThis.__twin.world.lakes.stats')))
+            for tid, tag in (('midday', 'day'), ('midnight', 'night')):
+                time_of_day(tid)
+                for name, v in water_views().items():
+                    view(*v); page.wait_for_timeout(2500)
+                    page.screenshot(path=f'{out_dir}/{name}-{tag}.png')
+                    print('shot', name, tag)
+            fps = {}
+            for variant, q in (('before', 'debug=nowater,nocal'), ('after', 'hooks')):
+                load(q if 'hooks' in q else 'hooks')
+                if variant == 'before':
+                    load('hooks&debug=nowater,nocal')
+                time_of_day('midday')
+                for name, v in facade_views().items():
+                    view(*v); page.wait_for_timeout(2500)
+                    page.screenshot(path=f'{out_dir}/{name}-{variant}.png')
+                    print('shot', name, variant)
+                if variant == 'after':
+                    view(*water_views()['peblinge-from-dlb'])
+                    page.wait_for_timeout(2000)
+                    fps['peblinge-from-dlb'] = page.evaluate('''() => new Promise((res) => { const d = []; let last = performance.now(); const end = last + 3000;
+                      const tick = (now) => { d.push(now - last); last = now; if (now < end) requestAnimationFrame(tick); else { d.sort((a, b) => a - b); res({ fps: +(d.length / 3).toFixed(1), medianMs: +d[d.length >> 1].toFixed(2) }); } };
+                      requestAnimationFrame(tick); })''')
+            # same view without lakes / with the reflection pass off, for the cost
+            load('hooks&water=simple'); time_of_day('midday'); view(*water_views()['peblinge-from-dlb']); page.wait_for_timeout(2000)
+            fps['peblinge-from-dlb-simple'] = page.evaluate('''() => new Promise((res) => { const d = []; let last = performance.now(); const end = last + 3000;
+              const tick = (now) => { d.push(now - last); last = now; if (now < end) requestAnimationFrame(tick); else { d.sort((a, b) => a - b); res({ fps: +(d.length / 3).toFixed(1), medianMs: +d[d.length >> 1].toFixed(2) }); } };
+              requestAnimationFrame(tick); })''')
+            json.dump(fps, open(f'{out_dir}/fps.json', 'w'), indent=1)
+            print(json.dumps(fps))
+            errs = [l for l in logs if l.startswith(('error', 'pageerror', 'warning')) and '404' not in l and 'hero' not in l]
+            print('\n'.join(errs[:20]))
+            browser.close()
+            raise SystemExit(0)
         if args.colours:
             out_dir = args.out if args.out != 'docs/m2' else 'docs/m4-colours'
             os.makedirs(out_dir, exist_ok=True)

@@ -75,12 +75,14 @@ test('water is under the bridge: Dronning Louises Bro spans a bridge strip with 
 });
 
 test('lake outlines cut by the district edge run on to the horizon without walls there', () => {
-  const ring = [700, 100, 750, 100, 750, 200, 700, 200];
+  const ring = [700, 100, 750, 100, 750, 600, 700, 600];
   const ext = extendBeyondBbox(ring, BBOX);
   assert.ok(ext.some((v, i) => i % 2 === 0 && v === WATER.far));
-  const a = buildLakeArrays({ lakes: [{ id: 'e', ring: [700, 100, 700, 200, 750, 200, 750, 100] }] }, { bbox: BBOX });
+  const a = buildLakeArrays({ lakes: [{ id: 'e', ring: [700, 100, 700, 600, 750, 600, 750, 100] }] }, { bbox: BBOX });
   const xs = a.walls.position.filter((_, i) => i % 3 === 0);
   assert.ok(Math.max(...xs) < 760, 'no wall beyond the district');
+  const small = extendBeyondBbox([700, 100, 750, 100, 750, 130, 700, 130], BBOX);
+  assert.ok(!small.includes(WATER.far), 'a small pond cut by the edge just ends there');
 });
 
 test('shore distance field: zero at the wall, grows into the lake, capped', () => {
