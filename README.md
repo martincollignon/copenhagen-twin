@@ -54,6 +54,13 @@ The twin renders Københavnerfortov (slab rows with a sett line between, paralle
 and setts procedurally (`js/surface-materials-cph.js`); pavements are the Københavnerfortov unless the register or a
 plaza-sized polygon says otherwise. Without the file the twin still boots (pavements and lane paint only).
 
+`data/cph-furniture.json` (street furniture, M4) is another separate generated file:
+
+```sh
+uv run tools/cph-geodata/furniture.py   # KK WFS + Citelum lamp GPKGs + Movia stops; `?debug=nofurniture` skips it in the viewer
+uv run --with playwright python tools/shoot-m2.py --furniture   # shots + fps into docs/m4-furniture
+```
+
 ## Licence and attributions
 
 The project code is available under the [MIT License](LICENSE).
