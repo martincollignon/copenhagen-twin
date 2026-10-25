@@ -3,3 +3,4 @@ data/raw/
 __pycache__/
 .pytest_cache/
 data/heroes/
+data/tex/
