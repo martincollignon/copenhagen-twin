@@ -1,0 +1,578 @@
+{
+  "checked": "2026-10-25",
+  "method": "HTTP GET; HTML document detection; PDF header and EOF; DOCX ZIP validation. HTTP 200 alone is insufficient. Image downloads separately recorded in images.json.",
+  "results": [
+    {
+      "url": "https://archello.s3.eu-central-1.amazonaws.com/documents/2018/02/13/copenhagen.1518546821.0235.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://archello.s3.eu-central-1.amazonaws.com/documents/2018/02/13/copenhagen.1518546821.0235.pdf",
+      "content_type": "application/pdf",
+      "bytes": 430947,
+      "valid_content": true,
+      "sha256": "71c7a94dcad019157a81a9d7d4944b9949f1930d3e4304c8d49d2fe94c1215f6"
+    },
+    {
+      "url": "https://commons.wikimedia.org/wiki/Category:Street_signs_in_Copenhagen",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://commons.wikimedia.org/wiki/Category:Street_signs_in_Copenhagen",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 200261,
+      "valid_content": true,
+      "sha256": "2d6c53837b1ab49e0990a3fe6db3fc1f00291a75fcb6809d65597e2edc9de1ec"
+    },
+    {
+      "url": "https://commons.wikimedia.org/wiki/File:Cyclists_at_red_2.jpg",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://commons.wikimedia.org/wiki/File:Cyclists_at_red_2.jpg",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 139335,
+      "valid_content": true,
+      "sha256": "b9eab7c8fbcb4b52f3bbc8dc05585cff1a23104ba11a55494cf390bfe11e55cb"
+    },
+    {
+      "url": "https://commons.wikimedia.org/wiki/File:Dronning_Louises_Bro.jpg",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://commons.wikimedia.org/wiki/File:Dronning_Louises_Bro.jpg",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 132320,
+      "valid_content": true,
+      "sha256": "faebb2e410767259fe6e64030430fdebd3d63c6667d8bdc8ca63edeed748d3df"
+    },
+    {
+      "url": "https://commons.wikimedia.org/wiki/File:Dronning_Louises_Bro_-_corner_01.jpg",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://commons.wikimedia.org/wiki/File:Dronning_Louises_Bro_-_corner_01.jpg",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 118755,
+      "valid_content": true,
+      "sha256": "b58b7746abd46e609a9325e075e2618ac8f6685424cc615f4bae3efd3084d4ec"
+    },
+    {
+      "url": "https://commons.wikimedia.org/wiki/File:Dronning_Louises_Bro_01.JPG",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://commons.wikimedia.org/wiki/File:Dronning_Louises_Bro_01.JPG",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 123827,
+      "valid_content": true,
+      "sha256": "6c6774be0edd4e3b9eaf84b56848e53b8c94b879f390527d3244bcaddaf84bce"
+    },
+    {
+      "url": "https://commons.wikimedia.org/wiki/File:Gadelampe_p%C3%A5_Dronning_Louises_Bro_01.jpg",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://commons.wikimedia.org/wiki/File:Gadelampe_p%C3%A5_Dronning_Louises_Bro_01.jpg",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 121302,
+      "valid_content": true,
+      "sha256": "7412a908bfe3eae1da3081c59e84d7fccb6a0d1ffd960164ddae1263e8d574ef"
+    },
+    {
+      "url": "https://commons.wikimedia.org/wiki/File:N%C3%B8rre_S%C3%B8gade_01.JPG",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://commons.wikimedia.org/wiki/File:N%C3%B8rre_S%C3%B8gade_01.JPG",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 124463,
+      "valid_content": true,
+      "sha256": "be44506ae41467442e3115b9e1f2b7e2f64a13874edd13a0f57f1c3ac9891faa"
+    },
+    {
+      "url": "https://commons.wikimedia.org/wiki/File:N%C3%B8rre_S%C3%B8gade_02.JPG",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://commons.wikimedia.org/wiki/File:N%C3%B8rre_S%C3%B8gade_02.JPG",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 120712,
+      "valid_content": true,
+      "sha256": "c169f5719f122069654c98b83aea11972150889a3cda3ca0ec73cb3d92606b3b"
+    },
+    {
+      "url": "https://commons.wikimedia.org/wiki/File:N%C3%B8rre_S%C3%B8gade_03.JPG",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://commons.wikimedia.org/wiki/File:N%C3%B8rre_S%C3%B8gade_03.JPG",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 110545,
+      "valid_content": true,
+      "sha256": "7c8102396ac66493d644548ba260aac69b29f43c605009814d83a1b8fbbcc97b"
+    },
+    {
+      "url": "https://commons.wikimedia.org/wiki/File:N%C3%B8rre_S%C3%B8gade_25.jpg",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://commons.wikimedia.org/wiki/File:N%C3%B8rre_S%C3%B8gade_25.jpg",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 111526,
+      "valid_content": true,
+      "sha256": "38769375da604bd131e1b5a744f92fd5e7c6ed5dd0106804e77e6a788051a8ed"
+    },
+    {
+      "url": "https://commons.wikimedia.org/wiki/File:Peblinge_Dossering_01.JPG",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://commons.wikimedia.org/wiki/File:Peblinge_Dossering_01.JPG",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 121934,
+      "valid_content": true,
+      "sha256": "d6ba7a0f8f2566d6fd797a3de04f21b197dc6f0cea584c934824470b51c1b0fe"
+    },
+    {
+      "url": "https://commons.wikimedia.org/wiki/File:Peblinge_Dossering_facades.jpg",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://commons.wikimedia.org/wiki/File:Peblinge_Dossering_facades.jpg",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 118437,
+      "valid_content": true,
+      "sha256": "54cbf093f7cff3316cd4b2b97cc40cffedb2214a18b20092a0eba86083d265d4"
+    },
+    {
+      "url": "https://commons.wikimedia.org/wiki/File:Stentrappe_i_N%C3%B8rre_S%C3%B8gade.jpg",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://commons.wikimedia.org/wiki/File:Stentrappe_i_N%C3%B8rre_S%C3%B8gade.jpg",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 75378,
+      "valid_content": true,
+      "sha256": "3e1bafdbd894257b94519496451c707fa6904048dcf1f09a566b6a2e7ff8ff15"
+    },
+    {
+      "url": "https://creativecommons.org/licenses/by-sa/2.0",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+      "content_type": "text/html",
+      "bytes": 35429,
+      "valid_content": true,
+      "sha256": "6d15fd2f2ccc7258f39befc9f13f5154f9851e49a9e90ec43c7e22d660ae0e84"
+    },
+    {
+      "url": "https://creativecommons.org/licenses/by-sa/3.0",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+      "content_type": "text/html",
+      "bytes": 35431,
+      "valid_content": true,
+      "sha256": "9a17cd36de36b242cbe4234773116f2036f86a8ce4459af8b37fd120482ca931"
+    },
+    {
+      "url": "https://creativecommons.org/licenses/by-sa/4.0",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "content_type": "text/html",
+      "bytes": 35530,
+      "valid_content": true,
+      "sha256": "b462fb0a649a8ec875bba7590abad7dc1e72c0456ddec070cf3a28183689dceb"
+    },
+    {
+      "url": "https://creativecommons.org/licenses/by/2.0",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://creativecommons.org/licenses/by/2.0/",
+      "content_type": "text/html",
+      "bytes": 31822,
+      "valid_content": true,
+      "sha256": "bbb0dcc37f02552e7270e6d2e06be02672ce29ada816107d6fa91e1e6809714b"
+    },
+    {
+      "url": "https://hitsa.dk/files/_OPEN/Cykelstativer/Hh20/Hh20-cykelstativ-datablad-dk.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://hitsa.dk/files/_OPEN/Cykelstativer/Hh20/Hh20-cykelstativ-datablad-dk.pdf",
+      "content_type": "application/pdf",
+      "bytes": 1375310,
+      "valid_content": true,
+      "sha256": "981c88fdfcc9bccc664ac16dd982499df3624a0374ee6ecafb8787f485b54dd3"
+    },
+    {
+      "url": "https://hitsa.dk/files/_OPEN/Skraldespande/Copenhagen/Copenhagen-skraldespand-datablad-dk.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://hitsa.dk/files/_OPEN/Skraldespande/Copenhagen/Copenhagen-skraldespand-datablad-dk.pdf",
+      "content_type": "application/pdf",
+      "bytes": 2525574,
+      "valid_content": true,
+      "sha256": "56bb2edff7f458214b11dba0d830b0d0eba45332d4d36115898bcd3e11b25d09"
+    },
+    {
+      "url": "https://hitsa.dk/produkter/kobenhavnerbaenk/",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://hitsa.dk/produkter/kobenhavnerbaenk/",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 145284,
+      "valid_content": true,
+      "sha256": "0894dcdf8fcb926e7838ab18ca8a3518a7ef935f21b840612f23acf92d5d9169"
+    },
+    {
+      "url": "https://hitsa.dk/produkter/lenta-u-pullert/",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://hitsa.dk/produkter/lenta-u-pullert/",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 138901,
+      "valid_content": true,
+      "sha256": "94f5a38210229e07077d595647cd07f30667bc4179e6dd6dc3028fedfc0cb47d"
+    },
+    {
+      "url": "https://holscherdesign.com/cases/afa-jcdecaux-copenhagen/",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://holscherdesign.com/cases/afa-jcdecaux-copenhagen/",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 140621,
+      "valid_content": true,
+      "sha256": "fb6969863986dea4d831eda79b7f95e3d35f66142563e6bd87cea5f0c744b530"
+    },
+    {
+      "url": "https://indrebylokaludvalg.kk.dk/sites/default/files/2025-04/I100373_C05_Foranalyse.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://indrebylokaludvalg.kk.dk/sites/default/files/2025-04/I100373_C05_Foranalyse.pdf",
+      "content_type": "application/pdf",
+      "bytes": 5937181,
+      "valid_content": true,
+      "sha256": "b2f468e7e2375492a90ea68ed938535d38105ade9b7add3cf3d5cf54ebff6604"
+    },
+    {
+      "url": "https://kk.sites.itera.dk/apps/kk_monuments/pdf/190_db43_1.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://kk.sites.itera.dk/apps/kk_monuments/pdf/190_db43_1.pdf",
+      "content_type": "application/pdf",
+      "bytes": 734725,
+      "valid_content": true,
+      "sha256": "64e8d0ba21944708618829245cd662703b930e3682c510efb558dd356dc9d403"
+    },
+    {
+      "url": "https://kk.sites.itera.dk/apps/kk_pub2/pdf/1330_EysnkhaOIn.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://kk.sites.itera.dk/apps/kk_pub2/pdf/1330_EysnkhaOIn.pdf",
+      "content_type": "application/pdf",
+      "bytes": 20518981,
+      "valid_content": true,
+      "sha256": "e6c077807efc2accd703af53d540f53b2ffc458f848ec1e6eaa9b0391df42d87"
+    },
+    {
+      "url": "https://kp24.kk.dk/retningslinjer/trafik/cykelinfrastruktur/standard-for-cykelinfrastrukturen",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://kp24.kk.dk/retningslinjer/trafik/cykelinfrastruktur/standard-for-cykelinfrastrukturen",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 67815,
+      "valid_content": true,
+      "sha256": "d1315e3033e4128d4bdeb18fabaf9f705211b9dc94ea59f1db5def3dfb495b86"
+    },
+    {
+      "url": "https://moviatrafik.dk/kommune-region/radgivning/stoppesteder-og-udstyr",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://moviatrafik.dk/kommune-region/radgivning/stoppesteder-og-udstyr",
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 32073,
+      "valid_content": true,
+      "sha256": "409ac1acf93c587d328d4d11ae19ad5363444ca3088042cf12408925a9cede2e"
+    },
+    {
+      "url": "https://respektforvand.dk/udstyr-og-taarne/redningskranse/ansog-redningskrans",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://respektforvand.dk/udstyr-og-taarne/redningskranse/ansog-redningskrans",
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 16763,
+      "valid_content": true,
+      "sha256": "579da9fdbc66b4b1ac62cf2ac6ab5311c6e980a572905a16610b5c0a023073f7"
+    },
+    {
+      "url": "https://slks.dk/fileadmin/user_upload/kulturarv/publikationer/emneopdelt/bygninger/Bygningsbevaring/1.3%20Byhusenes%20arkitekturhistorie%201480-1930.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://slks.dk/fileadmin/user_upload/kulturarv/publikationer/emneopdelt/bygninger/Bygningsbevaring/1.3%20Byhusenes%20arkitekturhistorie%201480-1930.pdf",
+      "content_type": "application/pdf",
+      "bytes": 11618881,
+      "valid_content": true,
+      "sha256": "6fe9894b07825100d00c3f11af6f9f9df60e5dce3ed5a6153ae76b4124adf326"
+    },
+    {
+      "url": "https://trygfonden.dk/-/media/files/pdf/publikationer/sikkerhed/kystlivredning-saesonrapport-2012.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://tryghed.dk/-/media/files/pdf/publikationer/sikkerhed/kystlivredning-saesonrapport-2012.pdf",
+      "content_type": "application/pdf",
+      "bytes": 1461782,
+      "valid_content": true,
+      "sha256": "7002a1a3dfa9b76c03ff18d710c5d10d22e8d44cde81eb85844bfa27a9735443"
+    },
+    {
+      "url": "https://urban-elements.dk/vare/urban-koebenhavnerbaenk/",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://urban-elements.dk/vare/urban-koebenhavnerbaenk/",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 187464,
+      "valid_content": true,
+      "sha256": "06a84a8782c56e8340cdecfe63dd2f2f4a213f88d2db4519443f62d17a9fe407"
+    },
+    {
+      "url": "https://www.assets.signify.com/is/content/Signify/Assets/philips-lighting/denmark/20210205-parks-plazas-brochure.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.assets.signify.com/is/content/Signify/Assets/philips-lighting/denmark/20210205-parks-plazas-brochure.pdf",
+      "content_type": "application/pdf",
+      "bytes": 29910678,
+      "valid_content": true,
+      "sha256": "450f88bd867e2328fa273c6354c202970b8d3c02a4f946c8dec726482790db4e"
+    },
+    {
+      "url": "https://www.christianiabikes.com/en/classic/",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.christianiabikes.com/en/classic/",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 419529,
+      "valid_content": true,
+      "sha256": "38048999909d6531b69bb8d6ade104d014d8a824a1f60c1e0896df722758404d"
+    },
+    {
+      "url": "https://www.engholm.dk/redningskrans-taurus",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.engholm.dk/redningskrans-taurus",
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 58920,
+      "valid_content": true,
+      "sha256": "fa093ac7761e1da3788d8a81abf0e09c2580e620fd3e9546440fbd99a3164e8a"
+    },
+    {
+      "url": "https://www.kk.dk/dagsordener-og-referater/Borgerrepr%C3%A6sentationen/m%C3%B8de-21082014/referat/punkt-22",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/dagsordener-og-referater/Borgerrepr%C3%A6sentationen/m%C3%B8de-21082014/referat/punkt-22",
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 86533,
+      "valid_content": true,
+      "sha256": "0a4f7cbb7903e1f7c5597d801470a22f15c3ccbea717134ba4c0da39a0a241e7"
+    },
+    {
+      "url": "https://www.kk.dk/dagsordener-og-referater/Bygge-%20og%20Teknikudvalget/m%C3%B8de-26032003/dagsorden/punkt-3",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/dagsordener-og-referater/Bygge-%20og%20Teknikudvalget/m%C3%B8de-26032003/dagsorden/punkt-3",
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 71468,
+      "valid_content": true,
+      "sha256": "f751d87defd195467b0971ed32135ea3acd35bd8fabab116c364650c073055f0"
+    },
+    {
+      "url": "https://www.kk.dk/dagsordener-og-referater/Teknik-%20og%20Milj%C3%B8udvalget/m%C3%B8de-16062025/referat/punkt-17",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/dagsordener-og-referater/Teknik-%20og%20Milj%C3%B8udvalget/m%C3%B8de-16062025/referat/punkt-17",
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 85080,
+      "valid_content": true,
+      "sha256": "2dd5d9af1a60712844db3212339ab871a2f2cf728e24e0818c79e1c5b7a2b93f"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/2026-03/SAB_belysning_koebenhavns_kommune_november%202025.docx",
+      "checked": "2026-10-25",
+      "valid_content": true,
+      "initial_attempt": "IncompleteRead(2727935 bytes read, 4283316 more expected)",
+      "method": "Resumable HTTP GET; complete downloaded DOCX ZIP validated",
+      "bytes": 7011251,
+      "status": 200,
+      "sha256": "fe69e91bc7c3d3dbef7fab0ea27f3a086b0a83c32b2f284bb4cfe3cc98dad3fe",
+      "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "final_url": "https://www.kk.dk/sites/default/files/2026-03/SAB_belysning_koebenhavns_kommune_november%202025.docx"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/2026-04/16.04.26%20-%20svar%20til%20Kristine%20Ammitzb%C3%B8ll-Bille%20%28B%29%20om%20Tr%C3%A6politik%20og%20-bestemmelser.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/2026-04/16.04.26%20-%20svar%20til%20Kristine%20Ammitzb%C3%B8ll-Bille%20%28B%29%20om%20Tr%C3%A6politik%20og%20-bestemmelser.pdf",
+      "content_type": "application/pdf",
+      "bytes": 31658663,
+      "valid_content": true,
+      "sha256": "f324761cf032211f9c44bf4f4876132d5a604a7fc8c7930fa011632e49aa8da8"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/2026-04/M%C3%A5lfaste%20tegninger%20for%20busl%C3%A6sk%C3%A6rme%20og%20fundamenter..pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/2026-04/M%C3%A5lfaste%20tegninger%20for%20busl%C3%A6sk%C3%A6rme%20og%20fundamenter..pdf",
+      "content_type": "application/pdf",
+      "bytes": 3950218,
+      "valid_content": true,
+      "sha256": "057a2e7c1dc970dca26279fda355c6601f32459cddb28cb3d04b4e7e923322bd"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/2026-04/retningslinjer-for-brug-af-inventar-i-byens-rum-december-2020.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/2026-04/retningslinjer-for-brug-af-inventar-i-byens-rum-december-2020.pdf",
+      "content_type": "application/pdf",
+      "bytes": 3444901,
+      "valid_content": true,
+      "sha256": "21dff67954c972122e210cb7bcdf9e72beb92b81ab688434cecac15eeede5518"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/2026-04/retningslinjer-for-etablering-af-cykelparkering%202017.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/2026-04/retningslinjer-for-etablering-af-cykelparkering%202017.pdf",
+      "content_type": "application/pdf",
+      "bytes": 7758968,
+      "valid_content": true,
+      "sha256": "f6232f45a3021fa67628ff2d9abbaa6fcb0e66417a6aa381d99b474294a8bc49"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/2026-04/retningslinjer-for-indretning-af-byens-rum.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/2026-04/retningslinjer-for-indretning-af-byens-rum.pdf",
+      "content_type": "application/pdf",
+      "bytes": 8374582,
+      "valid_content": true,
+      "sha256": "71f4273e7599b86745dcf5dd98e7bc49acc4b79acf1c343972fe45920fb6de1e"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/agenda/03e7571c-7870-4344-95bf-6d33c5779242/81e1e2f8-dd62-415e-be0c-ea31526f3f0b-bilag-2.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/agenda/03e7571c-7870-4344-95bf-6d33c5779242/81e1e2f8-dd62-415e-be0c-ea31526f3f0b-bilag-2.pdf",
+      "content_type": "application/pdf",
+      "bytes": 6099287,
+      "valid_content": true,
+      "sha256": "ea7165e9442da7d567116dbdf799ab96045733bf315aab9059e142000f406b3c"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/agenda/0831979e-c478-41e0-a867-4d56b79b000e/183bdb82-f823-4a0a-a2a4-03339071d65f-bilag-1.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/agenda/0831979e-c478-41e0-a867-4d56b79b000e/183bdb82-f823-4a0a-a2a4-03339071d65f-bilag-1.pdf",
+      "content_type": "application/pdf",
+      "bytes": 18593770,
+      "valid_content": true,
+      "sha256": "dcc76f75f94f76e334c71257c79d459c5488041194ffa8e419d5859e0c2acf99"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/agenda/1df72528-8050-4940-8bac-c8a6433ddde3/5cd8df06-b399-40aa-9f45-40c68597d7a5-bilag-2.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/agenda/1df72528-8050-4940-8bac-c8a6433ddde3/5cd8df06-b399-40aa-9f45-40c68597d7a5-bilag-2.pdf",
+      "content_type": "application/pdf",
+      "bytes": 8319948,
+      "valid_content": true,
+      "sha256": "21b1cc7b0a77704c27eb3cf944ee88bc3512bb4c0062fae038ae16718ddf9c74"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/agenda/215325b3-dbc6-452c-ab53-ec1c53ebd915/3df37d10-2e54-402f-b56e-5235bae5d28c-bilag-2.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/agenda/215325b3-dbc6-452c-ab53-ec1c53ebd915/3df37d10-2e54-402f-b56e-5235bae5d28c-bilag-2.pdf",
+      "content_type": "application/pdf",
+      "bytes": 1093335,
+      "valid_content": true,
+      "sha256": "ae60b85a82f9c1e4475273616a125d73381d0d42a9206e0aadaa7247da8d642f"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/agenda/26a5930d-cdb3-4c08-9745-c20475c8e32d/0a621492-c3f8-4905-8f9f-5f2c3bcca23a-bilag-3.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/agenda/26a5930d-cdb3-4c08-9745-c20475c8e32d/0a621492-c3f8-4905-8f9f-5f2c3bcca23a-bilag-3.pdf",
+      "content_type": "application/pdf",
+      "bytes": 149113,
+      "valid_content": true,
+      "sha256": "1d0c7182a4fb6cc523e60b92306b2d0c897984c9c6bb1a7f4dce6c18efd97441"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/agenda/907ed326-fed7-4530-b223-fc002e44f8a2/a07b5c17-1969-4ce3-99a0-01b0cf92db59-bilag-3.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/agenda/907ed326-fed7-4530-b223-fc002e44f8a2/a07b5c17-1969-4ce3-99a0-01b0cf92db59-bilag-3.pdf",
+      "content_type": "application/pdf",
+      "bytes": 2904239,
+      "valid_content": true,
+      "sha256": "b73d3653fc7085d4de93f93bf28412f7c5304bb2160ccff3ded94fa3d3d18a75"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/agenda/95abc2d8-9d9c-48b2-9bd6-0f6e51a80c6e/9533c5c9-5df0-45a0-911b-2531a3e40032-bilag-3_0.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/agenda/95abc2d8-9d9c-48b2-9bd6-0f6e51a80c6e/9533c5c9-5df0-45a0-911b-2531a3e40032-bilag-3_0.pdf",
+      "content_type": "application/pdf",
+      "bytes": 117344,
+      "valid_content": true,
+      "sha256": "4b7d2be497927e6154e9681b9d16c3b9f7f2385343168df18abf49675dd883f7"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/agenda/af8eddb2-1392-49c9-a6a5-8449c9058094/326c3ed6-7ee7-40a3-8be3-9e1e58507b16-bilag-2_1.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/agenda/af8eddb2-1392-49c9-a6a5-8449c9058094/326c3ed6-7ee7-40a3-8be3-9e1e58507b16-bilag-2_1.pdf",
+      "content_type": "application/pdf",
+      "bytes": 4238361,
+      "valid_content": true,
+      "sha256": "dbe038964958ea65fba1c58c9ad274e0a5f98c4ad39a252e839e8f0e387be9d7"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/agenda/ee79d8e3-bb48-4c71-8779-84e859c070cf/31d93e0a-81a6-4dc6-ac8f-fad4900f441f-bilag-2.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/agenda/ee79d8e3-bb48-4c71-8779-84e859c070cf/31d93e0a-81a6-4dc6-ac8f-fad4900f441f-bilag-2.pdf",
+      "content_type": "application/pdf",
+      "bytes": 165338,
+      "valid_content": true,
+      "sha256": "9cb7d2e8a9b011b47deb80dc91f4bb33e0473245f6bbe7ca68e5cce25720eebf"
+    },
+    {
+      "url": "https://www.kk.dk/sites/default/files/agenda/fe03ea71-01dc-45cf-9d94-67725b39d44f/65f5f0a1-26d6-4e80-a738-95f2108425fa-bilag-5.pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.kk.dk/sites/default/files/agenda/fe03ea71-01dc-45cf-9d94-67725b39d44f/65f5f0a1-26d6-4e80-a738-95f2108425fa-bilag-5.pdf",
+      "content_type": "application/pdf",
+      "bytes": 276063,
+      "valid_content": true,
+      "sha256": "63be55e4dd7c3d5a07b9ad11d54ce248da39d9bc240d6ff8df8ffdf6287f4a20"
+    },
+    {
+      "url": "https://www.milford.dk/produkter/sahara-traehulsrist",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.milford.dk/produkter/sahara-traehulsrist",
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 83245,
+      "valid_content": true,
+      "sha256": "9383ad81d00d15b09161ca260cf80f67af79f9f1fe5e83570717129b08ea01c0"
+    },
+    {
+      "url": "https://www.retsinformation.dk/eli/lta/2021/2511/pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.retsinformation.dk/eli/lta/2021/2511/pdf",
+      "content_type": "application/pdf",
+      "bytes": 1669915,
+      "valid_content": true,
+      "sha256": "427dfea6607d2e24b41cfb4546934d19eaed43d7b3235e92b8978b6f1159f2d4"
+    },
+    {
+      "url": "https://www.retsinformation.dk/eli/lta/2023/426/pdf",
+      "checked": "2026-10-25",
+      "status": 200,
+      "final_url": "https://www.retsinformation.dk/eli/lta/2023/426/pdf",
+      "content_type": "application/pdf",
+      "bytes": 13651581,
+      "valid_content": true,
+      "sha256": "88ed43f4be1606dc56165997620f7b1fe2f14bfcb231bfdca225baed7024a373"
+    }
+  ]
+}

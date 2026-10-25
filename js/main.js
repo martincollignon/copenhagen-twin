@@ -70,7 +70,8 @@ async function initApp() {
   // 3. Build the city from the Copenhagen geodata
   const world = await buildWorld(scene, {
     markInit,
-    debug: new URLSearchParams(location.search).get('debug') || ''
+    debug: new URLSearchParams(location.search).get('debug') || '',
+    water: new URLSearchParams(location.search).get('water') || ''
   });
   const { trafficSystem } = world;
   const allColliders = world.colliders;
