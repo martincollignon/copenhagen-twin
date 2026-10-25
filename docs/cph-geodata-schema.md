@@ -67,6 +67,8 @@ Field-level overrides go in `conf_fields: {field: conf}`. Nothing may be invente
 
 ## Appearance (M4, `tools/cph-geodata/appearance.py`)
 
+> v2 (`appearance/2`) adds fields and one `conf` value, documented in "Appearance v2 additions" at the end of this section. v1 consumers keep working: every v1 field is unchanged in name and meaning.
+
 Additive: `buildings[].observed` and a top-level `appearance` provenance object. Nothing above changes. Colours are sRGB 0-1, derived from the 2025 Skråfoto views (per-channel median in linear RGB, normalised to a reference sun incidence). Occlusion truth is a DHM DSM ray march from each sampled wall/roof point to the camera centre; the mesh z-buffer only decides which face a pixel belongs to.
 
 ```json
@@ -96,3 +98,26 @@ Additive: `buildings[].observed` and a top-level `appearance` provenance object.
 - `roof.type_hint` is one of `tagpap | slate | tile | metal | fibre-cement | copper | green | solar | other` (colour heuristics, nadir views). Roofs are modelled flat at `eave`; pitched roofs are sampled through that plane.
 - `atlas` exists only with `--textures`: one JPEG per building under `data/tex/` (gitignored, referenced relative to `data/`), rectified wall strips at about 10 cm/px stacked vertically. `uv` is `[u0, v0, u1, v1]` in 0-1 (v down), `px` the same rectangle in pixels. Occluded or vegetated texels were filled from the nearest valid texel (within 0.6 m) or the wall median; `filled_frac` records how much.
 - `appearance` (top level): `{version: "appearance/1", method, views, scale}`.
+
+### Appearance v2 additions (`appearance/2`)
+
+Sources are now BOTH Skråfoto collections (2025 and 2023, each with its own flight time, so each view has its own sun position). All new fields are additive.
+
+Per wall entry (`observed.walls[]`, only on observed walls):
+
+- `conf`: now `observed` | `observed+prior` | `inferred`. `observed+prior` = a shadow-sourced, low-saturation wall of a BBR `wall_material: "mursten"` building whose hue was pulled toward brick (keeps its luminance). Sunlit (confident) observations are never changed, and the prior is skipped for buildings that have a confident non-brick wall (saturated other hue or light plaster). When applied, `prior: "brick"` and `tone_observed` (the colour before the prior) are present.
+- `sunlit` (bool): the chosen view(s) saw the wall in sun with usable incidence. `shadow_corrected` is now exactly `not sunlit`.
+- `year`: collection year of the best chosen view (2025 or 2023); `views` ids carry the year (`east_2023_84_40_...`).
+- `wb_cast`: `[r,g,b]` skylight chroma cast (luminance-normalised) that was divided out for shadow-sourced walls, else `null`. For these walls `tone` = photographed tone / cast, then a per-view measured shadow-to-lit luminance gain and a chroma scale; `tone_raw` stays the colour as photographed.
+- `flags`: optional list; `year_disagree` = the sunlit 2023 and 2025 colours (or a white-balanced 2025 shadow tone and a sunlit 2023 tone) differ strongly, the wall was probably repainted; the 2025 colour is kept.
+- 2023 tones are radiometrically matched to 2025 (a per-channel linear gain, about 1.5x, estimated from walls sunlit in both) before fusion.
+
+Roof (`observed.roof`):
+
+- `pitched` (bool) and `ridge_rise_m`: DSM ridge (95th percentile in the footprint) minus the modelled eave; `pitched` when > 1.5 m.
+- `sampled_on`: `dsm_surface` for pitched roofs (footprint samples lifted onto the DSM, projected into any view incl. oblique, per-pixel sun incidence from DSM normals) or `eave_plane` (v1 behaviour, nadir preferred). `px` for pitched roofs is an estimate (samples x 225).
+- `sunlit`, `year`, optional `flags` as for walls. `solar_frac` is now measured on lit pixels only.
+
+Atlas wall entries gain `sunlit`, `year` and `wb_applied` (the strip got the same per-channel gain that maps the photographed wall median to the white-balanced `tone`). Textures use the best, sunlit if any, view of each wall.
+
+Top-level `appearance`: `version: "appearance/2"`, `views_by_year`.

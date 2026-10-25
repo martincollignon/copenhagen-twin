@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["numpy", "pillow", "scipy", "mapbox-earcut", "rasterio"]
+# dependencies = ["numpy", "pillow", "scipy", "rasterio"]
 # ///
 """Photogrammetric facade and roof appearance (M4 item 1).
 
@@ -39,6 +39,8 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+
+import polytri
 
 ORIGIN = (723900.0, 6176500.0, 6.84)
 LAT, LON = 55.686, 12.563  # district centre, for the sun position
@@ -82,6 +84,19 @@ def vegetation_mask(srgb: np.ndarray) -> np.ndarray:
     return (exg > 0.07) & (g > r * 1.04) & (g > b * 1.10)
 
 
+def _group_median(lin: np.ndarray, min_n: int = 5):
+    """Median linear RGB after dropping the darkest 35% / brightest 5% (windows, glints)."""
+    if len(lin) < min_n:
+        return None
+    lum = luminance(lin)
+    if len(lin) >= 20:
+        lo, hi = np.percentile(lum, [35, 95])
+        sel = (lum >= lo) & (lum <= hi)
+        if sel.sum() >= 5:
+            lin = lin[sel]
+    return np.median(lin, axis=0)
+
+
 def robust_surface_tone(
     srgb: np.ndarray,
     shadow: np.ndarray | None = None,
@@ -113,6 +128,7 @@ def robust_surface_tone(
     lin = srgb2lin(srgb[keep]).astype(np.float32)
     sh = shadow[keep]
     shadow_frac = float(sh.mean())
+    lit_lin, sh_lin = _group_median(lin[~sh]), _group_median(lin[sh])
     from_shadow = False
     if (~sh).sum() >= min_lit:
         use, e = lin[~sh], e_lit
@@ -136,6 +152,10 @@ def robust_surface_tone(
         "shadow_frac": shadow_frac,
         "from_shadow": from_shadow,
         "gain": gain,
+        "n_lit": int((~sh).sum()),
+        "n_sh": int(sh.sum()),
+        "lit_lin": lit_lin,  # trimmed medians of the two pixel groups of this surface (same
+        "sh_lin": sh_lin,    # material across a shadow edge: the input to the cast estimate)
         "n": int(len(use)),
         "n_all": n_all,
     }
@@ -190,11 +210,6 @@ def build_scene(buildings: list[dict], min_wall_h: float = 0.3) -> Scene:
     TN: list[np.ndarray] = []
     S_n, S_g, S_h, S_a, S_b = [], [], [], [], []
     nv = 0
-    try:
-        import mapbox_earcut as earcut
-    except ImportError:  # pragma: no cover
-        earcut = None
-
     for bi, b in enumerate(buildings):
         g, e = float(b["ground"]), float(b["eave"])
         if e - g < min_wall_h:
@@ -231,24 +246,9 @@ def build_scene(buildings: list[dict], min_wall_h: float = 0.3) -> Scene:
             sc.roof_of[bi] = sid
             S_n.append(np.array([0.0, 1.0, 0.0])); S_g.append(g); S_h.append(0.0)
             S_a.append(outer[0]); S_b.append(outer[0])
-            pts = np.vstack([r for r in rings if len(r) >= 3])
-            ends, acc = [], 0
-            for r in rings:
-                if len(r) >= 3:
-                    acc += len(r)
-                    ends.append(acc)
-            tri = None
-            if earcut is not None:
-                try:
-                    idx = np.asarray(earcut.triangulate_float64(pts, np.array(ends, dtype=np.uint32)))
-                    if len(idx) >= 3:
-                        tri = idx.reshape(-1, 3).astype(np.int64)
-                except Exception:  # noqa: BLE001
-                    tri = None
-            if tri is None:  # convex-ish fallback on the outer ring only
-                k = len(outer)
-                tri = np.array([[0, i, i + 1] for i in range(1, k - 1)], dtype=np.int64)
-                pts = outer
+            use_rings = [r for r in rings if len(r) >= 3]
+            pts = np.vstack(use_rings)
+            tri = polytri.triangulate(use_rings)  # holes honoured, no optional wheel needed
             V.append(np.column_stack([pts[:, 0], np.full(len(pts), e), pts[:, 1]]))
             T.append(tri + nv)
             TS += [sid] * len(tri)
@@ -493,7 +493,13 @@ class ShadowMap:
 
 
 def short_view(vid: str) -> str:
-    return vid.replace("skraafotos2025_", "").replace("_100mm", "")
+    for y in ("2025", "2023"):
+        vid = vid.replace(f"skraafotos{y}_", "")
+    return vid.replace("_100mm", "")
+
+
+def view_year(vid: str) -> int:
+    return int(vid.split("skraafotos")[1][:4]) if "skraafotos" in vid else 0
 
 
 def load_small(path: Path, size: tuple[int, int]) -> np.ndarray:
@@ -537,6 +543,14 @@ class DSM:
         out = np.full(np.shape(x), -50.0, dtype=np.float32)
         out[ok] = self.arr[r[ok], c[ok]]
         return out
+
+
+def dsm_normal(dsm: "DSM", x, z, span: float = 1.5) -> np.ndarray:
+    """Unit surface normals (x east, y up, z south) from DSM central differences."""
+    dhdx = (dsm.height(x + span, z) - dsm.height(x - span, z)) / (2 * span)
+    dhdz = (dsm.height(x, z + span) - dsm.height(x, z - span)) / (2 * span)
+    n = np.stack([-dhdx, np.ones_like(dhdx), -dhdz], axis=-1).astype(np.float64)
+    return n / np.linalg.norm(n, axis=-1, keepdims=True)
 
 
 def dsm_march(dsm: DSM, start: np.ndarray, dirs: np.ndarray, tol: float = 0.3, step: float = 0.2,
@@ -584,12 +598,26 @@ def occlusion_starts(scene: Scene, dsm: DSM, sid: np.ndarray, P: np.ndarray, dir
     return start
 
 
+def _stamp(tone: dict, rec: dict, sunv: np.ndarray, kind: str) -> dict:
+    tone["view"] = rec["view_id"]
+    tone["direction"] = rec["direction"]
+    tone["year"] = view_year(rec["view_id"])
+    tone["kind"] = kind
+    return tone
+
+
 def observe_view(scene: Scene, rec: dict, raw_dir: Path, scale: float, shadows: dict, buildings: list[dict],
-                 dsm: DSM | None = None, occlusion: str = "dsm", n_samples: int = 250):
+                 dsm: DSM | None = None, occlusion: str = "dsm", n_samples: int = 250,
+                 pitched: dict[int, np.ndarray] | None = None):
     """Return ({surface_id: observation}, seconds) for one view.
 
     occlusion: 'dsm' (DSM ray march is the occlusion truth; no colour heuristic),
-    'colour' (green-excess heuristic only) or 'both'."""
+    'colour' (green-excess heuristic only) or 'both'.
+    pitched: {roof surface id: (n,3) footprint samples lifted onto the DSM roof}. Those
+    roofs are NOT read through the flat eave-plane mesh: the lifted points are projected
+    into the photo directly (any view, nadir or oblique) with DSM occlusion, DSM sun
+    shadow and the DSM surface normal for the per-pixel sun incidence."""
+    pitched = pitched or {}
     cam = Camera.from_pers(rec["pers"])
     crop = rec["crop"]
     t0 = time.time()
@@ -599,11 +627,22 @@ def observe_view(scene: Scene, rec: dict, raw_dir: Path, scale: float, shadows: 
     pad = np.pad(surf, 1, constant_values=-2)
     same = (surf == pad[:-2, 1:-1]) & (surf == pad[2:, 1:-1]) & (surf == pad[1:-1, :-2]) & (surf == pad[1:-1, 2:])
     ys, xs = np.nonzero((surf >= 0) & same)
-    if len(ys) == 0:
-        return {}, time.time() - t0
     img = load_small(raw_dir / rec["file"], (w, h))
     sm = shadows[rec["_sun_key"]]
     sunv = rec["_sun_vec"]
+    cam_c = cam.C_loc
+    out: dict[int, dict] = {}
+    if len(ys):
+        _observe_mesh_surfaces(scene, vb, rec, img, ys, xs, sm, sunv, cam_c, buildings, dsm, occlusion,
+                               n_samples, pitched, out)
+    if pitched and dsm is not None:
+        _observe_pitched_roofs(scene, cam, rec, img, crop, scale, sm, sunv, dsm, pitched, out)
+    return out, time.time() - t0
+
+
+def _observe_mesh_surfaces(scene, vb, rec, img, ys, xs, sm, sunv, cam_c, buildings, dsm, occlusion,
+                           n_samples, pitched, out):
+    surf = vb.surf
     tri_ids = vb.tri[ys, xs]
     sf = surf[ys, xs]
     order = np.argsort(sf, kind="stable")
@@ -611,7 +650,6 @@ def observe_view(scene: Scene, rec: dict, raw_dir: Path, scale: float, shadows: 
     cuts = np.flatnonzero(np.diff(sf_o)) + 1
     starts = np.concatenate([[0], cuts])
     ends = np.concatenate([cuts, [len(sf_o)]])
-    cam_c = cam.C_loc
     # phase 1: per-surface candidate pixels (height filter, view angle), subsampled
     cand = []  # (sid, idx array into ys/xs, n_full, cos, used_low)
     for s0, s1 in zip(starts, ends):
@@ -619,6 +657,8 @@ def observe_view(scene: Scene, rec: dict, raw_dir: Path, scale: float, shadows: 
             continue
         sid = int(sf_o[s0])
         S = scene.surfaces[sid]
+        if S.kind == "roof" and sid in pitched:
+            continue  # sampled on the DSM surface instead of the flat eave plane
         sel = order[s0:s1]
         if S.kind == "wall":
             mid = (scene.surf_a[sid] + scene.surf_b[sid]) / 2
@@ -652,7 +692,7 @@ def observe_view(scene: Scene, rec: dict, raw_dir: Path, scale: float, shadows: 
             sel, pos_s = sel[pick], pos_s[pick]
         cand.append((sid, sel, pos_s, n_full, cos, used_low))
     if not cand:
-        return {}, time.time() - t0
+        return
     # phase 2: DSM occlusion toward the camera + DSM/mesh shadow toward the sun
     sid_all = np.concatenate([np.full(len(c[1]), c[0]) for c in cand])
     P_all = np.vstack([c[2] for c in cand])
@@ -665,7 +705,6 @@ def observe_view(scene: Scene, rec: dict, raw_dir: Path, scale: float, shadows: 
         ds = np.tile(sunv, (len(P_all), 1))
         dsm_shadow = dsm_march(dsm, occlusion_starts(scene, dsm, sid_all, P_all, ds), ds)
     # phase 3: tones
-    out = {}
     off = 0
     for sid, sel, pos_s, n_full, cos, used_low in cand:
         m = len(sel)
@@ -679,27 +718,265 @@ def observe_view(scene: Scene, rec: dict, raw_dir: Path, scale: float, shadows: 
         sel_f, pos_f = sel[free], pos_s[free]
         srgb = img[ys[sel_f], xs[sel_f]].astype(np.float32) / 255.0
         nrm = scene.surf_n[sid]
-        self_shadow = (nrm @ sunv) <= 0.02
+        cos_sun = max(0.0, float(nrm @ sunv))
+        self_shadow = cos_sun <= 0.02
         shadow = np.full(len(sel_f), self_shadow) | sm.shadowed(pos_f) | dsh[free]
-        e_lit = SHADOW_AMBIENT + (1 - SHADOW_AMBIENT) * max(0.0, float(nrm @ sunv))
+        e_lit = SHADOW_AMBIENT + (1 - SHADOW_AMBIENT) * cos_sun
         tone = robust_surface_tone(srgb, shadow, e_lit=e_lit, use_veg=occlusion in ("colour", "both"),
                                     trim_dark=S.kind == "wall")
         if tone is None or tone["tone_lin"] is None or tone["n"] < 5:
             continue
         tone["cos"] = cos
+        tone["cos_sun"] = cos_sun
         tone["px"] = int(round(n_full * free.mean()))
         tone["occluded_frac"] = float(blk.mean())
         tone["used_low"] = used_low
-        tone["view"] = rec["view_id"]
-        tone["direction"] = rec["direction"]
+        _stamp(tone, rec, sunv, S.kind)
         if S.kind == "roof":
             lum = luminance(srgb2lin(srgb))
             solar = (srgb[:, 2] > srgb[:, 0] * 1.15) & (srgb[:, 2] > srgb[:, 1] * 1.02) & (lum < 0.12)
-            tone["solar_frac"] = float(solar.mean())
+            lit_px = ~shadow  # shadowed roof pixels are dark and sky-blue: never evidence of panels
+            tone["solar_frac"] = float(solar[lit_px].mean()) if lit_px.sum() >= 8 else 0.0
             # in dsm mode green roofs cannot be told from trees by the mask; use colour only here
             tone["green_frac"] = float(vegetation_mask(srgb).mean())
         out[sid] = tone
-    return out, time.time() - t0
+
+
+PITCHED_PX_PER_POINT = 225  # one footprint sample (1.5 m grid) stands for ~ (1.5 m / 0.1 m GSD)^2 pixels
+
+
+def _observe_pitched_roofs(scene, cam, rec, img, crop, scale, sm, sunv, dsm, pitched, out):
+    """Colour of pitched roofs from DSM-lifted footprint samples in any view (see observe_view)."""
+    h, w = img.shape[:2]
+    items = []
+    for sid, P in pitched.items():
+        col, row, z = cam.project(P)
+        bj = np.floor((col - crop["x0"]) * scale).astype(int)
+        bi = np.floor((row - crop["y0"]) * scale).astype(int)
+        ok = (z > 1) & (bi >= 0) & (bi < h) & (bj >= 0) & (bj < w)
+        if ok.sum() < 8:
+            continue
+        Pk = P[ok]
+        n = dsm_normal(dsm, Pk[:, 0], Pk[:, 2])
+        vd = cam.C_loc - Pk
+        vd /= np.linalg.norm(vd, axis=1, keepdims=True)
+        cv = np.einsum("ij,ij->i", n, vd)
+        front = cv > 0.1
+        if front.sum() < 8:
+            continue
+        sel = np.flatnonzero(ok)[front]
+        items.append((sid, Pk[front], n[front], vd[front], cv[front], bi[sel], bj[sel], int(len(P))))
+    if not items:
+        return
+    P_all = np.vstack([it[1] for it in items])
+    d_all = np.vstack([it[3] for it in items])
+    sid_all = np.concatenate([np.full(len(it[1]), it[0]) for it in items])
+    blocked = dsm_march(dsm, occlusion_starts(scene, dsm, sid_all, P_all, d_all), d_all)
+    ds = np.tile(sunv, (len(P_all), 1))
+    dsm_shadow = dsm_march(dsm, occlusion_starts(scene, dsm, sid_all, P_all, ds), ds)
+    off = 0
+    for sid, Pk, n, vd, cv, bi, bj, n_total in items:
+        m = len(Pk)
+        blk, dsh = blocked[off:off + m], dsm_shadow[off:off + m]
+        off += m
+        free = ~blk
+        if free.sum() < 8:
+            continue
+        cs = np.maximum(0.0, n[free] @ sunv)
+        shadow = (cs <= 0.02) | dsh[free] | sm.shadowed(Pk[free])
+        srgb = img[bi[free], bj[free]].astype(np.float32) / 255.0
+        lin = srgb2lin(srgb).astype(np.float32)
+        lum = luminance(lin)
+        solar = (srgb[:, 2] > srgb[:, 0] * 1.15) & (srgb[:, 2] > srgb[:, 1] * 1.02) & (lum < 0.12)
+        o = {
+            "pix_lin": lin, "pix_cos": cs.astype(np.float32), "pix_sh": shadow,
+            "cos": float(np.clip(cv[free].mean(), 0, 1)), "cos_sun": float(cs.mean()),
+            "px": int(free.sum() * PITCHED_PX_PER_POINT), "occluded_frac": float(blk.mean()),
+            "n_lit": int((~shadow).sum()), "n_sh": int(shadow.sum()), "shadow_frac": float(shadow.mean()),
+            "from_shadow": bool((~shadow).sum() < 15), "veg_frac": 0.0, "used_low": False,
+            "solar_frac": float(solar[~shadow].mean()) if (~shadow).sum() >= 8 else 0.0, "green_frac": float(vegetation_mask(srgb).mean()),
+            "lit_lin": None, "sh_lin": None, "pitched": True,
+        }
+        _stamp(o, rec, sunv, "roof")
+        out[sid] = o
+
+
+# --------------------------------------------------------------------------------------
+# per-view lighting calibration (skylight chroma / ambient share) and tone finalisation
+
+E_REF0 = SHADOW_AMBIENT + (1 - SHADOW_AMBIENT) * E_REF_COS  # lit-pixel normalisation as in v1 (soft)
+GAIN_CAP_LIT = 1.7
+G_RANGE = (1.0, 3.5)  # shadow -> lit luminance gain, measured per view from same-surface pairs
+S_RANGE = (0.4, 1.0)
+GRAZING_COS = 0.12  # sun incidence below this: "lit" pixels are effectively ambient-only
+MIN_PAIRS = 8
+SUNLIT_MIN_COS = 0.3  # a wall seen at more than ~72 deg is not a "sunlit" source even if lit
+YEAR_DISAGREE = 0.25  # sRGB distance between sunlit sources of different years
+YEAR_CHROMA_SHADOW = 0.07  # chromaticity (L1 of r,g,b shares) gap that marks a repaint when one side is shadow-sourced
+YEAR_LUM_SHADOW = 2.2  # ... or a luminance ratio beyond this
+
+
+def lum_norm(k: np.ndarray) -> np.ndarray:
+    k = np.maximum(np.asarray(k, dtype=np.float64), 1e-4)
+    return k / float(luminance(k))
+
+
+def default_cal() -> dict:
+    return {"G": E_REF0 / SHADOW_AMBIENT, "S": 1.0, "k_wall": np.ones(3), "k_roof": np.ones(3), "n_wall": 0, "n_roof": 0, "src": "default"}
+
+
+def surface_pair(o: dict):
+    """dict(k: chroma ratio [lum 1], G: shadow->lit luminance gain, rho, lit/sh tones) from the lit and
+    shadowed pixels of ONE surface in ONE view, or None. Same material across a shadow edge:
+    shadow/lit is the skylight-vs-sun-plus-sky ratio, independent of the albedo. G is the gain
+    that makes the shadow reading equal the (v1-normalised) lit reading of the same wall."""
+    if o.get("pitched") or o.get("lit_lin") is None or o.get("sh_lin") is None:
+        return None
+    if o["n_lit"] < 20 or o["n_sh"] < 20 or o["cos_sun"] < GRAZING_COS:
+        return None
+    lit, sh = np.asarray(o["lit_lin"], float), np.asarray(o["sh_lin"], float)
+    if (lit < 0.01).any() or (sh < 0.003).any():
+        return None
+    rho = float(luminance(sh) / luminance(lit))
+    if not 0.08 < rho < 0.95:
+        return None
+    e_lit = SHADOW_AMBIENT + (1 - SHADOW_AMBIENT) * o["cos_sun"]
+    g_lit = min(GAIN_CAP_LIT, E_REF0 / e_lit)
+    return {"k": lum_norm(sh / lit), "G": float(E_REF0 / (rho * e_lit)), "rho": rho,
+            "lit": np.clip(lit * g_lit, 0, 1), "sh": sh}
+
+
+def estimate_calibrations(per_surface: dict[int, list[dict]], views: list[dict]) -> dict[str, dict]:
+    """Per-view {a, k_wall, k_roof}. Views with too few same-surface pairs borrow the pooled
+    estimate of their flight (same collection and sun key), then of their collection."""
+    pairs: dict[str, dict[str, list]] = {}
+    for obs in per_surface.values():
+        for o in obs:
+            pr = surface_pair(o)
+            if pr is not None:
+                pairs.setdefault(o["view"], {"wall": [], "roof": []})[o["kind"]].append(pr)
+    meta = {v["view_id"]: (view_year(v["view_id"]), v.get("_sun_key")) for v in views}
+
+    def agg(prs_w, prs_r):
+        allp = prs_w + prs_r
+        if not allp:
+            return None
+        res = {"G": float(np.clip(np.median([p["G"] for p in allp]), *G_RANGE)), "n_wall": len(prs_w), "n_roof": len(prs_r)}
+        res["k_wall"] = lum_norm(np.median([p["k"] for p in prs_w], axis=0)) if len(prs_w) >= 3 else None
+        res["k_roof"] = lum_norm(np.median([p["k"] for p in prs_r], axis=0)) if len(prs_r) >= 3 else None
+        # saturation the white-balanced shadow tone keeps relative to the lit tone of the same
+        # surface (aerial shadows come out over-coloured after the gain): a single chroma scale
+        kk = res["k_wall"] if res["k_wall"] is not None else np.ones(3)
+        ratios = []
+        for p in allp:
+            t = lin2srgb(np.clip(p["sh"] / kk * res["G"], 0, 1))
+            ss, sl = sat_of(t), sat_of(lin2srgb(p["lit"]))
+            if ss > 0.02:
+                ratios.append(sl / ss)
+        res["S"] = float(np.clip(np.median(ratios), *S_RANGE)) if len(ratios) >= 5 else 1.0
+        return res
+
+    def pooled(pred):
+        w, r = [], []
+        for vid, d in pairs.items():
+            if pred(meta.get(vid, (0, None))):
+                w += d["wall"]; r += d["roof"]
+        return agg(w, r) if len(w) + len(r) >= MIN_PAIRS else None
+
+    glob = pooled(lambda m: True) or default_cal()
+    cols = {y: pooled(lambda m, y=y: m[0] == y) or glob for y in {m[0] for m in meta.values()}}
+    flights = {m: pooled(lambda mm, m=m: mm == m) for m in set(meta.values())}
+    cal = {}
+    for v in views:
+        vid = v["view_id"]
+        d = pairs.get(vid, {"wall": [], "roof": []})
+        mine = agg(d["wall"], d["roof"]) if len(d["wall"]) + len(d["roof"]) >= MIN_PAIRS else None
+        src = "view" if mine else "flight"
+        base = mine or flights.get(meta[vid]) or cols.get(meta[vid][0]) or glob
+        if mine is None and flights.get(meta[vid]) is None:
+            src = "collection"
+        g_k = glob.get("k_wall") if glob.get("k_wall") is not None else np.ones(3)
+        k_w = base.get("k_wall") if base.get("k_wall") is not None else (cols[meta[vid][0]].get("k_wall") if cols[meta[vid][0]].get("k_wall") is not None else g_k)
+        k_r = base.get("k_roof") if base.get("k_roof") is not None else k_w
+        cal[vid] = {"G": base["G"], "S": base.get("S", 1.0), "k_wall": np.asarray(k_w), "k_roof": np.asarray(k_r),
+                    "n_wall": len(d["wall"]), "n_roof": len(d["roof"]), "src": src}
+    return cal
+
+
+def finalize_obs(o: dict, cal: dict) -> dict:
+    """Reference-lit tone of one observation. Lit pixels: divide by the (v1, soft) sun incidence.
+    Shadow pixels (and grazing-sun walls, which are ambient-only in practice): divide out the
+    per-view skylight chroma cast (white balance) THEN apply the per-view measured shadow->lit
+    luminance gain G. `raw_lin` stays as photographed."""
+    G = cal["G"]
+    k = cal["k_roof"] if o["kind"] == "roof" else cal["k_wall"]
+    if "pix_lin" in o:  # pitched roof: per-pixel incidence from the DSM normals
+        lin, cs, sh = o["pix_lin"], o["pix_cos"], o["pix_sh"]
+        sh = sh | (cs < GRAZING_COS)
+        if (~sh).sum() >= 15:
+            v = lin[~sh]
+            gain = np.minimum(GAIN_CAP_LIT, E_REF0 / (SHADOW_AMBIENT + (1 - SHADOW_AMBIENT) * cs[~sh]))
+            wb = False
+            o["raw_lin"] = np.median(v, axis=0)
+        else:
+            v = (lin[sh] if sh.any() else lin) / k
+            gain = np.full(len(v), G)
+            wb = True
+            S_ = cal.get("S", 1.0)
+            o["raw_lin"] = np.median(lin[sh] if sh.any() else lin, axis=0)
+        t = np.clip(np.median(v * gain[:, None], axis=0), 0, 1)
+        if wb:
+            t = np.clip(luminance(t) + S_ * (t - luminance(t)), 0, 1)
+        o["tone_lin"] = t
+        o["gain"] = float(np.median(gain))
+        o["shadow_frac"] = float(sh.mean())
+    else:
+        wb = bool(o["from_shadow"]) or o["cos_sun"] < GRAZING_COS
+        raw = np.asarray(o["raw_lin"], float)
+        if wb:
+            gain, base = G, raw / k
+        else:
+            gain = min(GAIN_CAP_LIT, E_REF0 / (SHADOW_AMBIENT + (1 - SHADOW_AMBIENT) * o["cos_sun"]))
+            base = raw
+        t = np.clip(base * gain, 0, 1)
+        if wb:
+            t = np.clip(luminance(t) + cal.get("S", 1.0) * (t - luminance(t)), 0, 1)
+        o["tone_lin"] = t
+        o["gain"] = float(gain)
+    o["from_shadow"] = wb
+    o["wb"] = wb
+    o["cast"] = np.asarray(k, float) if wb else None
+    o["sunlit"] = (not wb) and (o["kind"] == "roof" or o["cos"] >= SUNLIT_MIN_COS)
+    return o
+
+
+def collection_gains(per_surface: dict[int, list[dict]], min_px: int = 150, min_pairs: int = 30) -> dict[int, np.ndarray]:
+    """Per-channel linear gain that maps each older collection onto the newest one, from walls
+    that are sunlit in both (the 2023 flight is ~1.5x darker than 2025 in linear light: a
+    different radiometric pipeline, not a different building)."""
+    newest = max((o["year"] for obs in per_surface.values() for o in obs), default=0)
+    ratios: dict[int, list] = {}
+    for obs in per_surface.values():
+        if obs[0]["kind"] != "wall":
+            continue
+        new = [o["tone_lin"] for o in obs if o["sunlit"] and o["year"] == newest and o["px"] >= min_px]
+        if not new:
+            continue
+        tn = np.median(new, axis=0)
+        for y in {o["year"] for o in obs} - {newest}:
+            old = [o["tone_lin"] for o in obs if o["sunlit"] and o["year"] == y and o["px"] >= min_px]
+            if old:
+                ratios.setdefault(y, []).append(tn / np.maximum(np.median(old, axis=0), 1e-3))
+    return {y: np.median(r, axis=0) for y, r in ratios.items() if len(r) >= min_pairs}
+
+
+def apply_collection_gains(per_surface: dict[int, list[dict]], gains: dict[int, np.ndarray]) -> None:
+    for obs in per_surface.values():
+        for o in obs:
+            g = gains.get(o["year"])
+            if g is not None:
+                o["tone_lin"] = np.clip(o["tone_lin"] * g, 0, 1)
+                o["collection_gain"] = g
 
 
 # --------------------------------------------------------------------------------------
@@ -715,35 +992,103 @@ def weighted_median(vals: np.ndarray, w: np.ndarray) -> np.ndarray:
     return out
 
 
-def view_score(o: dict, kind: str) -> float:
+def view_score(o: dict, kind: str, pitched: bool = False) -> float:
     s = o["cos"] * math.sqrt(o["px"]) * (1 - 0.7 * o["shadow_frac"])
     if o["from_shadow"]:
         s *= 0.6
     if o.get("used_low"):
         s *= 0.5
-    if kind == "roof":
+    if kind == "roof" and not pitched:
         s *= 1.0 if o["direction"] == "nadir" else 0.25
     return s
 
 
+def _srgb(o) -> np.ndarray:
+    return lin2srgb(o["tone_lin"])
+
+
+def repaint_suspect(sunlit_old: np.ndarray, shadow_new: np.ndarray) -> bool:
+    """Is a white-balanced shadow tone (newer) so different from a sunlit tone (older) that the
+    wall was probably repainted? Shadow luminance is the noisy part, so compare chromaticity
+    first and luminance only for gross ratios."""
+    cs = lambda c: np.asarray(c, float) / max(float(np.sum(c)), 1e-6)
+    chroma_gap = float(np.abs(cs(sunlit_old) - cs(shadow_new)).sum())
+    lr = float(luminance(srgb2lin(shadow_new)) / max(float(luminance(srgb2lin(sunlit_old))), 1e-6))
+    return chroma_gap > YEAR_CHROMA_SHADOW or lr > YEAR_LUM_SHADOW or lr < 1 / YEAR_LUM_SHADOW
+
+
+def select_views(obs: list[dict], kind: str, max_views: int = 3):
+    """Pick the source views of one surface. Returns (chosen indices, flags).
+
+    Sunlit sources win over shadow sources; among sunlit sources the newest collection wins
+    (unless its best view is clearly poorer), and a disagreeing older sunlit view only raises
+    a flag. If the only sunlit source is older and the newer shadow-only (white-balanced)
+    colour differs strongly the wall was probably repainted: prefer the newer and flag."""
+    pit = any(o.get("pitched") for o in obs)
+    sc = np.array([view_score(o, kind, pit) for o in obs])
+    newest = max(o["year"] for o in obs)
+
+    def top(idx):
+        idx = sorted(idx, key=lambda i: -sc[i])
+        best = sc[idx[0]]
+        return [i for i in idx if sc[i] >= 0.4 * best][:max_views]
+
+    def tone_of(idx):
+        w = sc[idx]
+        t = np.array([_srgb(obs[i]) for i in idx])
+        return weighted_median(t, w) if len(idx) > 1 else t[0]
+
+    flags: list[str] = []
+    sun = [i for i, o in enumerate(obs) if o["sunlit"] and sc[i] > 0]
+    if sun:
+        best_sun = max(sc[i] for i in sun)
+        new = [i for i in sun if obs[i]["year"] == newest and sc[i] >= 0.3 * best_sun]
+        old = [i for i in sun if obs[i]["year"] != newest]
+        if new:
+            chosen = top(new)
+            if old and np.linalg.norm(tone_of(chosen) - tone_of(top(old))) > YEAR_DISAGREE:
+                flags.append("year_disagree")
+            return chosen, flags
+        chosen = top(sun)
+        if all(obs[i]["year"] != newest for i in chosen):
+            shadow_new = [i for i, o in enumerate(obs) if o["year"] == newest and not o["sunlit"] and sc[i] > 0]
+            if shadow_new:
+                sn = top(shadow_new)
+                if repaint_suspect(tone_of(chosen), tone_of(sn)):
+                    flags.append("year_disagree")
+                    return sn, flags
+        return chosen, flags
+    allv = [i for i in range(len(obs)) if sc[i] > 0] or list(range(len(obs)))
+    boosted = sc.copy()
+    for i in allv:
+        if obs[i]["year"] == newest:
+            boosted[i] *= 1.5
+    sc_save, sc = sc, boosted
+    chosen = top(allv)
+    sc = sc_save
+    return chosen, flags
+
+
 def combine(obs: list[dict], kind: str, max_views: int = 3):
-    """Fuse the per-view observations of one surface."""
+    """Fuse the (finalised) per-view observations of one surface."""
     if not obs:
         return None
-    sc = np.array([view_score(o, kind) for o in obs])
-    order = np.argsort(-sc)
-    best = sc[order[0]]
-    if kind == "roof" and any(o["direction"] == "nadir" for o in obs):
-        order = np.array([i for i in order if obs[i]["direction"] == "nadir"])
-        best = sc[order[0]]
-    chosen = [i for i in order if sc[i] >= 0.4 * best][:max_views]
+    pit = any(o.get("pitched") for o in obs)
+    if kind == "roof" and not pit and any(o["direction"] == "nadir" for o in obs):
+        keep = [o for o in obs if o["direction"] == "nadir"]
+        pool_note = len(obs) - len(keep)
+        obs = keep
+    chosen, flags = select_views(obs, kind, max_views)
+    sc = np.array([view_score(o, kind, pit) for o in obs])
     tones = np.array([obs[i]["tone_lin"] for i in chosen])
-    w = sc[chosen]
+    w = np.maximum(sc[chosen], 1e-6)
     tone = weighted_median(tones, w) if len(chosen) > 1 else tones[0]
     raw = weighted_median(np.array([obs[i]["raw_lin"] for i in chosen]), w) if len(chosen) > 1 else obs[chosen[0]]["raw_lin"]
     ref = lin2srgb(tone)
     agree = sum(1 for o in obs if o["px"] >= MIN_PX and np.linalg.norm(lin2srgb(o["tone_lin"]) - ref) < 0.09)
     b = obs[chosen[0]]
+    sunlit = all(obs[i]["sunlit"] for i in chosen)
+    wb_used = [obs[i]["cast"] for i in chosen if obs[i]["wb"]]
     res = {
         "tone": [round(float(x), 3) for x in ref],
         "tone_raw": [round(float(x), 3) for x in lin2srgb(raw)],
@@ -753,15 +1098,55 @@ def combine(obs: list[dict], kind: str, max_views: int = 3):
         "shadow_frac": round(float(np.average([obs[i]["shadow_frac"] for i in chosen], weights=w)), 2),
         "agree": int(agree),
         "n_views": len(obs),
-        "shadow_corrected": bool(any(obs[i]["gain"] > 1.3 for i in chosen)),
+        "shadow_corrected": bool(not sunlit),
+        "sunlit": bool(sunlit),
+        "year": int(b["year"]),
+        "years_used": sorted({int(obs[i]["year"]) for i in chosen}),
+        "flags": flags,
+        "wb_cast": [round(float(x), 3) for x in np.median(wb_used, axis=0)] if wb_used else None,
         "veg_frac": round(float(np.average([obs[i].get("green_frac", obs[i]["veg_frac"]) for i in chosen], weights=w)), 2),
         "occluded_frac": round(float(np.average([obs[i].get("occluded_frac", 0.0) for i in chosen], weights=w)), 2),
         "best": short_view(b["view"]),
+        "pitched_sampled": bool(pit),
         "_best_raw": b,
     }
     if kind == "roof":
         res["solar_frac"] = round(float(np.average([obs[i].get("solar_frac", 0) for i in chosen], weights=w)), 2)
     return res
+
+
+# --------------------------------------------------------------------------------------
+# prior from BBR: brick
+
+BRICK_MATERIALS = {"mursten"}
+BRICK_DEFAULT_SRGB = np.array([0.55, 0.30, 0.24])
+PRIOR_SAT_MAX = 0.25  # observed tones below this saturation are "ambiguous" for the brick prior
+
+
+def sat_of(rgb) -> float:
+    mx, mn = float(max(rgb)), float(min(rgb))
+    return (mx - mn) / mx if mx > 0 else 0.0
+
+
+def is_brick_hue(rgb) -> bool:
+    r, g, b = rgb
+    return r > g * 1.25 and r > b * 1.45 and sat_of(rgb) > 0.32
+
+
+def apply_brick_prior(c: dict, ref_srgb) -> bool:
+    """Pull an ambiguous shadow-sourced tone toward the brick hue (keeps its luminance).
+    Never touches sunlit (confident) observations or already-brick tones."""
+    if c["sunlit"] or sat_of(c["tone"]) >= PRIOR_SAT_MAX or is_brick_hue(c["tone"]):
+        return False
+    tone_lin = srgb2lin(np.array(c["tone"]))
+    ref_lin = srgb2lin(np.asarray(ref_srgb, float))
+    target = ref_lin * (float(luminance(tone_lin)) / max(float(luminance(ref_lin)), 1e-6))
+    alpha = 0.4 + 0.4 * (1 - sat_of(c["tone"]) / PRIOR_SAT_MAX)
+    new = lin2srgb(np.clip((1 - alpha) * tone_lin + alpha * target, 0, 1))
+    c["tone_prior_free"] = c["tone"]
+    c["tone"] = [round(float(x), 3) for x in new]
+    c["prior"] = "brick"
+    return True
 
 
 def roof_type_hint(tone_srgb, roof: str | None, veg_frac: float, solar_frac: float) -> str:
@@ -904,10 +1289,134 @@ def nearest_median_fallback(buildings, centroids, observed_tone, bi, k=6, radius
     return np.median(np.array(vals), axis=0)
 
 
+def points_in_ring(pts: np.ndarray, ring: np.ndarray) -> np.ndarray:
+    x, y = pts[:, 0], pts[:, 1]
+    inside = np.zeros(len(pts), bool)
+    n = len(ring)
+    for i in range(n):
+        x0, y0, x1, y1 = ring[i, 0], ring[i, 1], ring[(i + 1) % n, 0], ring[(i + 1) % n, 1]
+        if y0 == y1:
+            continue
+        cond = (y0 > y) != (y1 > y)
+        xi = x0 + (y - y0) * (x1 - x0) / (y1 - y0)
+        inside ^= cond & (x < xi)
+    return inside
+
+
+def dist_to_ring(pts: np.ndarray, ring: np.ndarray) -> np.ndarray:
+    a, b = ring, np.roll(ring, -1, axis=0)
+    ab = b - a
+    L2 = np.maximum((ab ** 2).sum(1), 1e-12)
+    t = np.clip(((pts[:, None, :] - a[None]) * ab[None]).sum(2) / L2[None], 0, 1)
+    proj = a[None] + t[..., None] * ab[None]
+    return np.sqrt(((pts[:, None, :] - proj) ** 2).sum(2)).min(1)
+
+
+def footprint_samples(b: dict, step: float = 1.5, inset: float = 0.7, max_n: int = 160) -> np.ndarray:
+    """Regular plan-view samples inside the footprint (outside holes), `inset` m from edges."""
+    outer = ring_pts(b["ring"])
+    holes = [ring_pts(h) for h in b.get("holes", []) if len(h) >= 6]
+    lo, hi = outer.min(0), outer.max(0)
+    st = step
+    while ((hi - lo) / st + 1).prod() > max_n * 6:
+        st *= 1.5
+    gx, gz = np.meshgrid(np.arange(lo[0] + st / 2, hi[0], st), np.arange(lo[1] + st / 2, hi[1], st))
+    pts = np.column_stack([gx.ravel(), gz.ravel()])
+    if len(pts) == 0:
+        return np.zeros((0, 2))
+    ok = points_in_ring(pts, outer)
+    for h in holes:
+        ok &= ~points_in_ring(pts, h)
+    pts = pts[ok]
+    if len(pts) == 0:
+        return pts
+    d = dist_to_ring(pts, outer)
+    for h in holes:
+        d = np.minimum(d, dist_to_ring(pts, h))
+    pts = pts[d >= inset]
+    if len(pts) > max_n:
+        pts = pts[np.linspace(0, len(pts) - 1, max_n).astype(int)]
+    return pts
+
+
+PITCH_RISE_M = 1.5
+
+
+def pitched_roofs(scene: Scene, B: list[dict], dsm: DSM) -> tuple[dict[int, np.ndarray], dict[int, float]]:
+    """Roofs whose DSM ridge (95th percentile in the footprint) rises > 1.5 m above the modelled
+    eave. Returns {roof surface id: samples lifted onto the DSM}, {building index: rise (m)}."""
+    pts_by, rise_by = {}, {}
+    for bi, b in enumerate(B):
+        sid = scene.roof_of.get(bi)
+        if sid is None:
+            continue
+        xz = footprint_samples(b)
+        if len(xz) < 6:
+            continue
+        h = dsm.height(xz[:, 0], xz[:, 1]).astype(np.float64) - ORIGIN[2]
+        h = np.where(h < -40, np.nan, h)
+        if np.isnan(h).all():
+            continue
+        rise = float(np.nanpercentile(h, 95) - b["eave"])
+        rise_by[bi] = rise
+        if rise > PITCH_RISE_M:
+            pts_by[sid] = np.column_stack([xz[:, 0], np.nan_to_num(h, nan=b["eave"]), xz[:, 1]])
+    return pts_by, rise_by
+
+
+def load_views(args, root: Path, scene: Scene, shadows: dict) -> list[dict]:
+    cams: list[dict] = []
+    for d in str(args.raw).split(","):
+        rd = root / d.strip()
+        for rec in json.loads((rd / "cameras.json").read_text()):
+            rec["_raw_dir"] = rd
+            cams.append(rec)
+    cams.sort(key=lambda r: (-view_year(r["view_id"]), r["view_id"]))
+    if args.limit_views:
+        step = max(1, len(cams) // args.limit_views)
+        cams = cams[::step][: args.limit_views]
+    for rec in cams:
+        when = dt.datetime.fromisoformat(rec["datetime"].replace("Z", "+00:00"))
+        key = int(when.timestamp() // 600)  # shadow maps are shared within 10 minutes
+        az, el = sun_position(dt.datetime.fromtimestamp(key * 600 + 300, dt.timezone.utc))
+        rec["_sun_key"] = key
+        rec["_sun_vec"] = sun_vector(az, el)
+        rec["_sun"] = (az, el)
+        if key not in shadows:
+            shadows[key] = ShadowMap(scene, rec["_sun_vec"])
+            print(f"  sun map {key}: {when:%Y-%m-%d %H:%M}Z az {az:.0f} el {el:.0f}", flush=True)
+    return cams
+
+
+def brick_contradicted(scene: Scene, B: list[dict], walls_obs: dict[int, dict]) -> set[int]:
+    """BBR-brick buildings where a confident (sunlit, >= 300 px) wall shows a clearly non-brick
+    colour (another saturated hue, or white/light plaster): the prior must not fight that."""
+    out = set()
+    for sid, c in walls_obs.items():
+        bi = scene.surfaces[sid].bid
+        if c["sunlit"] and c["px"] >= 300 and not is_brick_hue(c["tone"]):
+            lum_s = float(lin2srgb(luminance(srgb2lin(np.array(c["tone"])))))
+            if sat_of(c["tone"]) >= 0.12 or lum_s > 0.75:
+                out.add(bi)
+    return out
+
+
+def brick_references(scene: Scene, B: list[dict], walls_obs: dict[int, dict]):
+    """Brick colour from CONFIDENT (sunlit, brick-hued) walls of BBR-brick buildings: one per
+    building where available, else the district median."""
+    per_b: dict[int, list] = {}
+    for sid, c in walls_obs.items():
+        bi = scene.surfaces[sid].bid
+        if (B[bi].get("wall_material") or "").lower() in BRICK_MATERIALS and c["sunlit"] and is_brick_hue(c["tone"]) and c["px"] >= 100:
+            per_b.setdefault(bi, []).append(c["tone"])
+    allv = [t for v in per_b.values() for t in v]
+    glob = np.median(allv, axis=0) if len(allv) >= 10 else BRICK_DEFAULT_SRGB
+    return glob, {bi: np.median(v, axis=0) for bi, v in per_b.items()}
+
+
 def run(args) -> dict:
     root = Path(args.root)
     geo_path = root / args.geodata
-    raw_dir = root / args.raw
     t_start = time.time()
     geo = json.loads(geo_path.read_text())
     B = geo["buildings"]
@@ -921,32 +1430,40 @@ def run(args) -> dict:
         dsm = DSM.from_tiles(tiles)
         print(f"dsm: {dsm.arr.shape} @ {dsm.res} m, max {dsm.max:.1f} m", flush=True)
     args._dsm = dsm
-    cams = json.loads((raw_dir / "cameras.json").read_text())
-    if args.limit_views:
-        cams = cams[: args.limit_views]
-
     shadows: dict = {}
-    for rec in cams:
-        when = dt.datetime.fromisoformat(rec["datetime"].replace("Z", "+00:00"))
-        key = int(when.timestamp() // 300)
-        az, el = sun_position(dt.datetime.fromtimestamp(key * 300 + 150, dt.timezone.utc))
-        rec["_sun_key"] = key
-        rec["_sun_vec"] = sun_vector(az, el)
-        rec["_sun"] = (az, el)
-        if key not in shadows:
-            shadows[key] = ShadowMap(scene, rec["_sun_vec"])
-            print(f"  sun map {key}: az {az:.0f} el {el:.0f}", flush=True)
+    cams = load_views(args, root, scene, shadows)
+    pitched_pts, rise_by = pitched_roofs(scene, B, dsm) if dsm is not None else ({}, {})
+    print(f"pitched roofs (DSM ridge - eave > {PITCH_RISE_M} m): {len(pitched_pts)} of {len(B)}", flush=True)
 
+    cache = root / args.cache if args.cache else None
     per_surface: dict[int, list[dict]] = {}
     t_views = time.time()
-    for k, rec in enumerate(cams):
-        obs, dtv = observe_view(scene, rec, raw_dir, args.scale, shadows, B, dsm=dsm, occlusion=args.occlusion)
-        for sid, o in obs.items():
-            per_surface.setdefault(sid, []).append(o)
-        print(f"  view {k + 1}/{len(cams)} {short_view(rec['view_id'])} ({rec['direction']}): "
-              f"{len(obs)} surfaces, {dtv:.1f}s", flush=True)
+    if cache and args.reuse_cache and cache.exists():
+        import pickle
+        per_surface = pickle.loads(cache.read_bytes())
+        print(f"reused observation cache {cache}", flush=True)
+    else:
+        for k, rec in enumerate(cams):
+            obs, dtv = observe_view(scene, rec, rec["_raw_dir"], args.scale, shadows, B, dsm=dsm,
+                                    occlusion=args.occlusion, pitched=pitched_pts)
+            for sid, o in obs.items():
+                per_surface.setdefault(sid, []).append(o)
+            print(f"  view {k + 1}/{len(cams)} {short_view(rec['view_id'])} ({rec['direction']}, sun el "
+                  f"{rec['_sun'][1]:.0f}): {len(obs)} surfaces, {dtv:.1f}s", flush=True)
+        if cache:
+            import pickle
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_bytes(pickle.dumps(per_surface, protocol=4))
 
-    # combine
+    # lighting calibration per view, then reference-lit / white-balanced tones
+    cal = estimate_calibrations(per_surface, cams)
+    for obs in per_surface.values():
+        for o in obs:
+            finalize_obs(o, cal.get(o["view"]) or default_cal())
+
+    col_gains = collection_gains(per_surface)
+    apply_collection_gains(per_surface, col_gains)
+    print("collection gains (older -> newest, linear RGB):", {y: np.round(g, 2).tolist() for y, g in col_gains.items()}, flush=True)
     walls_obs: dict[int, dict] = {}
     roofs_obs: dict[int, dict] = {}
     for sid, obs in per_surface.items():
@@ -954,6 +1471,21 @@ def run(args) -> dict:
         c = combine(obs, kind)
         if c is not None:
             (walls_obs if kind == "wall" else roofs_obs)[sid] = c
+
+    # BBR brick prior for ambiguous (shadow-sourced, low-saturation) walls
+    brick_ref_global, brick_ref_b = brick_references(scene, B, walls_obs)
+    contradicted = brick_contradicted(scene, B, walls_obs)
+    n_prior = n_prior_skipped = 0
+    for sid, c in walls_obs.items():
+        bi = scene.surfaces[sid].bid
+        if (B[bi].get("wall_material") or "").lower() in BRICK_MATERIALS:
+            if bi in contradicted:
+                n_prior_skipped += not c["sunlit"] and sat_of(c["tone"]) < PRIOR_SAT_MAX
+                continue
+            if apply_brick_prior(c, brick_ref_b.get(bi, brick_ref_global)):
+                n_prior += 1
+    print(f"brick prior skipped on {n_prior_skipped} ambiguous walls of buildings whose sunlit walls contradict brick", flush=True)
+    print(f"brick prior applied to {n_prior} walls (reference {np.round(brick_ref_global, 2).tolist()})", flush=True)
 
     # per-building output
     centroids = np.array([ring_pts(b["ring"]).mean(0) for b in B])
@@ -972,7 +1504,6 @@ def run(args) -> dict:
     fallback_counts = {"building": 0, "neighbours": 0, "preset": 0}
     for b in B:
         b["observed"] = {"walls": [], "roof": None}
-    # index surfaces per building once
     surf_by_b: dict[int, list[int]] = {}
     for sid, S in enumerate(scene.surfaces):
         if S.kind == "wall":
@@ -984,10 +1515,17 @@ def run(args) -> dict:
             if sid in walls_obs:
                 c = walls_obs[sid]
                 n_walls_obs += 1
-                entry = {"edge": S.edge, "ring": ring_label(S.ring), "tone": c["tone"], "conf": "observed",
+                entry = {"edge": S.edge, "ring": ring_label(S.ring), "tone": c["tone"],
+                         "conf": "observed+prior" if c.get("prior") else "observed",
                          "views": c["views"], "angle_deg": c["angle_deg"], "px": c["px"],
                          "shadow_frac": c["shadow_frac"], "tone_raw": c["tone_raw"], "agree": c["agree"],
-                         "shadow_corrected": c["shadow_corrected"]}
+                         "shadow_corrected": c["shadow_corrected"], "sunlit": c["sunlit"], "year": c["year"],
+                         "wb_cast": c["wb_cast"]}
+                if c["flags"]:
+                    entry["flags"] = c["flags"]
+                if c.get("prior"):
+                    entry["prior"] = c["prior"]
+                    entry["tone_observed"] = c["tone_prior_free"]
             else:
                 tone, how = None, None
                 if bld_wall_tone[bi] is not None:
@@ -1004,6 +1542,7 @@ def run(args) -> dict:
                          "fallback": how}
             b["observed"]["walls"].append(entry)
         rs = scene.roof_of.get(bi)
+        rise = rise_by.get(bi)
         if rs is not None and rs in roofs_obs:
             c = roofs_obs[rs]
             n_roofs_obs += 1
@@ -1012,37 +1551,51 @@ def run(args) -> dict:
                 "shadow_frac": c["shadow_frac"], "angle_deg": c["angle_deg"],
                 "type_hint": roof_type_hint(c["tone"], b.get("roof"), c["veg_frac"], c.get("solar_frac", 0)),
                 "solar_frac": c.get("solar_frac", 0.0), "green_frac": c["veg_frac"],
+                "sunlit": c["sunlit"], "year": c["year"], "pitched": rs in pitched_pts,
+                "ridge_rise_m": round(rise, 2) if rise is not None else None,
+                "sampled_on": "dsm_surface" if rs in pitched_pts else "eave_plane",
             }
+            if c["flags"]:
+                b["observed"]["roof"]["flags"] = c["flags"]
         else:
             t = nearest_median_fallback(B, centroids, bld_roof_tone, bi)
             b["observed"]["roof"] = {
                 "tone": [round(float(x), 3) for x in t] if t is not None else None,
                 "conf": "inferred", "views": [], "px": 0, "type_hint": None,
+                "pitched": rs in pitched_pts, "ridge_rise_m": round(rise, 2) if rise is not None else None,
             }
     print(f"observed walls {n_walls_obs}/{n_walls_total}, roofs {n_roofs_obs}/{len(B)}; "
           f"views {time.time() - t_views:.0f}s", flush=True)
 
     atlas_stats = None
     if args.textures:
-        atlas_stats = make_textures(scene, B, walls_obs, per_surface, cams, raw_dir, root, args)
+        atlas_stats = make_textures(scene, B, walls_obs, per_surface, cams, root, args)
 
     stats = {
         "walls_total": n_walls_total, "walls_observed": n_walls_obs, "roofs_total": len(B),
         "roofs_observed": n_roofs_obs, "fallback": fallback_counts, "runtime_s": round(time.time() - t_start, 1),
-        "views": len(cams), "scale": args.scale, "textures": atlas_stats,
+        "views": len(cams), "scale": args.scale, "textures": atlas_stats, "brick_prior_walls": n_prior, "brick_prior_skipped": n_prior_skipped,
+        "pitched_roofs": len(pitched_pts),
     }
-    geo.setdefault("appearance", {})
-    geo["appearance"] = {"version": "appearance/1", "method": "skraafoto2025 z-buffer visibility + robust linear-RGB median",
-                         "views": len(cams), "scale": args.scale}
+    years: dict[int, int] = {}
+    for c in cams:
+        y = view_year(c["view_id"])
+        years[y] = years.get(y, 0) + 1
+    geo["appearance"] = {"version": "appearance/2",
+                         "method": "skraafoto2025+2023 z-buffer visibility, sunlit-view selection, per-view shadow white balance, BBR brick prior",
+                         "views": len(cams), "views_by_year": {str(k): v for k, v in sorted(years.items())},
+                         "scale": args.scale}
     out_path = root / (args.out or args.geodata)
     out_path.write_text(json.dumps(geo, separators=(",", ":"), ensure_ascii=False))
     print(f"wrote {out_path} ({out_path.stat().st_size / 1e6:.1f} MB)", flush=True)
     return {"geo": geo, "scene": scene, "walls_obs": walls_obs, "roofs_obs": roofs_obs, "stats": stats,
-            "cams": cams, "per_surface": per_surface}
+            "cams": cams, "per_surface": per_surface, "cal": cal, "col_gains": col_gains}
 
 
-def make_textures(scene, B, walls_obs, per_surface, cams, raw_dir, root, args):
-    """Second pass: rectify the best view of every observed wall into per-building atlases."""
+def make_textures(scene, B, walls_obs, per_surface, cams, root, args):
+    """Second pass: rectify the best (sunlit if any) view of every observed wall into per-building
+    atlases. Strips taken from a shadow-sourced view get the per-channel linear gain that maps
+    the photographed wall median to the white-balanced tone."""
     tex_dir = root / "data" / "tex"
     tex_dir.mkdir(parents=True, exist_ok=True)
     cam_by_id = {c["view_id"]: c for c in cams}
@@ -1051,24 +1604,32 @@ def make_textures(scene, B, walls_obs, per_surface, cams, raw_dir, root, args):
     for sid, c in walls_obs.items():
         by_view.setdefault(short2id[c["best"]], []).append(sid)
     strips: dict[int, list] = {}
-    filled_all = []
+    filled_all, sunlit_src = [], []
     for vid, sids in by_view.items():
         rec = cam_by_id[vid]
         cam = Camera.from_pers(rec["pers"])
         vb = render_view(scene, cam, rec["crop"], args.scale)
-        full = np.asarray(Image.open(raw_dir / rec["file"]).convert("RGB"))
+        full = np.asarray(Image.open(rec["_raw_dir"] / rec["file"]).convert("RGB"))
         for sid in sids:
             S = scene.surfaces[sid]
+            c = walls_obs[sid]
             texel = max(args.texel, scene.surf_len[sid] / 4096)
             px, valid = wall_texture(scene, sid, vb, full, rec["crop"], texel, dsm=args._dsm, veg=args.occlusion != "dsm")
             img, fill = fill_texture(px, valid, texel)
             if img is None:
                 continue
+            mult = None
+            if not c["sunlit"]:
+                mult = np.clip(srgb2lin(np.array(c["tone"])) / np.maximum(srgb2lin(np.array(c["tone_raw"])), 1e-3), 0.3, 8.0)
+                lin = srgb2lin(img.astype(np.float64) / 255.0) * mult
+                img = np.clip(np.round(lin2srgb(lin) * 255), 0, 255).astype(np.uint8)
             filled_all.append(fill)
+            sunlit_src.append(bool(c["sunlit"]))
             strips.setdefault(S.bid, []).append((
                 {"edge": S.edge, "ring": ring_label(S.ring), "len_m": round(float(scene.surf_len[sid]), 2),
                  "h_m": round(float(scene.surf_height[sid]), 2), "texel_m": round(float(texel), 3),
-                 "filled_frac": round(fill, 2)}, img))
+                 "filled_frac": round(fill, 2), "sunlit": bool(c["sunlit"]), "year": c["year"],
+                 "wb_applied": mult is not None}, img))
         print(f"  tex view {short_view(vid)}: {len(sids)} walls", flush=True)
     total_bytes = 0
     for bi, lst in strips.items():
@@ -1078,15 +1639,18 @@ def make_textures(scene, B, walls_obs, per_surface, cams, raw_dir, root, args):
         Image.fromarray(atlas).save(tex_dir / name, quality=85)
         total_bytes += (tex_dir / name).stat().st_size
         B[bi]["observed"]["atlas"] = {"file": f"tex/{name}", "size": [atlas.shape[1], atlas.shape[0]], "walls": metas}
-    return {"buildings": len(strips), "walls": len(filled_all), "mean_filled": round(float(np.mean(filled_all)), 3) if filled_all else None,
-            "mb": round(total_bytes / 1e6, 1)}
+    return {"buildings": len(strips), "walls": len(filled_all),
+            "mean_filled": round(float(np.mean(filled_all)), 3) if filled_all else None,
+            "median_filled": round(float(np.median(filled_all)), 3) if filled_all else None,
+            "sunlit_sourced": int(sum(sunlit_src)), "mb": round(total_bytes / 1e6, 1)}
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=str(Path(__file__).resolve().parents[2]))
     ap.add_argument("--geodata", default="data/cph-geodata.json")
-    ap.add_argument("--raw", default="data/raw/skraafoto2025")
+    ap.add_argument("--raw", default="data/raw/skraafoto2025,data/raw/skraafoto2023",
+                    help="comma-separated Skraafoto dirs, each with cameras.json (newest collection preferred)")
     ap.add_argument("--out", default=None, help="write here instead of updating --geodata in place")
     ap.add_argument("--dsm", default="data/raw/dhm", help="dir with dhm_dsm_*.tif (EPSG:25832, DVR90)")
     ap.add_argument("--occlusion", choices=["dsm", "colour", "both"], default="dsm",
@@ -1096,7 +1660,10 @@ def main(argv=None):
     ap.add_argument("--textures", action="store_true")
     ap.add_argument("--texel", type=float, default=0.10)
     ap.add_argument("--report", default="data/appearance.report.md")
-    ap.add_argument("--sheet", default="docs/m4/appearance_check.png")
+    ap.add_argument("--sheet", default="docs/m4/appearance_check_v2.png")
+    ap.add_argument("--cache", default="data/raw/appearance_obs_cache.pkl", help="per-view observation cache")
+    ap.add_argument("--reuse-cache", action="store_true", help="skip the (slow) view pass, redo selection onward")
+    ap.add_argument("--v1", default="data/raw/cph-geodata.v1.json", help="v1 geodata for the before/after report")
     ap.add_argument("--no-qa", action="store_true")
     args = ap.parse_args(argv)
     res = run(args)
