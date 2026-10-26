@@ -149,7 +149,11 @@ def main():
     for e in streets.get("extraRoads", []):
         road_polys.append((e["p"], e["hw"] + max([e[k][0] for k in ("cl", "cr") if e.get(k)] + [0.0]) + ROAD_MARGIN))
     road_polys += [(c["pts"], (c.get("width") or 2.2) / 2 + ROAD_MARGIN) for c in geo["cycleTracks"] if len(c["pts"]) >= 4]
-    roads = unary_union([LineString([(ORIGIN[0] + p[i], ORIGIN[1] - p[i + 1]) for i in range(0, len(p), 2)]).buffer(w, cap_style=2) for p, w in road_polys if len(p) >= 4])
+    roads = unary_union([LineString([(ORIGIN[0] + p[i], ORIGIN[1] - p[i + 1]) for i in range(0, len(p), 2)]).buffer(w) for p, w in road_polys if len(p) >= 4])
+    # park paths: the ground under crowns is only inferred lawn, so register paths and mapped footways stay clear of it
+    paths = unary_union([utm_poly(s["ring"], s.get("holes", [])) for s in surf["surfaces"] if s["cls"] in ("gravel", "other")]
+                        + [LineString([(ORIGIN[0] + r["pts"][i], ORIGIN[1] - r["pts"][i + 1]) for i in range(0, len(r["pts"]), 2)]).buffer(1.0)
+                           for r in geo["roads"] if r["class"] == "footway" and len(r["pts"]) >= 4])
     cut = unary_union([roads] + [utm_poly(b["ring"], b.get("holes", [])).buffer(0.4) for b in geo["buildings"]]
                       + [utm_poly(s["ring"]) for s in geo["sidewalks"]]
                       + [utm_poly(s["ring"], s.get("holes", [])) for s in surf["surfaces"] if s["cls"] in HARD_CLASSES]  # gravel and "other" are left to the NDVI
@@ -191,7 +195,7 @@ def main():
 
     grass = []
     for kind, src, conf in (("lawn", "cir:ndvi+dhm:class5", "measured"), ("planting", "cir:ndvi+dhm:class3-4", "measured"), ("parkfloor", "kk:parkregister+dhm:class5", "inferred")):
-        recs = records(kind, vectorise(masks[kind], T, kind), cut)
+        recs = records(kind, vectorise(masks[kind], T, kind), unary_union([cut, paths]) if kind == "parkfloor" else cut)
         for r in recs:
             r.update(cls="grass", src=[src], conf=conf)
         grass += recs
