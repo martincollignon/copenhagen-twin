@@ -1,15 +1,18 @@
 import * as THREE from 'three/webgpu';
+import { CAR_BODY_TYPES } from './vehicle-fleet.js';
 import { BODY_SPECS, buildCarGeometry, buildCarProxyGeometry, createLoftedCarMaterial } from './actor-models.js';
 import {
   TREE_STYLES, buildFurniturePlan, composeYaw, composeYawPitch, indexItems, planCounts
 } from './street-furniture-data.js';
 import * as G from './street-furniture-geometry.js';
 import * as T from './tree-geometry-cph.js';
+import { treeDayOfYear } from './tree-season.js';
+import { TREE_LOD, treeCapacities, originalTreeBudget, selectTreeDraws } from './tree-budget.js';
 import { resolveGenus } from './tree-species-cph.js';
 import { alignLakeFurniture } from './lake-furniture-cph.js';
 import { buildPoolWindow, encodePoolWindow, haloSize, lampPhotometry, realIntensity, selectRealLights } from './night-lights-cph.js';
 import { POOL, poolUniforms, setPoolWindow } from './pool-light-cph.js';
-import { Fn, attribute, cameraPosition, cross, float, length, normalize, positionLocal, smoothstep, uniform, uv, vec3, vec4, exp, abs } from 'three/tsl';
+import { Fn, attribute, cameraPosition, cross, float, length, mix, normalize, positionLocal, smoothstep, uniform, uv, vec3, vec4, exp, abs } from 'three/tsl';
 
 // js/street-furniture-cph.js
 // The Copenhagen street furniture (data/cph-furniture.json, see street-furniture-data.js): trees by genus with three
@@ -20,9 +23,7 @@ import { Fn, attribute, cameraPosition, cross, float, length, normalize, positio
 // Everything is instanced. Each category lives in a quadtree; every few metres of camera travel the items around the
 // camera are written into per-LOD InstancedMeshes (dynamic counts), at the ground height computed once at load.
 
-const TREE_NEAR = 34;
-const TREE_MID = 200;
-const TREE_FAR = 950;
+const TREE_FAR = TREE_LOD.far;
 const CAR_NEAR = 40;
 const CAR_FAR = 300;
 const MOVE_EPS = 3;
@@ -33,10 +34,12 @@ const lin = (srgb) => new THREE.Color().setRGB(srgb[0], srgb[1], srgb[2], THREE.
 
 /** One InstancedMesh with a write cursor. `paint` (cars): the geometry carries instanced paintColor/carState attributes. */
 class MeshSet {
-  constructor(name, geometry, material, capacity, { colored = false, cast = false, receive = true, paint = false, parent = null } = {}) {
+  constructor(name, geometry, material, capacity, { colored = false, tinted = false, cast = false, receive = true, paint = false, seasonal = false, parent = null } = {}) {
     this.name = name;
     this.capacity = Math.max(1, capacity);
     this.paint = paint;
+    this.tinted = tinted;
+    this.season = seasonal ? T.attachTreeSeasonAttributes(geometry, this.capacity) : null;
     if (paint) {
       geometry.setAttribute('paintColor', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3));
       geometry.setAttribute('carState', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 4), 4));
@@ -51,6 +54,10 @@ class MeshSet {
       this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3).fill(1), 3);
     }
     this.colors = this.mesh.instanceColor ? this.mesh.instanceColor.array : null;
+    if (tinted) {
+      geometry.setAttribute('bikePaint', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3).fill(1), 3));
+      this.tints = geometry.attributes.bikePaint.array;
+    } else this.tints = null;
     this.matrices = this.mesh.instanceMatrix.array;
     this.n = 0;
     if (parent) parent.add(this.mesh);
@@ -65,11 +72,22 @@ class MeshSet {
   }
 
   /** Reserves a slot and writes translate * rotateY * scale; returns the slot (or -1 when full). */
-  put(x, y, z, yaw, sx = 1, sy = 1, sz = 1, color = null, paint = null) {
+  put(x, y, z, yaw, sx = 1, sy = 1, sz = 1, color = null, paint = null, lean = 0) {
     if (this.n >= this.capacity) return -1;
     const i = this.n++;
-    composeYaw(this.matrices, i * 16, x, y, z, yaw, sx, sy, sz);
+    if (lean) {
+      const o = i * 16;
+      const c = Math.cos(yaw);
+      const s = Math.sin(yaw);
+      const cl = Math.cos(lean);
+      const sl = Math.sin(lean);
+      this.matrices[o] = c * cl * sx; this.matrices[o + 1] = sl * sx; this.matrices[o + 2] = -s * cl * sx; this.matrices[o + 3] = 0;
+      this.matrices[o + 4] = -c * sl * sy; this.matrices[o + 5] = cl * sy; this.matrices[o + 6] = s * sl * sy; this.matrices[o + 7] = 0;
+      this.matrices[o + 8] = s * sz; this.matrices[o + 9] = 0; this.matrices[o + 10] = c * sz; this.matrices[o + 11] = 0;
+      this.matrices[o + 12] = x; this.matrices[o + 13] = y; this.matrices[o + 14] = z; this.matrices[o + 15] = 1;
+    } else composeYaw(this.matrices, i * 16, x, y, z, yaw, sx, sy, sz);
     if (color && this.colors) this.colors.set(color, i * 3);
+    if (color && this.tints) this.tints.set(color, i * 3);
     if (paint) this.mesh.geometry.attributes.paintColor.array.set(paint, i * 3);
     return i;
   }
@@ -81,6 +99,12 @@ class MeshSet {
     return i;
   }
 
+  putSeason(slot, state) {
+    if (slot < 0) return;
+    this.season.early.array.set(state.early, slot * 4);
+    this.season.late.array.set(state.late, slot * 4);
+  }
+
   end(warm) {
     if (this.n === 0 && warm) {
       composeYaw(this.matrices, 0, 0, -50, 0, 0, 0.001, 0.001, 0.001);
@@ -90,7 +114,12 @@ class MeshSet {
     }
     this.mesh.visible = this.mesh.count > 0;
     this.mesh.instanceMatrix.needsUpdate = true;
+    if (this.season) {
+      this.season.early.needsUpdate = true;
+      this.season.late.needsUpdate = true;
+    }
     if (this.colors && this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    if (this.tints) this.mesh.geometry.attributes.bikePaint.needsUpdate = true;
     if (this.paint) {
       this.mesh.geometry.attributes.paintColor.needsUpdate = true;
       this.mesh.geometry.attributes.carState.needsUpdate = true;
@@ -99,6 +128,14 @@ class MeshSet {
 }
 
 const std = (opts = {}) => new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.15, ...opts });
+const bikeMaterial = () => {
+  const mat = new THREE.MeshStandardNodeMaterial({ vertexColors: false, roughness: 0.74, metalness: 0.12 });
+  const base = attribute('color', 'vec3');
+  const tint = attribute('bikePaint', 'vec3');
+  const mask = attribute('frameTint', 'float');
+  mat.colorNode = base.mul(mix(vec3(1), tint, mask));
+  return mat;
+};
 
 function textSprite(text) {
   const canvas = document.createElement('canvas');
@@ -122,7 +159,7 @@ function textSprite(text) {
   return sprite;
 }
 
-export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 1, place = null, lakeDistance = null } = {}) {
+export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 1, place = null, lakeDistance = null, treeDate } = {}) {
   // untyped laser-detected crowns get a context genus (Soerne avenues: lime / horse chestnut), js/tree-species-cph.js
   const plan = buildFurniturePlan(doc, groundHeight, { seed, place, resolveTree: (t) => resolveGenus(t, { lakeDistance }) });
   alignLakeFurniture(plan, lakeDistance); // benches / rescue posts face the water, lake lights project over the path
@@ -138,23 +175,57 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   const count = (n, cap) => Math.max(1, Math.min(n, cap));
 
   // ------------------------------------------------------------------------------------------- trees
+  const treeDay = treeDayOfYear(treeDate);
   const atlas = T.createLeafAtlas();
   const treeMat = T.createTreeMaterial(atlas);
   const byGenus = new Map();
   for (const t of plan.trees) {
+    t.season = T.treeInstanceSeason(t.genus, treeDay, t.x, t.z, t.tint);
     if (!byGenus.has(t.genus)) byGenus.set(t.genus, []);
     byGenus.get(t.genus).push(t);
   }
-  const bill = T.createBillboardAtlas([...byGenus.keys()]);
+  const bill = T.createBillboardAtlas([...byGenus.keys()], treeDay);
   const billMat = T.createTreeMaterial(bill.texture, { billboard: true });
   const treeNear = new Map();
   const treeMid = new Map();
   const treeFar = new Map();
   for (const [genus, list] of byGenus) {
-    treeNear.set(genus, mk(`trees-near-${genus}`, T.buildNearTree(genus), treeMat, count(list.length, 260), { colored: true, cast: false }));
-    treeMid.set(genus, mk(`trees-mid-${genus}`, T.buildMidTree(genus), treeMat, count(list.length, 900), { colored: true, cast: false }));
-    treeFar.set(genus, mk(`trees-far-${genus}`, T.buildBillboard(bill.cellOf.get(genus)), billMat, count(list.length, 4000), { colored: true, receive: false }));
+    treeNear.set(genus, mk(`trees-near-${genus}`, T.buildNearTree(genus, treeDay, { variation: true }), treeMat, count(list.length, 260), { seasonal: true, cast: false }));
+    treeMid.set(genus, mk(`trees-mid-${genus}`, T.buildMidTree(genus, treeDay, { variation: true }), treeMat, count(list.length, 900), { seasonal: true, cast: false }));
+    treeFar.set(genus, mk(`trees-far-${genus}`, T.buildBillboard(bill.cellOf.get(genus)), billMat, count(list.length, 4000), { seasonal: true, receive: false }));
   }
+  const treeCosts = {}, fullTreeCosts = {};
+  for (const [genus] of byGenus) {
+    treeCosts[genus] = {}; fullTreeCosts[genus] = {};
+    for (const [lod, sets] of [['near', treeNear], ['mid', treeMid], ['far', treeFar]]) {
+      const geometry = sets.get(genus).mesh.geometry;
+      treeCosts[genus][lod] = geometry.index.count / 3;
+      fullTreeCosts[genus][lod] = geometry.userData.fullTriangles;
+    }
+  }
+  const treeCaps = treeCapacities(plan.trees);
+  const originalCaps = treeCapacities(plan.trees, true);
+  // An original genus can disappear when unspecified lakeside trees become chestnuts.
+  for (const genus of Object.keys(originalCaps)) {
+    if (fullTreeCosts[genus]) continue;
+    const near = T.buildNearTree(genus, 190), mid = T.buildMidTree(genus, 190);
+    fullTreeCosts[genus] = { near: near.index.count / 3, mid: mid.index.count / 3, far: 4 };
+    near.dispose(); mid.dispose();
+  }
+  // Optional litter uses one instanced draw only when the original camera budget has room.
+  const litter = mk('tree-litter', T.buildTreeLitterGeometry(), T.createTreeLitterMaterial(atlas), 1500, { receive: true });
+  const litterItems = [];
+  for (const t of plan.trees) {
+    const coverage = t.season.litter;
+    if (!['chestnut', 'lime'].includes(t.genus) || coverage <= 0) continue;
+    for (let i = 0; i < t.litterPoints.length; i += 2) {
+      if (((i * 0.61803398875 + t.tint) % 1) >= coverage) continue;
+      const x = t.litterOrigin[0] + t.litterPoints[i], z = t.litterOrigin[1] + t.litterPoints[i + 1];
+      litterItems.push({ cx: x, cz: z, x, z, y: (groundHeight ? groundHeight.heightAt(x, z) : 0) + 0.016,
+        yaw: i * 2.399 + t.yaw, size: 0.24 + (i % 5) * 0.025 });
+    }
+  }
+  const litterIndex = indexItems(litterItems);
   // crowns cast their shadow from a cheap blob (leaf cards in the shadow pass cost more than the whole scene)
   const shadowOnly = std({ roughness: 1, metalness: 0 });
   shadowOnly.colorWrite = false;
@@ -236,8 +307,8 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
 
   // ------------------------------------------------------------------------------------------- cars
   const carSets = {};
-  for (const body of ['sedan', 'suv']) {
-    const spec = BODY_SPECS[body];
+  for (const body of CAR_BODY_TYPES) {
+    const spec = { ...BODY_SPECS[body], taxiSign: false };
     const mat = createLoftedCarMaterial(spec);
     const n = plan.cars.filter((c) => c.body === body).length;
     carSets[body] = {
@@ -254,7 +325,12 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   const glass = mk('glass-containers', G.buildGlassContainers(), std({ roughness: 0.6, metalness: 0.1 }), count(plan.glass.length, 40), { cast: true });
   const benches = mk('benches', G.buildBench(), std({ roughness: 0.75, metalness: 0.1 }), count(plan.benches.length, 1000), { cast: true });
   const hoops = mk('bike-hoops', G.buildHoop(), std({ roughness: 0.4, metalness: 0.8 }), count(plan.hoops.length, 1800), { cast: false });
-  const bikes = mk('bikes', G.buildBike(), std({ roughness: 0.5, metalness: 0.5 }), count(plan.bikes.length, 1500), { colored: true, cast: true });
+  const bikeVariants = ['city', 'mens', 'city-crate', 'city-childseat', 'cargo-longjohn', 'cargo-trike'];
+  const bikeMat = bikeMaterial();
+  const bikesNear = Object.fromEntries(bikeVariants.map((variant) => [variant, mk(
+    `bikes-${variant}-near`, G.buildBike(variant), bikeMat, count(plan.bikes.length, 1500), { tinted: true, cast: true }
+  )]));
+  const bikesFar = mk('bikes-proxy-far', G.buildBikeProxy(), bikeMat, count(plan.bikes.length, 4500), { tinted: true, cast: false });
   const meters = mk('parking-meters', G.buildMeter(), std({ roughness: 0.5, metalness: 0.3 }), count(plan.meters.length, 100), { cast: true });
   const flags = mk('bus-flags', G.buildFlag(), std({ roughness: 0.5, metalness: 0.3 }), count(plan.flags.length, 100), { cast: true });
   const shelters = mk('bus-shelters', G.buildShelter(), std({ roughness: 0.35, metalness: 0.4 }), count(plan.shelters.length, 100), { cast: true });
@@ -278,7 +354,7 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   const BOLLARD_COLOURS = { galvanised: lin([0.62, 0.65, 0.67]), granite: lin([0.5, 0.49, 0.47]), other: lin([0.34, 0.36, 0.37]) };
   const BOLLARD_GREEN = lin([0.14, 0.26, 0.18]);
   const BOLLARD_GREY = lin([0.42, 0.44, 0.45]);
-  const BIKE_COLOURS = [[0.12, 0.13, 0.15], [0.55, 0.12, 0.1], [0.12, 0.25, 0.45], [0.7, 0.68, 0.62], [0.22, 0.38, 0.28], [0.08, 0.08, 0.09]].map((c) => lin(c));
+  const BIKE_COLOURS = [0x16181a, 0x25282b, 0x191b20, 0x25313d, 0x26352c, 0x505e57, 0x9caeae, 0xb6b3a4, 0xc1bda9, 0xa35d38].map((c) => new THREE.Color(c));
   const colorArr = (c, k = 1) => [c.r * k, c.g * k, c.b * k];
 
   const labelPool = [];
@@ -298,20 +374,35 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     haloN = 0;
     const on = state.on;
 
-    // trees: skeleton + leaf sprays near, leaf clusters mid, painted billboards far
-    for (const t of trees.queryRange(cx, cz, TREE_FAR)) {
-      const d = Math.hypot(t.x - cx, t.z - cz);
-      const tint = [t.tint, t.tint, t.tint];
-      if (d <= TREE_NEAR) {
-        treeNear.get(t.genus).put(t.x, t.y, t.z, t.yaw, t.sxz, t.sy, t.sxz, tint);
-        if (d <= 90) treeShadow.put(t.x, t.y + t.crown.cy, t.z, t.yaw, t.crown.rx * 0.9, t.crown.ry * 0.9, t.crown.rx * 0.9);
-      } else if (d <= TREE_MID) {
-        treeMid.get(t.genus).put(t.x, t.y, t.z, t.yaw, t.sxz, t.sy, t.sxz, tint);
-        if (d <= 90) treeShadow.put(t.x, t.y + t.crown.cy, t.z, t.yaw, t.crown.rx * 0.9, t.crown.ry * 0.9, t.crown.rx * 0.9);
+    // Compare against main's original trees at this camera before admitting additions.
+    const candidates = trees.queryRange(cx, cz, TREE_FAR).map(tree => ({ tree, distance: Math.hypot(tree.x - cx, tree.z - cz) }));
+    const budget = originalTreeBudget(candidates, fullTreeCosts, originalCaps);
+    const submitted = selectTreeDraws(candidates, treeCosts, treeCaps, budget);
+    for (const { tree: t, distance: d, lod } of submitted.selected) {
+      const set = (lod === 'far' ? treeFar : lod === 'near' ? treeNear : treeMid).get(t.genus);
+      let slot;
+      if (lod === 'far') {
+        slot = set.put(t.x, t.y, t.z, t.yaw, t.crownR * 2.0, t.height, t.crownR * 2.0);
       } else {
-        treeFar.get(t.genus).put(t.x, t.y, t.z, t.yaw, t.crownR * 2.3, t.height * 1.02, t.crownR * 2.3, tint);
+        slot = set.put(t.x, t.y, t.z, t.yaw, t.sxz, t.sy, t.sxz);
+      }
+      set.putSeason(slot, t.season);
+      const density = t.season.density;
+      if (d <= 90 && density > 0 && treeShadow.n < budget.shadows) {
+        const width = 0.9 * Math.sqrt(density);
+        treeShadow.put(t.x, t.y + t.crown.cy, t.z, t.yaw, t.crown.rx * width, t.crown.ry * 0.9, t.crown.rx * width);
       }
     }
+    if (!warm && submitted.draws < budget.draws) {
+      const limit = Math.min(litter.capacity, Math.floor((budget.triangles - submitted.triangles) / 2));
+      for (const p of litterIndex.queryRange(cx, cz, 40)) {
+        if (litter.n >= limit) break;
+        litter.put(p.x, p.y, p.z, p.yaw, p.size, 1, p.size);
+      }
+    }
+    state.stats.trees = { budget, draws: submitted.draws + (litter.n ? 1 : 0),
+      triangles: submitted.triangles + litter.n * 2, shadows: treeShadow.n, litter: litter.n,
+      instances: submitted.selected.length, candidates: candidates.length };
 
     // lamps
     seen.clear();
@@ -365,7 +456,7 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     for (const c of carIndex.queryRange(cx, cz, CAR_FAR)) {
       const d = Math.hypot(c.x - cx, c.z - cz);
       const set = carSets[c.body][d <= CAR_NEAR ? 'near' : 'far'];
-      set.put(c.x, c.y, c.z, c.yaw, 1, 1, 1, null, [c.paint[0] ** 2.2 * c.shade, c.paint[1] ** 2.2 * c.shade, c.paint[2] ** 2.2 * c.shade]);
+      set.put(c.x, c.y, c.z, c.yaw, 1, 1, 1, null, colorArr(lin(c.paint), c.shade));
     }
 
     // props
@@ -378,7 +469,14 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     for (const b of small.glass.queryRange(cx, cz, 140)) glass.put(b.x, b.y, b.z, b.yaw);
     for (const b of small.benches.queryRange(cx, cz, 110)) benches.put(b.x, b.y, b.z, b.yaw, (b.length || 1.8) / 1.8, 1, 1);
     for (const b of small.hoops.queryRange(cx, cz, 60)) hoops.put(b.x, b.y, b.z, b.yaw);
-    for (const b of small.bikes.queryRange(cx, cz, 40)) bikes.put(b.x, b.y, b.z, b.yaw, 1, b.size, b.size, colorArr(BIKE_COLOURS[b.hue % BIKE_COLOURS.length]));
+    for (const b of small.bikes.queryRange(cx, cz, 120)) {
+      const d = Math.hypot(b.x - cx, b.z - cz);
+      if (d > 120) continue;
+      const color = colorArr(BIKE_COLOURS[b.hue % BIKE_COLOURS.length]);
+      const variant = bikesNear[b.variant] ? b.variant : 'city';
+      const set = d <= 40 ? bikesNear[variant] : bikesFar;
+      set.put(b.x, b.y, b.z, b.yaw, b.size || 1, b.size || 1, b.size || 1, color, null, b.lean || 0);
+    }
     for (const b of small.meters.queryRange(cx, cz, 110)) meters.put(b.x, b.y, b.z, b.yaw);
     for (const b of small.flags.queryRange(cx, cz, 220)) flags.put(b.x, b.y, b.z, b.yaw);
     for (const b of small.shelters.queryRange(cx, cz, 240)) shelters.put(b.x, b.y, b.z, b.yaw);
@@ -391,7 +489,9 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
       if (on > 0.01) putHalo(l.x, l.y + 0.97, l.z, 0.35 + Math.hypot(l.x - cx, l.z - cz) * 0.012, lin(l.color), 0.5);
     }
 
-    for (const s of sets) s.end(warm);
+    // Empty tree batches share the same pipelines as occupied batches. Do not add
+    // placeholder triangles outside the camera budget while other shaders warm.
+    for (const s of sets) s.end(warm && s !== litter && !s.name.startsWith('trees-'));
     halos.count = haloN;
     halos.visible = haloN > 0;
     haloGeo.attributes.haloPos.needsUpdate = true;

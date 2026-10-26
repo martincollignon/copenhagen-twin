@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 import {
-  Fn, float, vec2, vec3, uniform, texture, uv, attribute, positionWorld, cameraPosition, length, dot, mix, step, smoothstep,
-  max, exp, floor, mod
+  Fn, float, vec2, vec3, texture, uv, attribute, positionWorld, cameraPosition, length, dot, mix, step, smoothstep,
+  max, exp, floor, mod, dFdx, dFdy, normalize, normalWorldGeometry, clamp, sin, fract
 } from 'three/tsl';
-import { bumpNormal, canyonSkyAONode, gridLine, noise2D, BRICK_L, BRICK_H } from './tsl-materials.js';
+import { cityUniforms, apartmentOccupancy, apartmentLight, bumpNormal, canyonSkyAONode, gridLine, noise2D, BRICK_L, BRICK_H } from './tsl-materials.js';
 import { PHOTO } from './facade-lod.js';
 
 // js/facade-photo-material.js
@@ -23,7 +23,7 @@ const ALBEDO_KNEE = 0.4;
 const ALBEDO_MAX = 0.58;
 const lumW = vec3(0.2126, 0.7152, 0.0722);
 
-function createPhotoMaterial(map, { hasMask = true, tone = [0.4, 0.38, 0.34], brick = true, texel = [1 / 128, 1 / 128] } = {}) {
+function createPhotoMaterial(map, { hasMask = true, tone = [0.4, 0.38, 0.34], brick = true, layout = { floorH: 3, groundH: 3, seed: 0 } } = {}) {
   const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.86, metalness: 0.0 });
   mat.transparent = true;
   mat.depthWrite = false;
@@ -31,7 +31,6 @@ function createPhotoMaterial(map, { hasMask = true, tone = [0.4, 0.38, 0.34], br
   mat.polygonOffsetFactor = -2;
   mat.polygonOffsetUnits = -2;
   mat.aoNode = canyonSkyAONode();
-  const uTexel = uniform(new THREE.Vector2(texel[0], texel[1]));
   const wallLum = float(Math.max(0.02, 0.2126 * tone[0] + 0.7152 * tone[1] + 0.0722 * tone[2]));
   const brickOn = float(brick ? 1 : 0);
   const wuv = attribute('wallUV', 'vec2'); // metres along the wall, metres above the ground
@@ -45,12 +44,28 @@ function createPhotoMaterial(map, { hasMask = true, tone = [0.4, 0.38, 0.34], br
   const lumTex = dot(base.rgb, lumW);
   const pane = blob.mul(smoothstep(0.86, 0.5, lumTex.div(wallLum)));
 
-  // Reveal: the glass sits ~15 cm behind the wall face; the top and the sun-side jamb are in shade
-  const dy = uTexel.y.mul(2.5);
-  const dx = uTexel.x.mul(2.5);
-  const shadeTop = hasMask ? pane.mul(float(1).sub(blobAt(vec2(0, dy.negate())))) : float(0);
-  const shadeSide = hasMask ? pane.mul(float(1).sub(blobAt(vec2(dx.negate(), 0)))) : float(0);
-  const reveal = float(1).sub(shadeTop.mul(0.55)).sub(shadeSide.mul(0.35));
+  // Atlas axes may be flipped. Derivatives convert metres along/up the wall to signed atlas offsets.
+  // Two mask lookups replace the old fixed top/left lookups, retaining the photo's actual openings and frames.
+  const metresToAtlas = (texCoord, wallCoord) => {
+    const t = vec2(dFdx(texCoord), dFdy(texCoord));
+    const w = vec2(dFdx(wallCoord), dFdy(wallCoord));
+    return dot(t, w).div(max(dot(w, w), 1e-10));
+  };
+  const scale = vec2(metresToAtlas(uv().x, wuv.x), metresToAtlas(uv().y, wuv.y));
+  const tangent = normalize(vec3(normalWorldGeometry.z, 0, normalWorldGeometry.x.negate()));
+  const ray = normalize(positionWorld.sub(cameraPosition));
+  const shift = clamp(vec2(dot(ray, tangent), ray.y).div(max(dot(ray, normalWorldGeometry).negate(), 0.05)).mul(0.14), vec2(-0.6), vec2(0.6));
+  const sun = normalize(cityUniforms.uSkySunDir);
+  const facing = dot(sun, normalWorldGeometry);
+  const sunShift = clamp(vec2(dot(sun, tangent), sun.y).div(max(facing, 0.05)).mul(0.14), vec2(-0.6), vec2(0.6));
+  const throughReveal = hasMask ? blobAt(shift.mul(scale)) : float(0);
+  const sunOpen = hasMask ? blobAt(shift.add(sunShift).mul(scale)).mul(step(0, facing)) : float(0);
+  const reveal = mix(float(1), float(0.5).add(sunOpen.mul(0.5)), pane);
+  const glass = pane.mul(throughReveal);
+  // The alpha atlas has no window IDs. Occupancy is coherent per storey, avoiding invented divisions across photo panes.
+  const storey = max(float(0), floor(wuv.y.sub(layout.groundH).div(layout.floorH)).add(1));
+  const roomPick = fract(sin(storey.mul(73.7).add(layout.seed)).mul(43758.5453));
+  const occupied = step(float(1).sub(apartmentOccupancy()), roomPick);
 
   const gain = (c) => {
     const x = c.mul(ALBEDO_GAIN);
@@ -71,15 +86,16 @@ function createPhotoMaterial(map, { hasMask = true, tone = [0.4, 0.38, 0.34], br
     const albedo = vec3(gain(base.r), gain(base.g), gain(base.b));
     const lit = albedo.mul(float(1).add(grain)).mul(float(1).sub(mortar.mul(0.16)));
     const glassCol = vec3(0.022, 0.03, 0.04);
-    return mix(lit, glassCol, pane.mul(0.7)).mul(mix(float(1), reveal, blob));
+    return mix(lit, glassCol, glass.mul(0.7)).mul(mix(float(1), reveal, blob));
   })();
-  mat.roughnessNode = mix(float(0.86), float(0.05), pane);
+  mat.roughnessNode = mix(float(0.86), float(0.05), glass);
   mat.metalnessNode = float(0);
   mat.normalNode = Fn(() => {
-    const recess = blob.mul(-0.05).mul(float(1).sub(smoothstep(30.0, 90.0, camDist)));
+    const recess = blob.mul(-0.14).mul(float(1).sub(smoothstep(30.0, 90.0, camDist)));
     const relief = mortar.mul(-0.0018);
     return bumpNormal(recess.add(relief));
   })();
+  mat.emissiveNode = apartmentLight(roomPick).mul(occupied).mul(glass).mul(cityUniforms.uInteriorGlow).mul(0.3);
   mat.opacityNode = smoothstep(PHOTO.close0, PHOTO.close1, camDist).mul(float(1).sub(smoothstep(PHOTO.near, PHOTO.far, camDist))).mul(observed);
   return mat;
 }

@@ -22,6 +22,38 @@ Useful query parameters: `?debug=footprints` draws the geodata's buildings, wate
 
 `?water=simple` drops the planar reflection pass of the lakes (sky reflection only), `?debug=nowater` shows the plain ground, `?debug=nocal` the uncalibrated facade tones.
 
+Lighting uses 26 October 2026 in Europe/Copenhagen: Golden Hour at 16:10, Midday at 12:00, Blue Hour at 17:20, and Night at 23:00. The solar position follows NOAA equations with the local UTM grid correction; the sun switches off below the horizon. AgX tone mapping and restrained saturation keep the sky and water pale.
+
+| Query | Behaviour |
+|---|---|
+| `?date=2026-06-21` | Changes the scene date, retaining each preset's local clock time; CET/CEST is handled automatically. |
+| `?time=12:00` | Overrides the solar clock time; the selected preset still supplies its lighting mood. |
+| `?sky=overcast` | Broken overcast clouds, reduced sunlight, more daylight sky fill, and wetness 0.35. Clear remains the default. |
+| `?wet=0.7` | Overrides ground wetness from 0 to 1; clear presets default to dry. |
+| `?ao=1` | Enables half-resolution GTAO at 0.6 strength. It remains opt-in pending a GPU cost measurement. |
+
+Water levels come from the DTM over the lakes. `data/cph-lakes.json` stores basin polygons and their measured levels, allowing basins separated by bridges to keep distinct elevations while nearby levels snap together. Lake outlines cut through the terrain or ground mesh; developed shores use quay walls and coping, while natural shores use bank geometry. A shared ground-field shader shades fine gravel along the lake edge and grass over measured park areas.
+
+Capture and benchmark the atmospheric changes on a machine that permits a local browser/server:
+
+```sh
+uv run --with playwright python tools/shoot-m2.py --water --out .context/after-water
+uv run --with playwright python tools/shoot-m2.py --water --query 'sky=overcast&wet=0.35' --out .context/after-overcast
+uv run --with playwright python tools/shoot-m2.py --audit-sweep --out .context/after-atmos-sweep
+uv run --with playwright python tools/shoot-m2.py --perf --query 'ao=0'
+uv run --with playwright python tools/shoot-m2.py --perf --query 'ao=1'
+```
+
+The lead supplied browser captures for visual review: the lake benchmark recorded 37.7 FPS with planar reflection and 47.3 FPS with sky-only water. These measurements precede the subsequent shader, haze and coping-join corrections. This implementation sandbox still denies the screenshot server's localhost socket bind, so those corrections need a fresh browser capture. GTAO cost remains unmeasured: compare the two unthrottled `--perf` runs at 1440×900 before enabling it by default; its additional frame cost must stay below 2 ms. The water captures preserve `--query` overrides and switch the lighting and colour grade together through the preset UI.
+
+Wet ground supplies its SSR weight through material context, which only the main scene MRT consumes. Material-level MRT overrides cannot be used here: the planar reflection target has an unnamed colour attachment and would produce an empty WGSL output structure. `tools/shader-pass-matrix.mjs` checks canvas, planar reflection, main MRT, partial normal/depth output, and Three's shadow-map override, including contact effects and colour-write/output overrides. With the matching Three bundles and loader cached locally:
+
+```sh
+node --experimental-loader /private/tmp/dlb-three/loader.mjs tools/shader-pass-matrix.mjs
+```
+
+Clear midday haze uses density 0.00013 (about 12% attenuation at 1 km) and caps fog in-scatter luminance at 0.48 scene-linear to prevent the HDR sun lobe from washing out buildings.
+
 Tests (Node 20+, no dependencies):
 
 ```sh
@@ -57,6 +89,19 @@ It carries classes `kbh_fortov, raadhus, asphalt_road, asphalt_cycle, cobbles, s
 The twin renders Københavnerfortov (slab rows with a sett line between, parallel to the kerb), Rådhusbelægning, cobbles
 and setts procedurally (`js/surface-materials-cph.js`); pavements are the Københavnerfortov unless the register or a
 plaza-sized polygon says otherwise. Without the file the twin still boots (pavements and lane paint only).
+
+`data/cph-vegetation.json` (lawns and planting) is measured, not taken from a register: the colour-infrared orthophoto gives
+NDVI and the DHM point cloud gives what stands above the ground (class 5 crowns, class 3/4 shrubs); the ground under park
+crowns is lawn by the KK park register. The twin appends these polygons to the surfaces as `grass` ground and grows tufts
+on them around the camera (`js/grass-cph.js`: one instanced draw call, 49 tiles of 8 m refilled as you move, wind and
+fade in the shader; `?debug=nograss` switches both off). Method, thresholds and QA: `tools/cph-geodata/vegetation.py`.
+
+```sh
+python3 tools/cph-geodata/vegetation_rasters.py   # DHM Punktsky class counts at 1 m (pdal; tiles from tools/lod2/fetch.py)
+uv run tools/cph-geodata/vegetation_cir.py        # CIR orthophoto -> NDVI (Dataforsyningen token from ADC `gsearch-token`)
+uv run tools/cph-geodata/vegetation.py
+uv run --with playwright python tools/shoot-grass.py   # shots and cost into docs/grass/
+```
 
 `data/cph-furniture.json` (street furniture, M4) is another separate generated file:
 

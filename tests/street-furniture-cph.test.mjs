@@ -87,6 +87,21 @@ test('bike racks: bikes stand in the slots of their row, hoops every second slot
   assert.ok(huge.hoops.length <= 24, 'the slot count is capped');
 });
 
+test('shopping racks fill deterministically while ordinary racks stay around forty percent', () => {
+  const racks = [
+    { x: 5, z: 5, yaw: Math.PI / 2, capacity: 10, shopping: true },
+    { x: 20, z: 5, yaw: Math.PI / 2, capacity: 20, shopping: false }
+  ];
+  const a = rackItems(racks, ground, 41);
+  const b = rackItems(racks, ground, 41);
+  const shopping = a.bikes.filter((bike) => bike.x < 10);
+  const ordinary = a.bikes.filter((bike) => bike.x > 10);
+  assert.ok(shopping.length >= 7 && shopping.length <= 10, `shopping rack ${shopping.length}/10 occupied`);
+  assert.equal(ordinary.length, 8, 'ordinary rack has rounded forty-percent occupancy');
+  assert.deepEqual(a.bikes, b.bikes, 'slot choices, variants and colours are stable');
+  assert.ok(a.bikes.every((bike) => ['city', 'mens', 'city-crate', 'city-childseat'].includes(bike.variant)), 'oversized cargo forms are reserved for separately cleared facade spots');
+});
+
 test('bus stops: shelter, bench and bin only where Movia registered them', () => {
   const parts = busStopParts([
     { x: 0, z: 0, yaw: 0, tangent: [1, 0], shelter: true, bench: true, bin: true, countdown: true, name: 'A' },

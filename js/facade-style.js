@@ -45,3 +45,42 @@ function facadeStyle(b, toneSrgb) {
 }
 
 export { MAT, ERA, wallMaterial, wallEra, facadeStyle };
+
+export const FACADE_CORNER_PIER = 0.9;
+export const WINDOW = Object.freeze({ transom: 0.68, ratioY: 0.64, whiteShare: 0.65 });
+export const FRAME_COLOURS = Object.freeze([0xe8e5dc, 0x24392d, 0x242626, 0x423027]);
+
+export function styleHash(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  // Avalanche the sequential numeric building ids before choosing a palette.
+  h = Math.imul(h ^ (h >>> 16), 0x7feb352d);
+  h = Math.imul(h ^ (h >>> 15), 0x846ca68b);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+export function windowStyle(b) {
+  const h = styleHash(String(b.id));
+  const pick = h / 4294967296;
+  const frame = pick < WINDOW.whiteShare ? 0 : 1 + Math.min(2, Math.floor((pick - WINDOW.whiteShare) / (1 - WINDOW.whiteShare) * 3));
+  const year = b.year || 1900;
+  // korspost (0), T/flag (1), small upper lights (2), two plain casements / funkis (3).
+  const type = year >= 1930 ? 3 : year >= 1915 ? 2 : h % 4 === 0 ? 1 : 0;
+  return { frame, colour: FRAME_COLOURS[frame], type, frameWidth: 0.07 + ((h >>> 16) % 801) / 10000 * 0.375, reveal: 0.10 + ((h >>> 16) % 801) / 10000 };
+}
+
+/** Eligible for inferred physical trim; low outbuildings and modern/glazed facades stay plain. */
+function hasFacadeDetails(b, style = facadeStyle(b)) {
+  return style.era >= ERA.mid && b.wall_material !== 'glas' && b.facade?.ground_type !== 'blank'
+    && !((b.storeys || 1) <= 1 && b.eave - b.ground < 4.5);
+}
+export { hasFacadeDetails };
+
+// Existing time presets drive interiorGlow: midday .24, golden .48, twilight 1.25, night 1.55.
+// A separate occupancy curve keeps bright late-night bulbs from implying that every apartment is awake.
+export const WINDOW_OCCUPANCY = Object.freeze({ day: 0.12, evening: 0.50, night: 0.10 });
+export function windowOccupancy(glow) {
+  const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const { day, evening, night } = WINDOW_OCCUPANCY;
+  return (day + (evening - day) * smooth(0.24, 0.48, glow)) * (1 - (1 - night / evening) * smooth(1.25, 1.55, glow));
+}

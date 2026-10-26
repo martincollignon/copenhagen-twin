@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
-import { pass, mrt, output, normalView, positionView, metalness, roughness, vec2, smoothstep } from 'three/tsl';
+import { pass, mrt, output, normalView, positionView, roughness, vec2, vec4, mix, smoothstep } from 'three/tsl';
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+import { ssrReflectionWeight } from './surface-materials-cph.js';
 import { createPostProcessing } from './post-processing.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
 import { isTypingInField, TELEPORT_LOCATIONS } from './city-config.js';
@@ -18,6 +19,8 @@ import { CityAudioSystem } from './audio-system.js';
 // Boots the Copenhagen twin (js/world.js builds the city from data/cph-geodata.json).
 
 async function initApp() {
+  const query = new URLSearchParams(location.search);
+  const aoEnabled = query.get('ao') === '1';
   const container = document.getElementById('canvas-container');
   const loadingOverlay = document.getElementById('loading-overlay');
   const loadingStatus = document.getElementById('loading-status');
@@ -69,6 +72,7 @@ async function initApp() {
 
   // 3. Build the city from the Copenhagen geodata
   const world = await buildWorld(scene, {
+    treeDate: lightingSystem.currentSunDateTime,
     markInit,
     debug: new URLSearchParams(location.search).get('debug') || '',
     water: new URLSearchParams(location.search).get('water') || ''
@@ -158,7 +162,7 @@ async function initApp() {
   const sceneMRT = mrt({
     output: output,
     normal: normalView,
-    metalRough: vec2(roughness.lessThan(maxSSRRoughness).select(metalness.mul(ssrFade), 0), roughness)
+    metalRough: vec2(roughness.lessThan(maxSSRRoughness).select(ssrReflectionWeight().mul(ssrFade), 0), roughness)
   });
   sceneMRT.setBlendMode('normal', new THREE.BlendMode(THREE.MaterialBlending));
   sceneMRT.setBlendMode('metalRough', new THREE.BlendMode(THREE.MaterialBlending));
@@ -168,6 +172,18 @@ async function initApp() {
   const scenePassDepth = scenePass.getTextureNode('depth');
   const scenePassNormal = scenePass.getTextureNode('normal');
   const scenePassMetalRough = scenePass.getTextureNode('metalRough');
+
+  let aoPass = null;
+  let postColor = scenePassColor;
+  if (aoEnabled) {
+    const { ao } = await import('three/addons/tsl/display/GTAONode.js');
+    aoPass = ao(scenePassDepth, scenePassNormal, cameraSystem.camera);
+    aoPass.radius.value = 0.25;
+    aoPass.samples.value = 16;
+    aoPass.resolutionScale = 0.5;
+    const aoOutput = aoPass.getTextureNode().r;
+    postColor = vec4(scenePassColor.rgb.mul(mix(1, aoOutput, 0.6)), scenePassColor.a);
+  }
 
   const ssrPass = ssr(scenePassColor, scenePassDepth, scenePassNormal, {
     metalnessNode: scenePassMetalRough.r,
@@ -187,7 +203,7 @@ async function initApp() {
   // Roughness mip blur must not spread reflections back onto matte or nonreflective surfaces.
   const reflectionMask = scenePassMetalRough.r.greaterThan(0).select(smoothstep(maxSSRRoughness, 0.55, scenePassMetalRough.g), 0);
   const reflections = ssrPass.mul(reflectionMask);
-  const colorGrade = createPostProcessing(renderer, scenePassColor, reflections);
+  const colorGrade = createPostProcessing(renderer, postColor, reflections);
   const renderPipeline = new THREE.RenderPipeline(renderer, colorGrade.outputNode);
 
   // 6. Wire UI Controls (Strictly using safe DOM APIs: textContent, classList, addEventListener)
@@ -624,7 +640,7 @@ async function initApp() {
   if (elFps) elFps.textContent = '60';
 
   // Handle for the headless verification scripts and the console (not used by the engine)
-  globalThis.__twin = { scene, renderer, cameraSystem, controllerManager, lightingSystem, world };
+  globalThis.__twin = { scene, renderer, cameraSystem, controllerManager, lightingSystem, world, aoEnabled, aoPass };
   // `?hooks` exposes the running twin to headless checks (tools/cph-m3-check.py): a free camera and the live systems
   if (new URLSearchParams(location.search).has('hooks')) {
     const updateCamera = cameraSystem.update.bind(cameraSystem);

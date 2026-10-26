@@ -175,6 +175,9 @@ class Bucket {
   }
 }
 
+/** Measured lawn polygons (data/cph-vegetation.json) lie this far over the register ground. */
+export const GRASS_LIFT = 0.002;
+
 const hash01 = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
 
 /**
@@ -249,11 +252,11 @@ export function buildPavementBuckets(geo, surfacesDoc, { roads, y, groundY, skip
   }
   // register polygons that are not pavements (park paths, squares, gravel); drawn just above the ground plane
   for (const s of surfacesDoc?.surfaces || []) {
-    if (!s.ring || s.ring.length < 6 || s.cls === 'grass') continue;
-    // holes (lawns inside a path network) are carved out by the triangulation
+    if (!s.ring || s.ring.length < 6) continue;
+    // holes (lawns inside a path network) are carved out by the triangulation; measured lawns (DHM/CIR) lie over the register
     tessellateFramed(s.ring, {
       holes: s.holes,
-      frame, y: s.src?.[0]?.startsWith('osm') ? groundY - 0.004 : groundY, seed: hash01(++i), buckets, keyPrefix: 'ground:', terrain,
+      frame, y: s.cls === 'grass' ? groundY + GRASS_LIFT : s.src?.[0]?.startsWith('osm') ? groundY - 0.004 : groundY, seed: hash01(++i), buckets, keyPrefix: 'ground:', terrain,
       maxEdge: () => groundEdge,
       classOf: () => s.cls
     });

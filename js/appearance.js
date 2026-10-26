@@ -257,10 +257,11 @@ function nearestRawEdge(b, x, z) {
 }
 
 /**
- * Appearance rows for the info panel. `surface` is 'wall' (the nearest wall edge to `point` is described) or 'roof'.
+ * Appearance rows for the info panel. `surface` is 'wall' (nearest wall edge to `point`), 'roof', or an inferred architectural 'detail'.
  */
 function describeAppearance(b, surface, point, { textured = false } = {}) {
   const out = { roof: roofSource(b), wall: null };
+  if (surface === 'detail') return { roof: null, wall: null, detail: { kind: 'inferred', text: 'Architectural style detail' } };
   if (surface !== 'roof' && point) {
     const near = nearestRawEdge(b, point.x, point.z);
     const wall = near && (b.observed?.walls || []).find((w) => w.ring === near.ringKey && w.edge === near.edge);

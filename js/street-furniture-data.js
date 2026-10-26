@@ -5,6 +5,7 @@
 // Frame: x east, z south, y up. `yaw` is the direction an item faces: model +z -> (sin yaw, cos yaw), i.e. rotation.y.
 
 import { Quadtree } from './quadtree.js';
+import { fleetVehicle } from './vehicle-fleet.js';
 
 export const FURNITURE_URL = './data/cph-furniture.json';
 
@@ -102,12 +103,20 @@ export const TREE_STYLES = {
 
 export const treeStyle = (genus) => TREE_STYLES[genus] || TREE_STYLES.generic;
 
+/** Height and crown radius are independent measurements, including low, broad crowns. */
+export function treeDimensions(tree) {
+  const height = Number.isFinite(tree.height) && tree.height > 0 ? Math.max(2, Math.min(40, tree.height)) : 8;
+  const crownRadius = Number.isFinite(tree.crown_radius) && tree.crown_radius > 0
+    ? Math.max(0.5, Math.min(30, tree.crown_radius)) : height * 0.35;
+  return { height, crownRadius };
+}
+
 /** Crown geometry of one real tree in metres: where it starts, its centre and radii. */
 export function crownOf(height, crownRadius, style) {
-  const base = Math.max(1.4, height * style.base);
+  const base = Math.min(height * 0.65, Math.max(0.5, height * style.base));
   const top = height * 0.98;
-  const ry = Math.max(0.8, (top - base) / 2);
-  return { base, cy: base + ry, ry, rx: Math.max(0.8, crownRadius) };
+  const ry = Math.max(0.1, (top - base) / 2);
+  return { base, cy: base + ry, ry, rx: crownRadius };
 }
 
 export function mapTrees(trees, groundHeight, { resolve = null } = {}) {
@@ -117,8 +126,7 @@ export function mapTrees(trees, groundHeight, { resolve = null } = {}) {
     const r = resolve ? resolve(t) : null;
     const genus = r ? r.genus : t.genus;
     const style = treeStyle(genus);
-    const h = Math.max(2.5, Math.min(40, t.height || 8));
-    const rx = Math.max(0.9, Math.min(h * 0.75, t.crown_radius || h * 0.35));
+    const { height: h, crownRadius: rx } = treeDimensions(t);
     const y = groundHeight ? groundHeight.heightAt(t.x, t.z) : 0;
     const j = hash2(t.x, t.z, 7);
     const crown = crownOf(h, rx, style);
@@ -126,6 +134,8 @@ export function mapTrees(trees, groundHeight, { resolve = null } = {}) {
       cx: t.x, cz: t.z, x: t.x, y, z: t.z, genus: genus in TREE_STYLES ? genus : 'generic', genusSource: r ? r.source : 'recorded', species: t.species ?? null, height: h, crownR: rx, crown,
       // reference-tree scale: y by height, xz by crown width against the reference crown
       sy: h / REF_H, sxz: rx / (style.width * REF_H),
+      baselineGenus: (resolve ? resolve({ ...t, ...(t.canopy_original || {}) }).genus : t.genus) || 'generic',
+      canopyAdded: !!t.canopy_added, litterPoints: t.litter_points || [], litterOrigin: t.litter_origin || [t.x, t.z],
       yaw: j * Math.PI * 2, tint: 0.88 + hash2(t.x, t.z, 11) * 0.24, age: t.age ?? null
     });
   }
@@ -216,11 +226,6 @@ export function mapLamps(lamps, groundHeight) {
 
 // ----------------------------------------------------------------------------------------------- parking and bikes
 
-const CAR_PAINTS = [
-  [0.07, 0.075, 0.085], [0.07, 0.075, 0.085], [0.78, 0.80, 0.83], [0.78, 0.80, 0.83], [0.92, 0.93, 0.94], [0.92, 0.93, 0.94],
-  [0.33, 0.35, 0.38], [0.33, 0.35, 0.38], [0.12, 0.2, 0.36], [0.35, 0.1, 0.12], [0.55, 0.53, 0.48], [0.16, 0.24, 0.2]
-];
-
 export const CAR_DENSITY = [0.70, 0.85];
 
 /** Occupancy of a block: a stable value inside CAR_DENSITY from a 60 m cell. */
@@ -249,8 +254,10 @@ export function parkedCars(bays, groundHeight, seed = 1) {
     const x = b.x + Math.sin(b.yaw) * along;
     const z = b.z + Math.cos(b.yaw) * along;
     const y = groundHeight ? groundHeight.heightAt(x, z) : 0;
+    const choice = fleetVehicle(j(5), j(6), j(8), true);
+    const rgb = [16, 8, 0].map((shift) => ((choice.paint >>> shift) & 255) / 255);
     out.push({
-      cx: x, cz: z, x, y, z, yaw, body: j(5) < 0.42 ? 'suv' : 'sedan', paint: CAR_PAINTS[Math.floor(j(6) * CAR_PAINTS.length)],
+      cx: x, cz: z, x, y, z, yaw, body: choice.body, paint: rgb,
       shade: 0.92 + j(7) * 0.16
     });
   }
@@ -269,17 +276,30 @@ export function rackItems(racks, groundHeight, seed = 1) {
     const dx = Math.sin(r.yaw);
     const dz = Math.cos(r.yaw);
     const n = slots;
-    const fill = 0.35 + 0.5 * hash2(r.x, r.z, seed + 91);
+    const fill = r.shopping ? 0.84 + 0.14 * hash2(r.x, r.z, seed + 91) : 0.4;
+    const occupied = Math.round(n * fill);
+    const chosenSlots = Array.from({ length: n }, (_, i) => i)
+      .sort((a, b) => hash2(r.x + a * RACK_SLOT, r.z, seed + 93) - hash2(r.x + b * RACK_SLOT, r.z, seed + 93))
+      .slice(0, occupied);
+    const parked = new Set(chosenSlots);
     for (let i = 0; i < n; i++) {
       const o = (i - (n - 1) / 2) * RACK_SLOT;
       const x = r.x + dx * o;
       const z = r.z + dz * o;
       const y = groundHeight ? groundHeight.heightAt(x, z) : 0;
       if (i % 2 === 0) hoops.push({ cx: x, cz: z, x, y, z, yaw: r.yaw });
-      if (hash2(x, z, seed + 93) < fill) {
+      if (parked.has(i)) {
+        const style = hash2(x, z, seed + 111);
+        // The prechecked rack envelope is a regular city bicycle; long cargo forms are
+        // reserved for facade parking where their full, larger footprint is validated.
+        const variant = style < 0.16 ? 'mens'
+          : style < 0.36 ? 'city-crate'
+            : style < 0.52 ? 'city-childseat'
+              : 'city';
         bikes.push({
           cx: x, cz: z, x, y, z, yaw: r.yaw + Math.PI / 2 + (hash2(x, z, seed + 95) - 0.5) * 0.12,
-          hue: Math.floor(hash2(x, z, seed + 97) * 6), size: 0.94 + hash2(x, z, seed + 99) * 0.12
+          hue: Math.floor(hash2(x, z, seed + 97) * 10), size: 0.94 + hash2(x, z, seed + 99) * 0.12,
+          variant, lean: hash2(x, z, seed + 101) < 0.28 ? (hash2(x, z, seed + 103) - 0.5) * 0.2 : 0
         });
       }
     }
@@ -332,6 +352,7 @@ export function buildFurniturePlan(doc, groundHeight = null, { seed = 1, place =
   }
   const stops = busStopParts(doc.busStops, groundHeight);
   const racks = rackItems(doc.bikeRacks, groundHeight, seed);
+  const freeBikes = place_(doc.streetBikes, groundHeight);
   const benches = place_(doc.benches, groundHeight).concat(stops.benches);
   const bins = place_(doc.bins, groundHeight).concat(stops.bins);
   const plan = {
@@ -345,7 +366,8 @@ export function buildFurniturePlan(doc, groundHeight = null, { seed = 1, place =
     bollards: place_(doc.bollards, groundHeight),
     benches,
     hoops: racks.hoops,
-    bikes: racks.bikes,
+    freeBikes,
+    bikes: racks.bikes.concat(freeBikes),
     flags: stops.flags,
     shelters: stops.shelters,
     countdowns: stops.countdowns,

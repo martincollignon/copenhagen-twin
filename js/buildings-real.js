@@ -7,6 +7,7 @@ import { attribute } from 'three/tsl';
 import { createAccumulator, addBuilding } from './building-geometry.js';
 import { describeAppearance, texturedWalls } from './appearance.js';
 import { createPhotoMaterial } from './facade-photo-material.js';
+import { WINDOW, FACADE_CORNER_PIER } from './facade-style.js';
 import { PHOTO, selectPhotoSet, texRequested, lookFile } from './facade-lod.js';
 import { createContext as createGroundContext } from './groundfloor.js';
 import { createEntranceIndex, createDoorAccumulator, addDoors } from './entrances.js';
@@ -35,6 +36,7 @@ function toBufferGeometry(wall) {
   g.setAttribute('facadeWall', new THREE.Float32BufferAttribute(wall.facadeWall, 4));
   g.setAttribute('facadeBldg', new THREE.Float32BufferAttribute(wall.facadeBldg, 4));
   g.setAttribute('facadeTone', new THREE.Float32BufferAttribute(wall.facadeTone, 4));
+  g.setAttribute('facadeWindow', new THREE.Float32BufferAttribute(wall.facadeWindow, 4));
   g.setAttribute('facadeTop', new THREE.Float32BufferAttribute(wall.facadeTop, 1));
   g.setIndex(new THREE.BufferAttribute(new Uint32Array(wall.index), 1));
   g.computeBoundingSphere();
@@ -207,6 +209,7 @@ function createInfoPanel() {
         info.appearance?.wall ? row('Wall colour', `${swatch(info.appearance.wall.tone)}${e(info.appearance.wall.text)}${info.appearance.wall.photo ? ' + photo' : ''}`, info.appearance.wall.kind === 'observed' ? 'measured' : info.appearance.wall.kind === 'prior' ? 'scaled' : 'inferred') : '',
         ...(info.appearance?.wall?.flags || []).map((t) => `<div style="padding:1px 0;color:#e7c27a;font-size:11px">${e(t)}</div>`),
         info.appearance?.roof ? row('Roof colour', `${swatch(info.appearance.roof.tone)}${e(info.appearance.roof.text)}`, info.appearance.roof.kind === 'observed' ? 'measured' : 'inferred') : '',
+        info.appearance?.detail ? row('Detail', e(info.appearance.detail.text), 'inferred') : '',
         info.roofSource ? row('Roof geometry', e(info.roofSource), info.roofSource.startsWith('LoD2') ? 'measured' : 'inferred') : '',
         row('Wall', e(info.wallMaterial), c.wall_material),
         row('Facade', `floor ${e(f.floor_h)} m, bay ${e(f.bay_w)} m, ${e(f.ground_type)}`, c.facade ?? 'inferred'),
@@ -267,8 +270,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
       g.setAttribute('wallUV', new THREE.Float32BufferAttribute(c.walls.wallUV, 2));
       g.setIndex(c.walls.index);
       g.computeBoundingSphere();
-      const size = c.walls.size || [bitmap.width, bitmap.height];
-      const material = createPhotoMaterial(texture, { hasMask, tone: c.tone, brick: c.brick, texel: [1 / size[0], 1 / size[1]] });
+      const material = createPhotoMaterial(texture, { hasMask, tone: c.tone, brick: c.brick, layout: c.layout });
       const mesh = new THREE.Mesh(g, material);
       mesh.name = `wall-photos-${c.id}`;
       mesh.receiveShadow = true;
@@ -364,7 +366,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     tree.insert({ cx, cz, b });
   }
 
-  const masonry = createPreWarBuildingMaterial({ wallAttr: true, cornerPier: 0.9, windowRatioY: 0.55, seed: 7.0 });
+  const masonry = createPreWarBuildingMaterial({ wallAttr: true, cornerPier: FACADE_CORNER_PIER, windowRatioY: WINDOW.ratioY, seed: 7.0 });
   const glass = createCurtainWallMaterial({ wallAttr: true, seed: 3.0 });
   const roofMaterial = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.88, metalness: 0.02 });
   roofMaterial.name = 'cph-roof';
@@ -412,7 +414,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
         const walls = texturedWalls(b, quads, added.mapping);
         if (walls) {
           const [cx, cz] = ringCentre(b.ring);
-          texCandidates.push({ id: b.id, cx, cz, walls, tone: added.mapping.buildingTone, brick: added.style.mat === 0 });
+          texCandidates.push({ id: b.id, cx, cz, walls, tone: added.mapping.buildingTone, brick: added.style.mat === 0, layout: added.layout });
         }
       }
     }
@@ -429,6 +431,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     if (acc.roof.index.length) {
       const roofMesh = new THREE.Mesh(roofGeometry(acc.roof), roofMaterial);
       roofMesh.userData.ranges = acc.roofRanges.filter((r) => r.end > r.start);
+      roofMesh.userData.detailRanges = acc.detailParts;
       roofMesh.castShadow = roofMesh.receiveShadow = true;
       roofMesh.name = 'roofs';
       group.add(roofMesh);
@@ -477,6 +480,8 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
         wm.userData.ranges = acc.wallRanges;
         const rm = new THREE.Mesh(roofGeometry(acc.roof), roofMaterial);
         rm.userData.ranges = acc.roofRanges;
+        rm.userData.detailRanges = acc.detailParts;
+        rm.name = 'roofs';
         for (const m of [wm, rm]) { m.castShadow = m.receiveShadow = true; group.add(m); pickables.push(m); }
         root.add(group);
         leaves.push(Object.assign(group, {}));
@@ -515,7 +520,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
       while (o && !o.userData.buildingId) o = o.parent;
       if (o?.userData.buildingId) return { id: o.userData.buildingId, point: hit.point, distance: hit.distance };
       const range = hit.object.userData.ranges && rangeAt(hit.object.userData.ranges, hit.faceIndex);
-      if (range) return { id: range.id, point: hit.point, distance: hit.distance, surface: hit.object.name === 'roofs' ? 'roof' : 'wall' };
+      if (range) return { id: range.id, point: hit.point, distance: hit.distance, surface: rangeAt(hit.object.userData.detailRanges || [], hit.faceIndex) ? 'detail' : hit.object.name === 'roofs' ? 'roof' : 'wall' };
     }
     return null;
   }
