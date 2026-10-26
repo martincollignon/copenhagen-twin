@@ -103,6 +103,26 @@ export function createEntrancesAssembler(meta) {
   };
 }
 
+/**
+ * Merges a tile's `appearance` layer ({ buildings: { <gdk id>: { walls, roof, summary, atlas? } } }, tools/cph-geodata/appearance_city*.py) into
+ * its building records as `observed` = { walls, roof, atlas? } (what js/appearance.js reads). A building that already carries an `observed`
+ * block (the district's) keeps it untouched. Mutates and returns `buildings`.
+ */
+export function applyAppearance(buildings, payload) {
+  const rec = payload?.buildings;
+  if (!rec || !buildings) return buildings;
+  for (const b of buildings) {
+    if (b.observed) continue;
+    const a = rec[b.id];
+    if (!a) continue;
+    const observed = { walls: a.walls || [], roof: a.roof || null };
+    if (a.atlas) observed.atlas = a.atlas;
+    if (a.summary) observed.summary = a.summary;
+    b.observed = observed;
+  }
+  return buildings;
+}
+
 export function createVenuesAssembler() {
   const a = listAssembler(['venues']);
   return { addTile: (p) => a.addTile(p), venues: () => a.list('venues') };
@@ -228,7 +248,7 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
   const cache = new Map(); // tile id -> Promise<{ [layer]: payload }>
   const loadTile = (tid) => {
     if (!cache.has(tid)) {
-      const names = [...Object.keys(index.tiles[tid]?.layers || {}), ...(post?.streets?.tiles?.[tid] ? ['streets'] : []), ...(post?.water?.tiles?.[tid] ? ['water'] : [])].filter((n) => !n.endsWith('.bin'));
+      const names = [...Object.keys(index.tiles[tid]?.layers || {}), ...(post?.streets?.tiles?.[tid] ? ['streets'] : []), ...(post?.water?.tiles?.[tid] ? ['water'] : []), ...(post?.appearance?.tiles?.[tid] ? ['appearance'] : [])].filter((n) => !n.endsWith('.bin'));
       cache.set(tid, Promise.all(names.map(async (n) => [n, await json(`${baseUrl}/${tid}/${n}.json`)])).then(Object.fromEntries));
     }
     return cache.get(tid);
@@ -239,7 +259,7 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
     return r.ok ? r.arrayBuffer() : null;
   };
   // The streamer (js/tile-streamer.js) keeps the payloads itself: one layer per request, abortable, never cached here.
-  const layerSize = (tid, name) => index.tiles[tid]?.layers?.[name] || (name === 'streets' ? post?.streets?.tiles?.[tid] : name === 'water' ? post?.water?.tiles?.[tid] : 0) || 0;
+  const layerSize = (tid, name) => index.tiles[tid]?.layers?.[name] || (name === 'streets' ? post?.streets?.tiles?.[tid] : name === 'water' ? post?.water?.tiles?.[tid] : name === 'appearance' ? post?.appearance?.tiles?.[tid] : 0) || 0;
   const hasLayer = (tid, name) => !!index.tiles[tid] && layerSize(tid, name) > 0;
   const fetchLayer = (tid, name, signal) => (hasLayer(tid, name) ? json(`${baseUrl}/${tid}/${name}.json`, signal) : Promise.resolve(null));
   const layerBytes = layerSize;
@@ -284,6 +304,7 @@ export function assembleArea(city, loaded, fetchBin = async () => null) {
   const terrain = createTerrainAssembler(city.meta);
   const lod2 = city.meta.lod2 ? createTileLod2(city.meta, fetchBin) : null;
   for (const [tid, layers] of loaded) {
+    if (layers.appearance && layers.buildings) applyAppearance(layers.buildings.buildings, layers.appearance);
     geo.addTile('buildings', layers.buildings);
     geo.addTile('roads', layers.roads);
     surfaces.addTile(layers.surfaces);

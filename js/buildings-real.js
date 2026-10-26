@@ -29,6 +29,7 @@ const STREAM_RADIUS = 2400; // cells further than this from the camera are hidde
 const TEX_DIR = './data/tex';
 const GROUNDFLOOR_URL = './data/cph-groundfloor.json';
 const ENTRANCES_URL = './data/cph-entrances.json';
+let lookSeen = false; // some look atlas has loaded this session: a later 404 is one building's miss, not a missing folder
 const PHOTO_MAX_FAILURES = 3; // consecutive failed loads before photo mode switches itself off (no 404 spam)
 
 /** The geometry of a wall mesh: the typed arrays of building-compute.js (used as they are; the facade frame, or a colour for a lite wall). */
@@ -239,7 +240,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch, budg
 
   async function fetchBitmap(file) {
     const response = await fetchImpl(`./data/${file}`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
     const blob = await response.blob();
     return createImageBitmap(blob, { imageOrientation: 'none', premultiplyAlpha: 'none' });
   }
@@ -247,7 +248,9 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch, budg
   async function atlasBitmap(c) {
     try {
       return { bitmap: await fetchBitmap(lookFile(c.walls.file)), hasMask: true };
-    } catch {
+    } catch (error) {
+      // once look atlases have loaded, a missing one (the citywide atlases arrive piecemeal) is that building's miss alone: no second request
+      if (state.look > 0 && error?.status === 404) throw error;
       return { bitmap: await fetchBitmap(c.walls.file), hasMask: false };
     }
   }
@@ -286,6 +289,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch, budg
       state.failures = 0;
     } catch (error) {
       state.failed.add(c.id);
+      if (state.look > 0 && error?.status === 404) return; // an atlas not produced yet: this building keeps its tone facade
       if (++state.failures >= PHOTO_MAX_FAILURES) {
         state.enabled = false;
         console.info('[cph] wall photos unavailable (data/tex missing or unreadable); keeping tone + procedural facades:', error?.message || error);

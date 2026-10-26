@@ -75,22 +75,44 @@ def u8(rgb) -> tuple[int, int, int]:
     return tuple(max(0, min(255, int(round(float(c) * 255)))) for c in rgb)
 
 
-def wall_tone(b: dict):
-    """Observed wall tone (median of the observed walls) when there is one, else the facade preset."""
+ALBEDO_GAIN, ALBEDO_KNEE, ALBEDO_MAX = 0.72, 0.4, 0.58  # js/appearance.js albedoFromLinear: a photographed tone is not a reflectance
+
+
+def albedo_srgb(rgb):
+    """Observed (photographed) sRGB tone -> the sRGB of the albedo the near ring gives it (gain 0.72, soft shoulder: no pure white roofs / walls)."""
+    out = []
+    for c in rgb:
+        lin = c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+        x = lin * ALBEDO_GAIN
+        if x > ALBEDO_KNEE:
+            x = ALBEDO_KNEE + (ALBEDO_MAX - ALBEDO_KNEE) * (1 - math.exp(-(x - ALBEDO_KNEE) / (ALBEDO_MAX - ALBEDO_KNEE)))
+        out.append(12.92 * x if x <= 0.0031308 else 1.055 * x ** (1 / 2.4) - 0.055)
+    return tuple(out)
+
+
+def wall_tone(b: dict, app: dict | None = None):
+    """Observed wall tone (median of the observed walls of the building record) when there is one, else the citywide appearance
+    summary (`app` = the building's entry of the tile's appearance.json), else the facade preset."""
     walls = (b.get("observed") or {}).get("walls") or []
     tones = [w.get("tone_cal") or w.get("tone") for w in walls if str(w.get("conf", "")).startswith("observed")]
     tones = [t for t in tones if t and len(t) == 3]
     if tones:
-        return tuple(float(np.median([t[i] for t in tones])) for i in range(3))
+        return albedo_srgb([float(np.median([t[i] for t in tones])) for i in range(3)])
+    seen = ((app or {}).get("summary") or {}).get("wall")
+    if seen and len(seen) == 3:
+        return albedo_srgb([float(c) for c in seen])
     t = tuple((b.get("facade") or {}).get("tone") or WALL_DEFAULT)
     y = 0.3 * t[0] + 0.59 * t[1] + 0.11 * t[2]
     return tuple(c + (y - c) * WALL_DESAT for c in t)
 
 
-def roof_tone(b: dict):
+def roof_tone(b: dict, app: dict | None = None):
     seen = (b.get("observed") or {}).get("roof") or {}
     if seen.get("conf") == "observed" and seen.get("tone") and len(seen["tone"]) == 3:
-        return tuple(seen["tone"])
+        return albedo_srgb(seen["tone"])
+    summary = ((app or {}).get("summary") or {}).get("roof")
+    if summary and len(summary) == 3:
+        return albedo_srgb([float(c) for c in summary])
     return ROOF_COLOURS.get(b.get("roof_material"), ROOF_DEFAULT)
 
 
@@ -182,6 +204,7 @@ def tile_block(tid: str, tiles_dir: Path, parks_union, tol: float, min_area: flo
     if bl is None and tr is None:
         return None
     heights = height_grid(tr.get("chunk") if tr else None, bounds)
+    appearance = ((read_json(tiles_dir / tid / "appearance.json") or {}).get("buildings")) or {}
     out = bytearray()
     records = []
     for b in (bl or {}).get("buildings", []):
@@ -195,7 +218,7 @@ def tile_block(tid: str, tiles_dir: Path, parks_union, tol: float, min_area: flo
         top = max(top_height(b), float(b.get("ground", 0)) + 2.5)
         rec = bytearray()
         rec += struct.pack("<BBhh", min(len(outer), 255), min(len(holes), 255), int(round(base * 100)), int(round(top * 100)))
-        rec += bytes(u8(wall_tone(b))) + bytes(u8(roof_tone(b)))
+        rec += bytes(u8(wall_tone(b, appearance.get(b.get("id"))))) + bytes(u8(roof_tone(b, appearance.get(b.get("id")))))
         def put(pts):
             for x, z in pts[:255]:
                 rec.extend(struct.pack("<hh", int(round((x - xmin) * 10)), int(round((z - zmin) * 10))))

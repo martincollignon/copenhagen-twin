@@ -10,7 +10,7 @@
 //   createTileData(...)    the per-tile layer store with prepared (layout-applied) views, roadsOf(id) (the tile's roads with the
 //                          street layout applied, from its `roads` and `streets` layers) and tileContext(id, ring)
 
-import { createGeodataAssembler, createFurnitureAssembler, createSurfacesAssembler, createVegetationAssembler, createEntrancesAssembler, createVenuesAssembler } from './tile-store.js';
+import { applyAppearance, createGeodataAssembler, createFurnitureAssembler, createSurfacesAssembler, createVegetationAssembler, createEntrancesAssembler, createVenuesAssembler } from './tile-store.js';
 import { applyStreets, applyTerrainGround, mergeSurfaceCuts } from './layout-cph.js';
 import { applySurfaceCuts } from './lakes-cph.js';
 import { tileOfLocal, tileBoundsLocal } from './tile-grid.js';
@@ -197,6 +197,7 @@ export function createTileData({ index, meta, streets = null, lakes = null, geo,
       return (e.memo.buildings ||= (() => {
         const p = e.layers.get('buildings');
         const list = p?.buildings ? [...p.buildings] : [];
+        applyAppearance(list, e.layers.get('appearance'));
         const mini = { buildings: list, roads: [] };
         const fixes = e.layers.get('streets')?.buildings || (streets ? fixesFor(streets, new Set(list.map((b) => b.id))) : null);
         if (fixes) applyStreets(mini, { roads: {}, buildings: fixes });

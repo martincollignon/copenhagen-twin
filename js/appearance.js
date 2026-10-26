@@ -67,6 +67,7 @@ function median(values) {
 function buildingTone(b) {
   const seen = (b.observed?.walls || []).filter((w) => isRgb(w.tone) && w.conf !== 'inferred');
   if (seen.length) return [0, 1, 2].map((k) => albedoFromLinear(srgbToLinear(median(seen.map((w) => wallRgb(w)[k])))));
+  if (isRgb(b.observed?.summary?.wall)) return observedAlbedo(b.observed.summary.wall); // citywide appearance summary (no per-edge walls kept)
   return toLinear(isRgb(b.facade?.tone) ? b.facade.tone : [0.7, 0.65, 0.58]);
 }
 

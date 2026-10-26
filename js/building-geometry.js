@@ -205,7 +205,8 @@ function createAccumulator({ lite = false } = {}) {
  */
 function roofColourFor(b, useObserved = true, pitched = false) {
   const seen = useObserved ? b.observed?.roof : null;
-  let rgb = seen?.conf === 'observed' && Array.isArray(seen.tone) && seen.tone.length === 3 ? seen.tone : (ROOF_COLOURS[b.roof_material] || ROOF_DEFAULT);
+  const summary = useObserved ? b.observed?.summary?.roof : null;
+  let rgb = seen?.conf === 'observed' && Array.isArray(seen.tone) && seen.tone.length === 3 ? seen.tone : Array.isArray(summary) && summary.length === 3 ? summary : (ROOF_COLOURS[b.roof_material] || ROOF_DEFAULT);
   const { rough, metal, hint } = roofSurface(useObserved ? b : { ...b, observed: null });
   // Dark pitched roof photographs contain reflected sky; preserve hue and leave metals / flat decks alone.
   if (pitched && ['slate', 'fibre-cement', 'tagpap'].includes(hint)) {
