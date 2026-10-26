@@ -20,6 +20,14 @@ python3 -m http.server           # then open http://localhost:8000/
 
 Useful query parameters: `?debug=footprints` draws the geodata's buildings, water and parks as flat polygons, `?debug=nobuildings` and `?debug=noroads` skip those layers, `?hooks` exposes the running scene as `globalThis.__twin` for headless checks.
 
+`?bench[=seed]` makes the twin measurable: `Math.random` is seeded, the simulation starts frozen and only advances in fixed 1/60 s steps on request, and `globalThis.__twin.bench` exposes `setPose`, `advance(frames)`, `measure(ms)` (frame-time percentiles, main-thread ms per frame, draw calls, passes, pipelines, memory) and `info()`. `tools/perf/measure.py` runs it over the fixed camera poses in `tools/perf/poses.json`:
+
+```sh
+uv run --with playwright python tools/perf/measure.py --out /tmp/perf.json   # --poses aerial,street-ns37 --shots /tmp/poses
+```
+
+Same seed and poses give the same draw calls, triangles, passes and pipelines on every machine; frame times only compare on one machine, between interleaved runs. Hero glTFs and photo textures are gitignored, so measure counters on a clean checkout. three.js is pinned to a build commit in `index.html` (jsDelivr serves `@<sha>` immutably); bump it on purpose and measure before and after.
+
 `?water=simple` drops the planar reflection pass of the lakes (sky reflection only), `?debug=nowater` shows the plain ground, `?debug=nocal` the uncalibrated facade tones.
 
 Tests (Node 20+, no dependencies):

@@ -1,0 +1,12 @@
+{
+  "_doc": "Fixed camera poses for tools/perf/measure.py. pos/look are world metres [x, y, z]; with \"ground\": true the y values are heights above the terrain. time is a data-time preset (golden, midday, twilight, midnight).",
+  "poses": {
+    "aerial": { "pos": [-420, 330, 380], "look": [20, 0, -20], "fov": 50, "time": "golden" },
+    "aerial-close": { "pos": [-140, 150, 210], "look": [-60, 8, 40], "fov": 55, "time": "golden" },
+    "street-ns37": { "pos": [-7.2, 1.7, -7.5], "look": [18.2, 9, 4.3], "fov": 62, "time": "golden" },
+    "peblinge-from-dlb": { "pos": [91, 3.2, -466.7], "look": [-20, -0.5, -250], "fov": 62, "time": "midday" },
+    "nbro-street": { "pos": [-147.3, 1.7, -620.1], "look": [-190, 4, -645], "fov": 62, "time": "midday", "ground": true },
+    "blaag-square": { "pos": [-314.6, 1.7, -448], "look": [-290, 3, -433], "fov": 62, "time": "midday", "ground": true },
+    "night-ns37": { "pos": [-7.2, 1.7, -7.5], "look": [18.2, 9, 4.3], "fov": 62, "time": "midnight" }
+  }
+}

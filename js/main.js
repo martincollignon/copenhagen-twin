@@ -1,3 +1,4 @@
+import { BENCH_SEED, createBench } from './bench.js'; // first: seeds Math.random under ?bench before the rest runs
 import * as THREE from 'three/webgpu';
 import { pass, mrt, output, normalView, positionView, metalness, roughness, vec2, smoothstep } from 'three/tsl';
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
@@ -14,7 +15,7 @@ import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
 import { CityAudioSystem } from './audio-system.js';
 
 // js/main.js
-// Main entry point in Three.js WebGPURenderer & TSL (three.js dev, see index.html).
+// Main entry point in Three.js WebGPURenderer & TSL (three.js pinned in index.html).
 // Boots the Copenhagen twin (js/world.js builds the city from data/cph-geodata.json).
 
 async function initApp() {
@@ -625,6 +626,9 @@ async function initApp() {
 
   // Handle for the headless verification scripts and the console (not used by the engine)
   globalThis.__twin = { scene, renderer, cameraSystem, controllerManager, lightingSystem, world };
+  // `?bench[=seed]`: seeded, frozen simulation and frame statistics for tools/perf/measure.py (see js/bench.js)
+  const bench = BENCH_SEED === null ? null : createBench({ renderer, cameraSystem });
+  if (bench) globalThis.__twin.bench = bench;
   // `?hooks` exposes the running twin to headless checks (tools/cph-m3-check.py): a free camera and the live systems
   if (new URLSearchParams(location.search).has('hooks')) {
     const updateCamera = cameraSystem.update.bind(cameraSystem);
@@ -643,30 +647,37 @@ async function initApp() {
   }
 
   renderer.setAnimationLoop((now) => {
+    const frameStart = performance.now();
     const rawDt = (now - lastTime) * 0.001;
     lastTime = now;
-    const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
+    // Under ?bench the simulation advances in fixed steps on request and is frozen (dt 0) otherwise
+    const dt = bench ? bench.step() : Math.min(Math.max(rawDt, 0.001), 0.05);
+    const simulate = dt > 0;
     elapsed += dt;
 
     // Update 3rd-person controllers, camera, signals, traffic & vehicle collisions, building LODs, and dynamic shadow focus
-    gamepadControls.update(dt);
-    controllerManager.update(dt, elapsed);
+    if (simulate) {
+      gamepadControls.update(dt);
+      controllerManager.update(dt, elapsed);
+    }
     cameraSystem.update(dt, elapsed);
-    trafficSystem.update(
-      dt,
-      elapsed,
-      cameraSystem.currentPos,
-      controllerManager.getActiveEntity(),
-      controllerManager.activeMode,
-      cameraSystem.camera
-    );
-    if (!document.hidden && now >= nextPlayerSave) {
+    if (simulate) {
+      trafficSystem.update(
+        dt,
+        elapsed,
+        cameraSystem.currentPos,
+        controllerManager.getActiveEntity(),
+        controllerManager.activeMode,
+        cameraSystem.camera
+      );
+    }
+    if (!bench && !document.hidden && now >= nextPlayerSave) {
       savePlayerState();
       nextPlayerSave = now + 5000;
     }
     world.update(cameraSystem.currentPos.x, cameraSystem.currentPos.z, lightingSystem.uNightFactor.value);
     lightingSystem.update(cameraSystem.currentPos);
-    audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.activePresetId === 'midnight');
+    if (simulate) audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.activePresetId === 'midnight');
     if (warmedUp) updateSceneCulling(cameraSystem.camera.position); // the warm-up frame draws every chunk
 
     // Render frame via TSL RenderPipeline (SSR + Bloom)
@@ -705,6 +716,8 @@ async function initApp() {
         setLoadingProgress(1);
       });
     }
+
+    if (bench) bench.record(rawDt * 1000, performance.now() - frameStart);
 
     // Telemetry uses wall time, not the clamped simulation step, so slow frames and high-refresh displays report
     // their actual frame rate (updates DOM every 250ms).
