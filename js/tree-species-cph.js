@@ -52,7 +52,11 @@ export function pick(mix, u) {
  * Returns { genus, source }: source is 'recorded' | 'name' | 'lakeside' | 'street' | 'mixed'.
  */
 export function resolveGenus(tree, { lakeDistance = null } = {}) {
-  if (tree.genus && tree.genus !== 'generic') return { genus: tree.genus, source: 'recorded' };
+  if (tree.genus && tree.genus !== 'generic') {
+    const inferredLake = tree.lakeside && tree.conf_fields?.genus === 'inferred' &&
+      (tree.canopy_original?.genus === 'generic' || tree.canopy_added);
+    return { genus: tree.genus, source: inferredLake ? 'lakeside' : 'recorded' };
+  }
   const named = genusFromName(tree.species || tree.name);
   if (named !== 'generic') return { genus: named, source: 'name' };
   const u = hash2(tree.x, tree.z, 4242);

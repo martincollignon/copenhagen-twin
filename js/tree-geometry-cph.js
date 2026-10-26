@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Fn, float, vec2, vec3, vec4, uniform, attribute, uv, vertexColor, texture, positionLocal, positionWorld, cameraPosition, normalize, dot, max, pow, mix, step, smoothstep, sin, time } from 'three/tsl';
-import { REF_H, TREE_STYLES, hashString, mulberry32 } from './street-furniture-data.js';
+import { REF_H, TREE_STYLES, hashString, hash2, mulberry32 } from './street-furniture-data.js';
+import { OCTOBER_DAY, treeSeason } from './tree-season.js';
 import { cityUniforms } from './tsl-materials.js';
 import { noise2D } from './surface-materials-cph.js';
 
@@ -11,7 +12,7 @@ import { noise2D } from './surface-materials-cph.js';
 // load (heart-shaped lime leaves, palmate horse-chestnut leaves, lobed plane / maple leaves, ...). Three levels of
 // detail per genus, all instanced: near (full skeleton), mid (cluster cards + trunk), far (a painted cross billboard).
 // The tree material sways in the wind (per-vertex amplitude `sway`) and lets sunlight through the leaves.
-//   Attributes: position, normal, uv (leaf atlas), color (leaf / bark tint), sway (vec2: branch sway, leaf flutter).
+//   One interleaved buffer: position, normal, uv (atlas), color (leaf / bark tint), sway (branch sway, leaf flutter).
 // Licences: nothing downloaded; the algorithm is original, ez-tree is credited as the design reference only.
 
 export const ATLAS = Object.freeze({ cols: 4, rows: 2, size: 1024 });
@@ -255,6 +256,7 @@ class Builder {
     this.color = [];
     this.sway = [];
     this.index = [];
+    this.sprays = [];
   }
 
   vert(p, n, u, v, c, s0, s1) {
@@ -325,20 +327,46 @@ class Builder {
       const amp = swayAmp * (0.45 + 0.55 * (1 - cv));
       return this.vert(pos, [n.x * 0.6 + out[0] * 0.4, n.y * 0.6 + out[1] * 0.4, n.z * 0.6 + out[2] * 0.4], u0 + cu * du, v0 + cv * dv, color, amp, 0.035 + 0.03 * (1 - cv));
     });
+    this.sprays.push({ start: this.index.length, rank: hash2(p[0] + p[1], p[2], this.sprays.length) });
     this.index.push(ids[0], ids[1], ids[2], ids[0], ids[2], ids[3]);
   }
 
-  geometry() {
+  geometry({ radius = null, height = null, density = 1 } = {}) {
+    // Measure the complete crown before shedding: autumn must not change the scale
+    // of the retained branches. Normalise the card edges too, not just their centres.
+    let extent = 0, top = 0;
+    for (let i = 0; i < this.position.length; i += 3) {
+      extent = Math.max(extent, Math.hypot(this.position[i], this.position[i + 2]));
+      top = Math.max(top, this.position[i + 1]);
+    }
+    const sx = radius == null ? 1 : radius / extent;
+    const sy = height == null ? 1 : height / top;
+    const packed = new Float32Array(this.position.length / 3 * 13);
+    for (let v = 0; v < packed.length / 13; v++) {
+      const i = v * 3, j = v * 2;
+      const normal = [this.normal[i] / sx, this.normal[i + 1] / sy, this.normal[i + 2] / sx];
+      const length = Math.hypot(...normal) || 1;
+      packed.set([this.position[i] * sx, this.position[i + 1] * sy, this.position[i + 2] * sx,
+        ...normal.map(n => n / length), this.uv[j], this.uv[j + 1],
+        ...this.color.slice(i, i + 3), this.sway[j], this.sway[j + 1]], v * 13);
+    }
+    // One physical vertex buffer, plus instanceMatrix (conservatively four) and
+    // instanceColor (one): six total for both the colour and shadow pipelines.
+    const buffer = new THREE.InterleavedBuffer(packed, 13);
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(this.position, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.normal, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(this.color, 3));
-    g.setAttribute('sway', new THREE.Float32BufferAttribute(this.sway, 2));
-    g.setIndex(new THREE.Uint32BufferAttribute(this.index, 1));
+    for (const [name, size, offset] of [['position', 3, 0], ['normal', 3, 3], ['uv', 2, 6], ['color', 3, 8], ['sway', 2, 11]]) {
+      g.setAttribute(name, new THREE.InterleavedBufferAttribute(buffer, size, offset));
+    }
+    const dropped = new Set(this.sprays.filter(s => s.rank >= density).map(s => s.start));
+    const index = this.index.filter((_, i) => !dropped.has(Math.floor(i / 6) * 6));
+    g.setIndex(new THREE.Uint32BufferAttribute(index, 1));
+    g.userData.fullTriangles = this.index.length / 3;
+    g.userData.woodTriangles = this.index.length / 3 - this.sprays.length * 2;
+    g.userData.leafCards = this.sprays.length - dropped.size;
     g.computeBoundingSphere();
     return g;
   }
+
 }
 
 const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -418,9 +446,10 @@ export function treeSkeleton(genus) {
 }
 
 /** Near-LOD tree for a genus (reference size, origin on the ground, +y up). */
-export function buildNearTree(genus) {
+export function buildNearTree(genus, day = OCTOBER_DAY) {
   const sk = treeSkeleton(genus);
   const { look, style, Rr, baseY, topY, prof } = sk;
+  const season = treeSeason(genus, day, look.leaf);
   const rng = mulberry32(Math.floor(hashString(`near:${genus}`) * 1e9));
   const b = new Builder();
   const bark = rgbLin(look.bark);
@@ -429,7 +458,7 @@ export function buildNearTree(genus) {
   const twigColour = bark.map((x, i) => x * 0.55 + rgbLin(look.leaf)[i] * 0.45 * 0.6); // twigs read as leafy shade, not as black wires
   for (const t of sk.twigs) b.wood(t.path, twigColour, sway, 3);
   const centre = [0, baseY + (topY - baseY) / 2, 0];
-  const leafLit = look.leaf;
+  const leafLit = season.colour;
   const cardColour = (frac, h) => {
     // lighter and yellower at the sunlit shell, deeper inside; a little hue wander per card
     const shade = 0.62 + 0.55 * (0.6 * frac + 0.4 * h) * (0.88 + rng() * 0.24);
@@ -462,13 +491,14 @@ export function buildNearTree(genus) {
     const r = prof(t) * Rr * frac;
     place([Math.cos(ang) * r, baseY + t * (topY - baseY), Math.sin(ang) * r], [Math.cos(ang), 0.3, Math.sin(ang)], frac);
   }
-  return b.geometry();
+  return b.geometry({ radius: Rr, height: REF_H, density: season.density });
 }
 
 /** Mid-LOD crown: big leaf clusters on the crown shell (+ trunk and a few limb stubs). */
-export function buildMidTree(genus) {
+export function buildMidTree(genus, day = OCTOBER_DAY) {
   const sk = treeSkeleton(genus);
   const { look, style, Rr, baseY, topY, prof } = sk;
+  const season = treeSeason(genus, day, look.leaf);
   const rng = mulberry32(Math.floor(hashString(`mid:${genus}`) * 1e9));
   const b = new Builder();
   const bark = rgbLin(look.bark);
@@ -487,10 +517,10 @@ export function buildMidTree(genus) {
     const ol = Math.hypot(...outv) || 1;
     const outward = [outv[0] / ol, outv[1] / ol, outv[2] / ol];
     const shade = 0.66 + 0.5 * (0.55 * frac + 0.45 * t) * (0.9 + rng() * 0.2);
-    const c = rgbLin([Math.min(1, look.leaf[0] * shade * 1.05), Math.min(1, look.leaf[1] * shade), Math.min(1, look.leaf[2] * shade)]);
+    const c = rgbLin([Math.min(1, season.colour[0] * shade * 1.05), Math.min(1, season.colour[1] * shade), Math.min(1, season.colour[2] * shade)]);
     b.card(p, outward, outward, look.size * 2.7 * (0.85 + rng() * 0.4), LEAF_CELL[genus] ?? 3, c, 0.12 + 0.12 * t * t, rng);
   }
-  return b.geometry();
+  return b.geometry({ radius: Rr, height: REF_H, density: season.density });
 }
 
 // ----------------------------------------------------------------------------------------------- far billboards
@@ -498,7 +528,7 @@ export function buildMidTree(genus) {
 export const BILL = Object.freeze({ cols: 4, rows: 4, w: 128, h: 192 });
 
 /** One 128x192 painted tree per genus in a 4x4 atlas (silhouette from the crown profile, leaf dabs, trunk). Returns { texture, cellOf }. */
-export function createBillboardAtlas(genera) {
+export function createBillboardAtlas(genera, day = OCTOBER_DAY) {
   const { cols, rows, w, h } = BILL;
   const canvas = document.createElement('canvas');
   canvas.width = cols * w;
@@ -525,7 +555,21 @@ export function createBillboardAtlas(genera) {
     const crownTop = h * 0.02;
     const crownBot = h * (1 - baseFrac);
     const halfW = w * 0.47;
-    const leaf = look.leaf;
+    // Keep the same genus skeleton visible when the distant crown loses its leaves.
+    const sk = treeSkeleton(genus);
+    ctx.strokeStyle = ctx.fillStyle;
+    for (const limb of [...sk.limbs, ...sk.twigs]) {
+      ctx.lineWidth = Math.max(0.6, limb.path[0][3] * w / sk.Rr);
+      ctx.beginPath();
+      limb.path.forEach(([x, y], i) => {
+        const px = ox + w / 2 + x / sk.Rr * halfW;
+        const py = oy + h * (1 - y / REF_H);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+    }
+    const season = treeSeason(genus, day, look.leaf);
+    const leaf = season.colour;
     const N = 1100;
     for (let i = 0; i < N; i++) {
       const t = rng(); // 0 = crown bottom, 1 = top
@@ -536,9 +580,11 @@ export function createBillboardAtlas(genera) {
       const lit = 0.62 + 0.5 * (0.5 * t + 0.5 * (Math.cos(ang) * 0.5 + 0.5)) * (0.85 + rng() * 0.3);
       const c = [leaf[0] * lit, leaf[1] * lit, leaf[2] * lit].map((v) => Math.floor(Math.min(1, v) * 255));
       ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
-      const s = 2.5 + rng() * 3.5;
+      const s = (2.5 + rng() * 3.5) * Math.sqrt(season.density);
+      const rotation = rng() * 3;
+      if (hash2(i, idx, 719) >= season.density) continue;
       ctx.beginPath();
-      ctx.ellipse(ox + x, oy + y, s, s * 0.8, rng() * 3, 0, Math.PI * 2);
+      ctx.ellipse(ox + x, oy + y, s, s * 0.8, rotation, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
@@ -574,6 +620,22 @@ export function buildBillboard(cell) {
     b.index.push(quad[0], quad[1], quad[2], quad[0], quad[2], quad[3]);
   }
   return b.geometry();
+}
+
+/** A ground-aligned palmate leaf spray; the mapped litter offsets stay in world space. */
+export function buildTreeLitterGeometry() {
+  const b = new Builder();
+  for (const [x, z, u, v] of [[-0.5, -0.5, 0, 0], [-0.5, 0.5, 0, 1], [0.5, 0.5, 1, 1], [0.5, -0.5, 1, 0]]) {
+    b.vert([x, 0, z], [0, 1, 0], 0.253 + u * 0.244, 0.003 + v * 0.494, [1, 1, 1], 0, 0);
+  }
+  b.index.push(0, 1, 2, 0, 2, 3);
+  return b.geometry();
+}
+
+export function createTreeLitterMaterial(atlas) {
+  return new THREE.MeshStandardNodeMaterial({ map: atlas, color: new THREE.Color().setRGB(0.40, 0.25, 0.10, THREE.SRGBColorSpace),
+    roughness: 1, metalness: 0, alphaTest: 0.45, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
 }
 
 // ----------------------------------------------------------------------------------------------- materials

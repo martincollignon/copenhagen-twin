@@ -322,7 +322,7 @@ function createLocator(geo) {
   };
 }
 
-async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH_GEODATA_URL, water = '' } = {}) {
+async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH_GEODATA_URL, water = '', treeDate } = {}) {
   setCalibration(!debug.split(',').includes('nocal'));
   const geo = await loadCphGeodata(geoUrl);
   globalThis.CPH_GEO = geo;
@@ -395,7 +395,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     if (doc) {
       // ONE spatial constraint map (footprints, water, the measured carriageway, cycle strips, pavements) places every item
       const zones = streetsStats && !debug.split(',').includes('noplace') ? createZoneMap({ geo, lakes: lakesDoc, surfaces: surfacesCut }) : null;
-      furniture = createStreetFurniture(scene, doc, { groundHeight: traffic?.surfaces?.groundHeight || null, place: zones ? (d) => placeFurniture(d, { zones, geo }) : null, lakeDistance: lakes?.lakeDistance || null });
+      furniture = createStreetFurniture(scene, doc, { treeDate, groundHeight: traffic?.surfaces?.groundHeight || null, place: zones ? (d) => placeFurniture(d, { zones, geo }) : null, lakeDistance: lakes?.lakeDistance || null });
       markInit(`furniture(${furniture.plan.trees.length} trees, ${furniture.plan.lamps.length} lamps, ${furniture.plan.cars.length} cars${furniture.plan.report ? `, ${furniture.plan.report.dropped.length} dropped` : ''})`);
     }
   }

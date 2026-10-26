@@ -13,7 +13,7 @@
 // Frame: x east, z south; `yaw` is the direction an item faces: model +z -> (sin yaw, cos yaw).
 
 import { carriagewayWidth, movingHalfWidth } from './road-width-cph.js';
-import { hash2 } from './street-furniture-data.js';
+import { hash2, treeDimensions } from './street-furniture-data.js';
 
 const VEHICULAR = new Set(['primary', 'secondary', 'residential', 'service']);
 const CAR = { w: 1.95, d: 4.7, slack: 0.3 }; // the parked-car box (a sedan is 1.9 x 4.6, an SUV 1.95 x 4.7; +0.3 m of slack along the row)
@@ -371,8 +371,7 @@ export function placeFurniture(doc, { zones, geo }) {
   // ---------------------------------------------------------------------------------------- 4. trees
   const trees = [];
   for (const t of doc.trees || []) {
-    const h = Math.max(2.5, Math.min(40, t.height || 8));
-    const rx = Math.max(0.9, Math.min(h * 0.75, t.crown_radius || h * 0.35));
+    const { height: h, crownRadius: rx } = treeDimensions(t);
     const base = Math.max(1.4, h * 0.3);
     const test = (x, z) => {
       if (zones.cover(x, z, 0, 0.4 + MARGIN, 0.4 + MARGIN).solid > 0) return false; // a trunk must clear the kerb and the quay

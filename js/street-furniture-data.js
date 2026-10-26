@@ -102,12 +102,20 @@ export const TREE_STYLES = {
 
 export const treeStyle = (genus) => TREE_STYLES[genus] || TREE_STYLES.generic;
 
+/** Height and crown radius are independent measurements, including low, broad crowns. */
+export function treeDimensions(tree) {
+  const height = Number.isFinite(tree.height) && tree.height > 0 ? Math.max(2, Math.min(40, tree.height)) : 8;
+  const crownRadius = Number.isFinite(tree.crown_radius) && tree.crown_radius > 0
+    ? Math.max(0.5, Math.min(30, tree.crown_radius)) : height * 0.35;
+  return { height, crownRadius };
+}
+
 /** Crown geometry of one real tree in metres: where it starts, its centre and radii. */
 export function crownOf(height, crownRadius, style) {
-  const base = Math.max(1.4, height * style.base);
+  const base = Math.min(height * 0.65, Math.max(0.5, height * style.base));
   const top = height * 0.98;
-  const ry = Math.max(0.8, (top - base) / 2);
-  return { base, cy: base + ry, ry, rx: Math.max(0.8, crownRadius) };
+  const ry = Math.max(0.1, (top - base) / 2);
+  return { base, cy: base + ry, ry, rx: crownRadius };
 }
 
 export function mapTrees(trees, groundHeight, { resolve = null } = {}) {
@@ -117,8 +125,7 @@ export function mapTrees(trees, groundHeight, { resolve = null } = {}) {
     const r = resolve ? resolve(t) : null;
     const genus = r ? r.genus : t.genus;
     const style = treeStyle(genus);
-    const h = Math.max(2.5, Math.min(40, t.height || 8));
-    const rx = Math.max(0.9, Math.min(h * 0.75, t.crown_radius || h * 0.35));
+    const { height: h, crownRadius: rx } = treeDimensions(t);
     const y = groundHeight ? groundHeight.heightAt(t.x, t.z) : 0;
     const j = hash2(t.x, t.z, 7);
     const crown = crownOf(h, rx, style);
@@ -126,6 +133,8 @@ export function mapTrees(trees, groundHeight, { resolve = null } = {}) {
       cx: t.x, cz: t.z, x: t.x, y, z: t.z, genus: genus in TREE_STYLES ? genus : 'generic', genusSource: r ? r.source : 'recorded', species: t.species ?? null, height: h, crownR: rx, crown,
       // reference-tree scale: y by height, xz by crown width against the reference crown
       sy: h / REF_H, sxz: rx / (style.width * REF_H),
+      baselineGenus: (resolve ? resolve({ ...t, ...(t.canopy_original || {}) }).genus : t.genus) || 'generic',
+      canopyAdded: !!t.canopy_added, litterPoints: t.litter_points || [], litterOrigin: t.litter_origin || [t.x, t.z],
       yaw: j * Math.PI * 2, tint: 0.88 + hash2(t.x, t.z, 11) * 0.24, age: t.age ?? null
     });
   }
