@@ -233,6 +233,30 @@ const granite = Fn(([u, v, seed, wp]) => {
   return vec4(c.mul(float(1.0).sub(joint.mul(0.45))), 0.78);
 });
 
+// ---- grass -------------------------------------------------------------------------------------------------------
+// One colour field for the lawn: the ground polygons and the tufts of js/grass-cph.js both read it at the world position,
+// so the blades grow out of ground of exactly their own colour. Mown parkland: large soft patches (sun, shade, wear), a
+// slow dry-to-lush drift, broad mowing bands, a little clover.
+export const grassColour = Fn(([wp]) => {
+  const patch = noise2D(wp.mul(0.11)).mul(0.55).add(noise2D(wp.mul(0.43).add(vec2(9.1, 3.3))).mul(0.45));
+  const lush = srgb(64, 98, 38);
+  const mid = srgb(88, 120, 48);
+  const dry = srgb(128, 134, 70);
+  let c = mix(lush, mid, smoothstep(0.25, 0.6, patch));
+  c = mix(c, dry, smoothstep(0.62, 0.9, noise2D(wp.mul(0.05).add(vec2(41.0, 7.0)))).mul(0.65));
+  const band = sin(wp.x.mul(1.9).add(wp.y.mul(0.7)).add(noise2D(wp.mul(0.2)).mul(5.0))).mul(0.5).add(0.5);
+  c = c.mul(float(0.94).add(band.mul(0.1)));
+  const clover = smoothstep(0.7, 0.8, noise2D(wp.mul(0.9).add(vec2(2.0, 5.0))));
+  return mix(c, srgb(78, 122, 62), clover.mul(0.35));
+});
+
+const grassGround = Fn(([u, v, seed, wp]) => {
+  const fpw = length(vec2(fwidth(wp.x), fwidth(wp.y)));
+  const fine = float(1.0).sub(smoothstep(0.02, 0.25, fpw)); // blade-scale grain fades out before it can shimmer
+  const grain = noise2D(wp.mul(70.0)).sub(0.5).mul(0.2).add(noise2D(wp.mul(17.0)).sub(0.5).mul(0.14)).mul(fine);
+  return vec4(grassColour(wp).mul(float(0.82).add(grain)), 0.96);
+});
+
 const paintFn = (colour, rough) => Fn(([u, v, seed, wp]) => {
   const fpw = length(vec2(fwidth(wp.x), fwidth(wp.y)));
   const fine = float(1.0).sub(smoothstep(0.02, 0.2, fpw));
@@ -274,6 +298,7 @@ export function createRoadSurfaceMaterials() {
       cobbles: pavement(stoneField(0.14, 0.07, vec3(1.0, 0.97, 0.92))),
       setts: pavement(stoneField(0.1, 0.05, vec3(1.0))),
       gravel: pavement(gravel),
+      grass: make(grassGround, { withSeed: true, polygonOffset: -2 }),
       other: pavement(concrete),
       asphalt_road: make(asphaltFn({ base: srgb(66, 67, 70), tracks: 0, patchRate: 0.05, wear: 0 }), { withSeed: true, polygonOffset: -1 })
     }

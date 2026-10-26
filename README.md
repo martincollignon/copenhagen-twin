@@ -56,6 +56,19 @@ The twin renders Københavnerfortov (slab rows with a sett line between, paralle
 and setts procedurally (`js/surface-materials-cph.js`); pavements are the Københavnerfortov unless the register or a
 plaza-sized polygon says otherwise. Without the file the twin still boots (pavements and lane paint only).
 
+`data/cph-vegetation.json` (lawns and planting) is measured, not taken from a register: the colour-infrared orthophoto gives
+NDVI and the DHM point cloud gives what stands above the ground (class 5 crowns, class 3/4 shrubs); the ground under park
+crowns is lawn by the KK park register. The twin appends these polygons to the surfaces as `grass` ground and grows tufts
+on them around the camera (`js/grass-cph.js`: one instanced draw call, 49 tiles of 8 m refilled as you move, wind and
+fade in the shader; `?debug=nograss` switches both off). Method, thresholds and QA: `tools/cph-geodata/vegetation.py`.
+
+```sh
+python3 tools/cph-geodata/vegetation_rasters.py   # DHM Punktsky class counts at 1 m (pdal; tiles from tools/lod2/fetch.py)
+uv run tools/cph-geodata/vegetation_cir.py        # CIR orthophoto -> NDVI (Dataforsyningen token from ADC `gsearch-token`)
+uv run tools/cph-geodata/vegetation.py
+uv run --with playwright python tools/shoot-grass.py   # shots and cost into docs/grass/
+```
+
 `data/cph-furniture.json` (street furniture, M4) is another separate generated file:
 
 ```sh
