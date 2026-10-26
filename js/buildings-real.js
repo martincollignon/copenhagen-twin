@@ -9,6 +9,7 @@ import { describeAppearance, texturedWalls } from './appearance.js';
 import { createPhotoMaterial } from './facade-photo-material.js';
 import { PHOTO, selectPhotoSet, texRequested, lookFile } from './facade-lod.js';
 import { createContext as createGroundContext } from './groundfloor.js';
+import { createEntranceIndex, createDoorAccumulator, addDoors } from './entrances.js';
 import { CPH_FRAME, toLocal } from './city-config.js';
 
 // js/buildings-real.js
@@ -23,6 +24,7 @@ const LEAF_CAPACITY = 48;
 const LEAF_DEPTH = 5;
 const TEX_DIR = './data/tex';
 const GROUNDFLOOR_URL = './data/cph-groundfloor.json';
+const ENTRANCES_URL = './data/cph-entrances.json';
 const PHOTO_MAX_FAILURES = 3; // consecutive failed loads before photo mode switches itself off (no 404 spam)
 
 function toBufferGeometry(wall) {
@@ -37,6 +39,20 @@ function toBufferGeometry(wall) {
   g.setIndex(new THREE.BufferAttribute(new Uint32Array(wall.index), 1));
   g.computeBoundingSphere();
   return g;
+}
+
+function makeDoorMesh(doorAcc, material) {
+  if (!doorAcc.index.length) return null;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(doorAcc.position, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(doorAcc.normal, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(doorAcc.color, 3));
+  g.setIndex(new THREE.BufferAttribute(new Uint32Array(doorAcc.index), 1));
+  g.computeBoundingSphere();
+  const mesh = new THREE.Mesh(g, material);
+  mesh.castShadow = mesh.receiveShadow = true;
+  mesh.name = 'entrance-doors';
+  return mesh;
 }
 
 function roofGeometry(roof) {
@@ -194,6 +210,7 @@ function createInfoPanel() {
         info.roofSource ? row('Roof geometry', e(info.roofSource), info.roofSource.startsWith('LoD2') ? 'measured' : 'inferred') : '',
         row('Wall', e(info.wallMaterial), c.wall_material),
         row('Facade', `floor ${e(f.floor_h)} m, bay ${e(f.bay_w)} m, ${e(f.ground_type)}`, c.facade ?? 'inferred'),
+        info.doors ? row('Entrances', info.doors.source === 'dar' ? `${info.doors.count} from DAR adgangspunkt` : info.doors.source === 'heuristic' ? `${info.doors.count} street door${info.doors.count === 1 ? '' : 's'}, placed by heuristic` : 'none', info.doors.conf) : '',
         row('Record', e(info.conf)),
         `<div style="margin-top:6px;opacity:.55;font-size:10px;word-break:break-all">${e((info.src || []).join(', '))}</div>`
       ].join('');
@@ -319,7 +336,18 @@ async function loadVenues(fetchImpl = globalThis.fetch) {
   }
 }
 
-async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoPanel = true, lod2 = null, tex = texRequested(), observed = true, terrain = null, venues = null } = {}) {
+/** Real entrances (data/cph-entrances.json, tools/cph-geodata/entrances.py); optional: without it every door is the heuristic one. */
+async function loadEntrances(fetchImpl = globalThis.fetch) {
+  try {
+    const response = await fetchImpl(ENTRANCES_URL);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoPanel = true, lod2 = null, tex = texRequested(), observed = true, terrain = null, venues = null, entrances = undefined } = {}) {
   const buildings = geo.buildings || [];
   const heroIds = new Set((geo.heroes || []).map((h) => h.building_id));
   const byId = new Map(buildings.map((b) => [b.id, b]));
@@ -345,7 +373,12 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
   roofMaterial.metalnessNode = attribute('roofMat', 'vec2').y;
 
   // Ground-floor kinds per wall: street side from the road network, party walls from neighbouring footprints, shops from venue data
-  const ground = createGroundContext({ roads: geo.roads || [], buildings, venues: venues ?? (await loadVenues()) });
+  const entranceDoc = entrances === undefined ? await loadEntrances() : entrances;
+  const ground = createGroundContext({ roads: geo.roads || [], buildings, venues: venues ?? (await loadVenues()), entrances: entranceDoc ? createEntranceIndex(entranceDoc) : null });
+  let doorCount = 0;
+  const doorInfo = new Map(); // building id -> { source: 'dar' | 'heuristic' | 'none', count, conf } for the info panel
+  const doorMaterial = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.05 });
+  doorMaterial.name = 'cph-entrance-doors';
   const leaves = [];
   const pickables = [];
   const glassAcc = createAccumulator();
@@ -367,11 +400,14 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
   const leafNodes = collectLeaves(tree);
   for (const leaf of leafNodes) {
     const acc = createAccumulator();
+    const doorAcc = createDoorAccumulator();
     for (const { b } of leaf.items) {
       const glassy = b.wall_material === 'glas';
       const quads = tex && observed && !glassy && b.observed?.atlas?.walls?.length ? [] : null;
       const added = addBuilding(acc, b, { ground, ...(glassy ? { wallAcc: glassAcc } : {}), ...(lod2Records.has(b.id) ? { lod2: lod2Records.get(b.id) } : {}), ...(quads ? { quads } : {}), ...(observed ? {} : { observed: false }), ...(terrain ? { terrain } : {}) });
       if (added) triangles += added.wallTriangles + added.roofTriangles;
+      if (added?.doorInfo) doorInfo.set(b.id, added.doorInfo);
+      if (added?.doors?.length) doorCount += addDoors(doorAcc, added.doors, { ground: b.ground, heightAt: terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null });
       if (added && quads) {
         const walls = texturedWalls(b, quads, added.mapping);
         if (walls) {
@@ -398,6 +434,8 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
       group.add(roofMesh);
       pickables.push(roofMesh);
     }
+    const doorMesh = makeDoorMesh(doorAcc, doorMaterial);
+    if (doorMesh) group.add(doorMesh);
     const bounds = leaf.bounds;
     group.userData.centre = [(bounds.minX + bounds.maxX) / 2, (bounds.minZ + bounds.maxZ) / 2];
     group.userData.radius = Math.hypot(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ) / 2;
@@ -428,8 +466,13 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
       if (b) heroIds.delete(hero.building_id);
       if (b) {
         const acc = createAccumulator();
-        addBuilding(acc, b, terrain ? { terrain } : {});
+        const added = addBuilding(acc, b, { ground, ...(terrain ? { terrain } : {}) });
+        if (added?.doorInfo) doorInfo.set(b.id, added.doorInfo);
+        const heroDoors = createDoorAccumulator();
+        if (added?.doors?.length) doorCount += addDoors(heroDoors, added.doors, { ground: b.ground, heightAt: terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null });
         const group = new THREE.Group();
+        const heroDoorMesh = makeDoorMesh(heroDoors, doorMaterial);
+        if (heroDoorMesh) group.add(heroDoorMesh);
         const wm = new THREE.Mesh(toBufferGeometry(acc.wall), masonry);
         wm.userData.ranges = acc.wallRanges;
         const rm = new THREE.Mesh(roofGeometry(acc.roof), roofMaterial);
@@ -481,6 +524,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     const b = byId.get(id);
     if (!b || !panel) return null;
     const info = describeBuilding(b, lod2?.entry(id));
+    info.doors = doorInfo.get(id) || null;
     info.appearance = describeAppearance(b, hit?.surface || 'wall', hit?.point || null, { textured: !!texManager?.state.resident.has(id) });
     panel.show(info, isPinned);
     return info;
@@ -513,7 +557,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
 
   const stats = {
     tex: texManager ? { candidates: texCandidates.length } : null,
-    buildings: buildings.length - heroIds.size, heroes: heroStatus, cells: leaves.length, triangles, lod2: lod2Records.size,
+    buildings: buildings.length - heroIds.size, heroes: heroStatus, cells: leaves.length, triangles, doors: doorCount, lod2: lod2Records.size,
     meshes: pickables.length + heroGroups.reduce((n, g) => n + g.children[0].children.length, 0)
   };
 

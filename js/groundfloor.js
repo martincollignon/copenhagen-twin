@@ -7,6 +7,8 @@
 //   lotLine   party wall: most of the wall abuts another building's footprint (blank)
 // Outbuildings the facade preset marks `blank` stay windowless. The kinds are the WALL_KINDS the facade shader reads.
 
+import { placeDoors } from './entrances.js';
+
 const KIND = { shop: 0, entry: 1, rear: 2, lotLine: 3, blank: 4 };
 const CELL = 24;
 const STREET_REACH = 14; // m from the wall to the kerb-side road edge for a wall to count as street-facing
@@ -38,9 +40,10 @@ function closestOnSegment(px, pz, x0, z0, x1, z1) {
 }
 
 /**
- * Spatial context: `roads` [{ pts, width, class }] (flat x, z), `buildings` (geodata, any ring), `venues` [{ x, z, kind }].
+ * Spatial context: `roads` [{ pts, width, class }] (flat x, z), `buildings` (geodata, any ring), `venues` [{ x, z, kind }],
+ * `entrances` (optional, js/entrances.js createEntranceIndex: building id -> real DAR entrances).
  */
-function createContext({ roads = [], buildings = [], venues = [] } = {}) {
+function createContext({ roads = [], buildings = [], venues = [], entrances = null } = {}) {
   const roadSegs = new Map();
   for (const r of roads) {
     if (ROAD_SKIP.has(r.class) || (r.class === 'footway' && !r.name) || !r.pts || r.pts.length < 4) continue; // unnamed footways are courtyard paths
@@ -64,7 +67,7 @@ function createContext({ roads = [], buildings = [], venues = [] } = {}) {
   }
   const venueGrid = new Map();
   for (const v of venues) addTo(venueGrid, key(v.x, v.z), v);
-  return { roadSegs, edges, venueGrid };
+  return { roadSegs, edges, venueGrid, entrances };
 }
 
 /** True when a road lies in front of the wall (midpoint m, outward normal n) within STREET_REACH of its kerb. */
@@ -125,8 +128,11 @@ function venuesAtWall(ctx, x0, z0, x1, z1, nx, nz) {
 }
 
 /**
- * Per cleaned edge (flat over `rings` [[x, z], ...], in addBuilding's order): { kind, venues, conf }. `conf` is
+ * Per cleaned edge (flat over `rings` [[x, z], ...], in addBuilding's order): { kind, venues, conf, doorless }. `conf` is
  * `observed` (venue data), `inferred` (BBR use / preset) or `data` (street + footprint geometry only).
+ * `doorless` is true when the building has real entrance data (ctx.entrances): the shader's heuristic street door is then
+ * off on every `entry` wall, and on a shop wall that carries a real entrance; the real doors are built from the data
+ * (js/entrances.js) exactly where the adgangspunkt is. A building without entrance data keeps the heuristic door.
  */
 function classifyWalls(b, rings, ctx) {
   const preset = b.facade?.ground_type;
@@ -148,7 +154,22 @@ function classifyWalls(b, rings, ctx) {
       else out.push({ kind: KIND.entry, venues: [], conf: 'data' });
     }
   }
+  const placed = ctx.entrances?.has(b.id) ? placeDoors(b, rings, ctx.entrances.get(b.id)) : [];
+  if (placed.length) {
+    const hosts = new Set(placed.map((d) => d.edgeNo));
+    out.forEach((w, i) => { w.doorless = w.kind === KIND.entry || (w.kind === KIND.shop && hosts.has(i)); });
+  }
   return out;
 }
 
-export { KIND, createContext, classifyWalls, facesStreet, partyFraction, venuesAtWall, SHOP_USE };
+/** What the info panel says about a building's doors: { source: 'dar' | 'heuristic' | 'none', count, conf }. */
+function doorSummary(walls, doors) {
+  if (doors?.length) {
+    const confs = doors.map((d) => d.conf);
+    return { source: 'dar', count: doors.length, conf: confs.includes('measured') ? 'measured' : confs.includes('observed') ? 'observed' : 'inferred', confs };
+  }
+  const heuristic = walls.filter((w) => w.kind === KIND.entry || w.kind === KIND.shop).length;
+  return { source: heuristic ? 'heuristic' : 'none', count: heuristic, conf: 'inferred', confs: [] };
+}
+
+export { KIND, createContext, classifyWalls, doorSummary, facesStreet, partyFraction, venuesAtWall, SHOP_USE };
