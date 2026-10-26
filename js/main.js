@@ -71,11 +71,26 @@ async function initApp() {
   }
 
   // 3. Build the city from the Copenhagen geodata
+  // Tile streaming: `?stream=<near radius in m>` overrides the default rings (near 750 m, mid 2500 m, js/tile-rings.js); the city
+  // streams in around where the player was last seen (or the start point)
+  const streamParam = Number(query.get('stream'));
+  const streamMid = Number(query.get('streammid')); // optional: the mid ring radius (default 10/3 of the near radius)
+  let start = { x: 0, z: 0 };
+  try {
+    const saved = JSON.parse(localStorage.getItem('cph-player-state'));
+    const p = saved?.version === 1 ? saved.entities?.[saved.activeMode] : null;
+    if (p && Number.isFinite(p.x) && Number.isFinite(p.z)) start = { x: p.x, z: p.z };
+  } catch { /* no saved position */ }
   const world = await buildWorld(scene, {
     treeDate: lightingSystem.currentSunDateTime,
     markInit,
     debug: new URLSearchParams(location.search).get('debug') || '',
-    water: new URLSearchParams(location.search).get('water') || ''
+    water: new URLSearchParams(location.search).get('water') || '',
+    // meshes created after the boot get the same storage-buffer treatment as the boot-time sweep below
+    adoptMesh: (mesh) => { if (renderer.backend.isWebGPUBackend && mesh.isInstancedMesh) mesh.instanceMatrix = new THREE.StorageInstancedBufferAttribute(mesh.instanceMatrix.array, 16); },
+    tilesUrl: query.get('tiles') || null, // ?tiles=<url of a tile index directory> (default ./data/tiles)
+    stream: Number.isFinite(streamParam) && streamParam > 0 ? { near: streamParam, ...(streamMid > streamParam ? { mid: streamMid } : {}) } : null,
+    start
   });
   const { trafficSystem } = world;
   const allColliders = world.colliders;
@@ -650,7 +665,7 @@ async function initApp() {
   // `?hooks` exposes the running twin to headless checks (tools/cph-m3-check.py): a free camera and the live systems
   if (new URLSearchParams(location.search).has('hooks')) {
     const updateCamera = cameraSystem.update.bind(cameraSystem);
-    Object.assign(globalThis.__twin, { THREE, trafficSystem, freeCam: null, frozen: false });
+    Object.assign(globalThis.__twin, { THREE, trafficSystem, freeCam: null, frozen: false, stream: world.stream || null });
     cameraSystem.update = (dt, time) => {
       updateCamera(dt, time);
       const f = globalThis.__twin.freeCam;

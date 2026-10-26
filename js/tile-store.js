@@ -186,8 +186,8 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
   }
   if (index?.version !== TILE_VERSION || !index.tiles) return null;
 
-  const json = async (url) => {
-    const r = await fetchImpl(url, { cache: 'no-cache' });
+  const json = async (url, signal) => {
+    const r = await fetchImpl(url, { cache: 'no-cache', ...(signal ? { signal } : {}) });
     if (!r.ok) throw new Error(`HTTP ${r.status} ${url}`);
     return r.json();
   };
@@ -219,6 +219,10 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
     const r = await fetchImpl(`${baseUrl}/${tid}/lod2.bin`);
     return r.ok ? r.arrayBuffer() : null;
   };
+  // The streamer (js/tile-streamer.js) keeps the payloads itself: one layer per request, abortable, never cached here.
+  const hasLayer = (tid, name) => !!index.tiles[tid]?.layers?.[name];
+  const fetchLayer = (tid, name, signal) => (hasLayer(tid, name) ? json(`${baseUrl}/${tid}/${name}.json`, signal) : Promise.resolve(null));
+  const layerBytes = (tid, name) => index.tiles[tid]?.layers?.[name] || 0;
 
   const ids = Object.keys(index.tiles).sort();
   return {
@@ -228,6 +232,9 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
     loadCity,
     loadTile,
     fetchBin,
+    hasLayer,
+    fetchLayer,
+    layerBytes,
     /** Loads every tile touching a local bbox [xmin, zmin, xmax, zmax] (+ margin m) and assembles the layer documents. */
     async loadArea(bbox, margin = 25) {
       const tileIds = this.tilesForLocalBbox(bbox, margin);
