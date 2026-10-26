@@ -1,12 +1,22 @@
 const assert = require('node:assert/strict');
 const { readFileSync, readdirSync } = require('node:fs');
 const { join } = require('node:path');
+const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 
 const html = readFileSync(join(__dirname, '../index.html'), 'utf8');
 const importMap = html.match(/<script type="importmap">([^]*?)<\/script>/);
 const preloads = [...html.matchAll(/<link rel="modulepreload" href="([^"]+)"\s*\/>/g)];
 const entries = [...html.matchAll(/<script type="module" src="([^"]+)"><\/script>/g)];
+
+test('browser modules parse as ES modules', () => {
+  for (const file of readdirSync(join(__dirname, '../js')).filter((name) => name.endsWith('.js'))) {
+    const source = readFileSync(join(__dirname, '../js', file), 'utf8');
+    // Force module parsing: Node's automatic .js detection can miss duplicate import bindings.
+    const result = spawnSync(process.execPath, ['--input-type=module', '--check'], { input: source, encoding: 'utf8' });
+    assert.equal(result.status, 0, `${file}: ${result.error?.message || result.stderr}`);
+  }
+});
 
 test('module preloads start after the import map and before stylesheets', () => {
   assert.ok(importMap);

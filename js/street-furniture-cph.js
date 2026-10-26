@@ -9,7 +9,7 @@ import { resolveGenus } from './tree-species-cph.js';
 import { alignLakeFurniture } from './lake-furniture-cph.js';
 import { buildPoolWindow, encodePoolWindow, haloSize, lampPhotometry, realIntensity, selectRealLights } from './night-lights-cph.js';
 import { POOL, poolUniforms, setPoolWindow } from './pool-light-cph.js';
-import { Fn, attribute, cameraPosition, cross, float, length, normalize, positionLocal, smoothstep, uniform, uv, vec3, vec4, exp, abs } from 'three/tsl';
+import { Fn, attribute, cameraPosition, cross, float, length, mix, normalize, positionLocal, smoothstep, uniform, uv, vec3, vec4, exp, abs } from 'three/tsl';
 
 // js/street-furniture-cph.js
 // The Copenhagen street furniture (data/cph-furniture.json, see street-furniture-data.js): trees by genus with three
@@ -33,10 +33,11 @@ const lin = (srgb) => new THREE.Color().setRGB(srgb[0], srgb[1], srgb[2], THREE.
 
 /** One InstancedMesh with a write cursor. `paint` (cars): the geometry carries instanced paintColor/carState attributes. */
 class MeshSet {
-  constructor(name, geometry, material, capacity, { colored = false, cast = false, receive = true, paint = false, parent = null } = {}) {
+  constructor(name, geometry, material, capacity, { colored = false, tinted = false, cast = false, receive = true, paint = false, parent = null } = {}) {
     this.name = name;
     this.capacity = Math.max(1, capacity);
     this.paint = paint;
+    this.tinted = tinted;
     if (paint) {
       geometry.setAttribute('paintColor', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3));
       geometry.setAttribute('carState', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 4), 4));
@@ -51,6 +52,10 @@ class MeshSet {
       this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3).fill(1), 3);
     }
     this.colors = this.mesh.instanceColor ? this.mesh.instanceColor.array : null;
+    if (tinted) {
+      geometry.setAttribute('bikePaint', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3).fill(1), 3));
+      this.tints = geometry.attributes.bikePaint.array;
+    } else this.tints = null;
     this.matrices = this.mesh.instanceMatrix.array;
     this.n = 0;
     if (parent) parent.add(this.mesh);
@@ -65,11 +70,22 @@ class MeshSet {
   }
 
   /** Reserves a slot and writes translate * rotateY * scale; returns the slot (or -1 when full). */
-  put(x, y, z, yaw, sx = 1, sy = 1, sz = 1, color = null, paint = null) {
+  put(x, y, z, yaw, sx = 1, sy = 1, sz = 1, color = null, paint = null, lean = 0) {
     if (this.n >= this.capacity) return -1;
     const i = this.n++;
-    composeYaw(this.matrices, i * 16, x, y, z, yaw, sx, sy, sz);
+    if (lean) {
+      const o = i * 16;
+      const c = Math.cos(yaw);
+      const s = Math.sin(yaw);
+      const cl = Math.cos(lean);
+      const sl = Math.sin(lean);
+      this.matrices[o] = c * cl * sx; this.matrices[o + 1] = sl * sx; this.matrices[o + 2] = -s * cl * sx; this.matrices[o + 3] = 0;
+      this.matrices[o + 4] = -c * sl * sy; this.matrices[o + 5] = cl * sy; this.matrices[o + 6] = s * sl * sy; this.matrices[o + 7] = 0;
+      this.matrices[o + 8] = s * sz; this.matrices[o + 9] = 0; this.matrices[o + 10] = c * sz; this.matrices[o + 11] = 0;
+      this.matrices[o + 12] = x; this.matrices[o + 13] = y; this.matrices[o + 14] = z; this.matrices[o + 15] = 1;
+    } else composeYaw(this.matrices, i * 16, x, y, z, yaw, sx, sy, sz);
     if (color && this.colors) this.colors.set(color, i * 3);
+    if (color && this.tints) this.tints.set(color, i * 3);
     if (paint) this.mesh.geometry.attributes.paintColor.array.set(paint, i * 3);
     return i;
   }
@@ -91,6 +107,7 @@ class MeshSet {
     this.mesh.visible = this.mesh.count > 0;
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.colors && this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    if (this.tints) this.mesh.geometry.attributes.bikePaint.needsUpdate = true;
     if (this.paint) {
       this.mesh.geometry.attributes.paintColor.needsUpdate = true;
       this.mesh.geometry.attributes.carState.needsUpdate = true;
@@ -99,6 +116,14 @@ class MeshSet {
 }
 
 const std = (opts = {}) => new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.15, ...opts });
+const bikeMaterial = () => {
+  const mat = new THREE.MeshStandardNodeMaterial({ vertexColors: false, roughness: 0.74, metalness: 0.12 });
+  const base = attribute('color', 'vec3');
+  const tint = attribute('bikePaint', 'vec3');
+  const mask = attribute('frameTint', 'float');
+  mat.colorNode = base.mul(mix(vec3(1), tint, mask));
+  return mat;
+};
 
 function textSprite(text) {
   const canvas = document.createElement('canvas');
@@ -254,7 +279,12 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   const glass = mk('glass-containers', G.buildGlassContainers(), std({ roughness: 0.6, metalness: 0.1 }), count(plan.glass.length, 40), { cast: true });
   const benches = mk('benches', G.buildBench(), std({ roughness: 0.75, metalness: 0.1 }), count(plan.benches.length, 1000), { cast: true });
   const hoops = mk('bike-hoops', G.buildHoop(), std({ roughness: 0.4, metalness: 0.8 }), count(plan.hoops.length, 1800), { cast: false });
-  const bikes = mk('bikes', G.buildBike(), std({ roughness: 0.5, metalness: 0.5 }), count(plan.bikes.length, 1500), { colored: true, cast: true });
+  const bikeVariants = ['city', 'mens', 'city-crate', 'city-childseat', 'cargo-longjohn', 'cargo-trike'];
+  const bikeMat = bikeMaterial();
+  const bikesNear = Object.fromEntries(bikeVariants.map((variant) => [variant, mk(
+    `bikes-${variant}-near`, G.buildBike(variant), bikeMat, count(plan.bikes.length, 1500), { tinted: true, cast: true }
+  )]));
+  const bikesFar = mk('bikes-proxy-far', G.buildBikeProxy(), bikeMat, count(plan.bikes.length, 4500), { tinted: true, cast: false });
   const meters = mk('parking-meters', G.buildMeter(), std({ roughness: 0.5, metalness: 0.3 }), count(plan.meters.length, 100), { cast: true });
   const flags = mk('bus-flags', G.buildFlag(), std({ roughness: 0.5, metalness: 0.3 }), count(plan.flags.length, 100), { cast: true });
   const shelters = mk('bus-shelters', G.buildShelter(), std({ roughness: 0.35, metalness: 0.4 }), count(plan.shelters.length, 100), { cast: true });
@@ -278,7 +308,7 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   const BOLLARD_COLOURS = { galvanised: lin([0.62, 0.65, 0.67]), granite: lin([0.5, 0.49, 0.47]), other: lin([0.34, 0.36, 0.37]) };
   const BOLLARD_GREEN = lin([0.14, 0.26, 0.18]);
   const BOLLARD_GREY = lin([0.42, 0.44, 0.45]);
-  const BIKE_COLOURS = [[0.12, 0.13, 0.15], [0.55, 0.12, 0.1], [0.12, 0.25, 0.45], [0.7, 0.68, 0.62], [0.22, 0.38, 0.28], [0.08, 0.08, 0.09]].map((c) => lin(c));
+  const BIKE_COLOURS = [0x16181a, 0x25282b, 0x191b20, 0x25313d, 0x26352c, 0x505e57, 0x9caeae, 0xb6b3a4, 0xc1bda9, 0xa35d38].map((c) => new THREE.Color(c));
   const colorArr = (c, k = 1) => [c.r * k, c.g * k, c.b * k];
 
   const labelPool = [];
@@ -378,7 +408,14 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     for (const b of small.glass.queryRange(cx, cz, 140)) glass.put(b.x, b.y, b.z, b.yaw);
     for (const b of small.benches.queryRange(cx, cz, 110)) benches.put(b.x, b.y, b.z, b.yaw, (b.length || 1.8) / 1.8, 1, 1);
     for (const b of small.hoops.queryRange(cx, cz, 60)) hoops.put(b.x, b.y, b.z, b.yaw);
-    for (const b of small.bikes.queryRange(cx, cz, 40)) bikes.put(b.x, b.y, b.z, b.yaw, 1, b.size, b.size, colorArr(BIKE_COLOURS[b.hue % BIKE_COLOURS.length]));
+    for (const b of small.bikes.queryRange(cx, cz, 120)) {
+      const d = Math.hypot(b.x - cx, b.z - cz);
+      if (d > 120) continue;
+      const color = colorArr(BIKE_COLOURS[b.hue % BIKE_COLOURS.length]);
+      const variant = bikesNear[b.variant] ? b.variant : 'city';
+      const set = d <= 40 ? bikesNear[variant] : bikesFar;
+      set.put(b.x, b.y, b.z, b.yaw, b.size || 1, b.size || 1, b.size || 1, color, null, b.lean || 0);
+    }
     for (const b of small.meters.queryRange(cx, cz, 110)) meters.put(b.x, b.y, b.z, b.yaw);
     for (const b of small.flags.queryRange(cx, cz, 220)) flags.put(b.x, b.y, b.z, b.yaw);
     for (const b of small.shelters.queryRange(cx, cz, 240)) shelters.put(b.x, b.y, b.z, b.yaw);

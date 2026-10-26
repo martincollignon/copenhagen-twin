@@ -1425,7 +1425,7 @@ class PersonRig {
    * Riding a bicycle: `root` (Object3D) is the bike frame (pose in its parent's space, e.g. the scene), `crank` the
    * pedal crank angle. Seat, bars and bottom bracket in the frame's space (metres, +Z forward).
    */
-  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17, steerAngle = 0, steerPivot = null, upright = 0 }) {
+  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17, steerAngle = 0, steerPivot = null, upright = 0, torsoLean = 0 }) {
     const s = this.s;
     const j = this.bind;
     this.gait = 0;
@@ -1436,7 +1436,7 @@ class PersonRig {
 
     // Riders lift off the saddle and straighten under power; zero upright preserves the seated pose.
     upright = Math.max(0, Math.min(1, upright));
-    qX(_qPelvis, 0.42 - upright * 0.25).premultiply(_qRoot);
+    qX(_qPelvis, 0.42 - upright * 0.25 - torsoLean).premultiply(_qRoot);
     _pelvis.set(0, seat.y + 0.055 * s + 0.14 * upright * s, seat.z + 0.03 + 0.09 * upright);
     toWorld(_pelvis);
     this.writeBone(BONE.PELVIS, _qPelvis, _pelvis);

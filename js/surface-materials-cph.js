@@ -289,6 +289,8 @@ export function createRoadSurfaceMaterials() {
   const cyc = asphaltFn({ base: srgb(47, 48, 52), tracks: 0, patchRate: 0.04, wear: 0 });
   const white = paintFn(srgb(232, 232, 226), 0.62);
   const bluePaint = paintFn(srgb(14, 86, 164), 0.74);
+  const redPaint = paintFn(srgb(139, 64, 47), 0.78);
+  const yellowPaint = paintFn(srgb(194, 164, 73), 0.76);
   const pavement = (fn) => make(fn, { withSeed: true, polygonOffset: -1 });
   return {
     asphalt: make(road),
@@ -296,6 +298,8 @@ export function createRoadSurfaceMaterials() {
     kerb: make(granite),
     paint: make(white, { polygonOffset: -2 }),
     blue: make(bluePaint, { polygonOffset: -3 }),
+    red: make(redPaint, { polygonOffset: -2 }),
+    yellow: make(yellowPaint, { polygonOffset: -2 }),
     ground: {
       kbh_fortov: pavement(fortov),
       raadhus: pavement(raadhus),
