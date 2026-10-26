@@ -353,7 +353,79 @@ class Camera:
 # rasterizer
 
 
+try:  # optional JIT (uv run --with numba): same maths as the numpy loop below, ~100x faster on a citywide mesh
+    import numba as _nb
+
+    @_nb.njit(cache=True)
+    def _raster_nb(X, Y, Q, tris, ids, width, height, idbuf, qbuf):
+        for t in range(tris.shape[0]):
+            i0, i1, i2 = tris[t, 0], tris[t, 1], tris[t, 2]
+            x0, y0, x1, y1, x2, y2 = X[i0], Y[i0], X[i1], Y[i1], X[i2], Y[i2]
+            area = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
+            if abs(area) < 1e-9:
+                continue
+            minx = max(int(np.floor(min(x0, x1, x2))), 0)
+            maxx = min(int(np.floor(max(x0, x1, x2))), width - 1)
+            miny = max(int(np.floor(min(y0, y1, y2))), 0)
+            maxy = min(int(np.floor(max(y0, y1, y2))), height - 1)
+            if minx > maxx or miny > maxy:
+                continue
+            inv = 1.0 / area
+            q0, q1, q2 = Q[i0], Q[i1], Q[i2]
+            for yy in range(miny, maxy + 1):
+                ys = yy + 0.5
+                for xx in range(minx, maxx + 1):
+                    xs = xx + 0.5
+                    b0 = ((x1 - xs) * (y2 - ys) - (x2 - xs) * (y1 - ys)) * inv
+                    b1 = ((x2 - xs) * (y0 - ys) - (x0 - xs) * (y2 - ys)) * inv
+                    b2 = 1.0 - b0 - b1
+                    if b0 >= -1e-6 and b1 >= -1e-6 and b2 >= -1e-6:
+                        qq = b0 * q0 + b1 * q1 + b2 * q2
+                        if qq > qbuf[yy, xx]:
+                            qbuf[yy, xx] = qq
+                            idbuf[yy, xx] = ids[t]
+
+
+    @_nb.njit(cache=True)
+    def _march_nb(arr, x0, z_top, res, start, dirs, ds, tol, top, max_len, oz, blocked):
+        nr, nc = arr.shape
+        for k in range(start.shape[0]):
+            s = 0.0
+            while True:
+                s += ds[k]
+                px = start[k, 0] + dirs[k, 0] * s
+                py = start[k, 1] + dirs[k, 1] * s
+                pz = start[k, 2] + dirs[k, 2] * s
+                c = int(np.floor((px - x0) / res))
+                r = int(np.floor((pz - z_top) / res))
+                if c >= 0 and c < nc and r >= 0 and r < nr:
+                    h = np.float64(arr[r, c]) - oz
+                else:
+                    h = np.float64(np.float32(-50.0)) - oz
+                if h > py + tol:
+                    blocked[k] = True
+                    break
+                if py > top or s > max_len:
+                    break
+
+    HAVE_NUMBA = True
+except ImportError:  # pragma: no cover
+    HAVE_NUMBA = False
+
+
 def rasterize(px, py, q, tris, width, height, tri_ids=None):
+    if HAVE_NUMBA:
+        idbuf = np.full((height, width), -1, dtype=np.int32)
+        qbuf = np.full((height, width), -np.inf, dtype=np.float32)
+        ids = np.arange(len(tris), dtype=np.int64) if tri_ids is None else np.asarray(tri_ids, dtype=np.int64)
+        _raster_nb(np.ascontiguousarray(px, dtype=np.float64), np.ascontiguousarray(py, dtype=np.float64),
+                   np.ascontiguousarray(q, dtype=np.float64), np.ascontiguousarray(tris, dtype=np.int64), ids,
+                   width, height, idbuf, qbuf)
+        return idbuf, qbuf
+    return _rasterize_py(px, py, q, tris, width, height, tri_ids)
+
+
+def _rasterize_py(px, py, q, tris, width, height, tri_ids=None):
     """Z-buffer rasterization. q is linear in screen space, larger = nearer
     (use 1/z for perspective, distance-to-sun for orthographic).
     Returns (id_buffer int32 [-1 = empty], q_buffer float32)."""
@@ -565,6 +637,10 @@ def dsm_march(dsm: DSM, start: np.ndarray, dirs: np.ndarray, tol: float = 0.3, s
     hl = np.hypot(dirs[:, 0], dirs[:, 2])
     ds = np.minimum(step / np.maximum(hl, 1e-3), 0.5)  # 3D step per iteration
     ds = np.maximum(ds, 0.05)
+    if HAVE_NUMBA:
+        _march_nb(dsm.arr, dsm.x0, dsm.z_top, dsm.res, np.ascontiguousarray(start, dtype=np.float64),
+                  np.ascontiguousarray(dirs, dtype=np.float64), ds, tol, dsm.max - ORIGIN[2] + tol, max_len, ORIGIN[2], blocked)
+        return blocked
     active = np.arange(n)
     s = np.zeros(n)
     top = dsm.max - ORIGIN[2] + tol
