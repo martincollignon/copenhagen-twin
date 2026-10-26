@@ -149,6 +149,7 @@ def roofer_inputs(doc: dict, scan_year: int) -> tuple[dict, dict]:
 
 
 def roofer_toml(scan_year: int, workdir: Path) -> str:
+    sys.path.insert(0, str(Path(common.__file__).parent))  # tools/lod2 first: tools/cph-geodata has its own fetch.py
     import prep  # noqa: PLC0415  (the toml the district run uses; paths re-rooted)
     return prep.ROOFER_TOML.format(year=scan_year).replace("/data", str(workdir))
 
@@ -190,10 +191,15 @@ def download_upstream(name: str, dest: Path, key: str, attempts: int = 4) -> boo
     part = dest.with_suffix(".laz.part")
     url = PUNKTSKY_URL.format(key=key, name=name)
     for attempt in range(1, attempts + 1):
+        hdr = part.with_suffix(".hdr")
         p = subprocess.run(["curl", "-sS", "--max-time", "1500", "--speed-limit", "20000", "--speed-time", "60", "-o", str(part),
-                            "-w", "%{http_code}", "-K", "-"], input=f'url = "{url}"\n', capture_output=True, text=True)
+                            "-D", str(hdr), "-w", "%{http_code}", "-K", "-"], input=f'url = "{url}"\n', capture_output=True, text=True)
         status = p.stdout.strip()
-        ok = status == "200" and part.exists() and part.read_bytes()[:4] == b"LASF" and part.stat().st_size > 100_000
+        want = [int(l.split(":", 1)[1]) for l in (hdr.read_text(errors="ignore").splitlines() if hdr.exists() else [])
+                if l.lower().startswith("content-length:")]
+        hdr.unlink(missing_ok=True)
+        ok = (status == "200" and p.returncode == 0 and part.exists() and part.read_bytes()[:4] == b"LASF" and part.stat().st_size > 100_000
+              and (not want or part.stat().st_size == want[-1]))
         if ok:
             os.replace(part, dest)
             return True
@@ -204,6 +210,18 @@ def download_upstream(name: str, dest: Path, key: str, attempts: int = 4) -> boo
             return None
         time.sleep(min(30, 5 * attempt))
     return False
+
+
+def verify_laz(path: Path) -> bool:
+    """Full decode: the points pdal can read must equal the header's count (catches truncated downloads and bad chunk tables;
+    LASF magic + sha256 alone, as in lidar_r2, accept a truncated file)."""
+    try:
+        head = subprocess.run(["pdal", "info", "--summary", str(path)], capture_output=True, text=True, check=True).stdout
+        declared = json.loads(head)["summary"]["num_points"]
+        full = subprocess.run(["pdal", "info", "--stats", "--dimensions", "GpsTime", str(path)], capture_output=True, text=True)
+        return full.returncode == 0 and json.loads(full.stdout)["stats"]["statistic"][0]["count"] == declared
+    except (subprocess.CalledProcessError, KeyError, ValueError, IndexError):
+        return False
 
 
 class Lidar:
@@ -225,20 +243,35 @@ class Lidar:
         dest = self.dir / name
         m = self.m
         entry = self.r2.fetch_tile(dataset=m.DEFAULT_DATASET, release=m.UNKNOWN_RELEASE, tile=name, cache_dir=self.cache_dir)
+        r2_bad = False
         if entry is not None and entry.path:
             os.replace(entry.path, dest)
-            self.sources[tid] = "r2"
-            return dest
+            if verify_laz(dest):
+                self.sources[tid] = "r2"
+                return dest
+            log(f"{name}: the R2 copy does not decode completely; using a fresh upstream download and NOT publishing it")
+            dest.unlink(missing_ok=True)
+            r2_bad = True
         if self.key is None:
             self.key = datafordeler_key()
-        res = download_upstream(name, dest, self.key)
-        if res is None and not required:
-            self.sources[tid] = "absent"
-            return None
-        if res is not True:
-            raise RuntimeError(f"{name}: not in R2 and Datafordeler download {'says it does not exist' if res is None else 'failed'}")
+        for attempt in range(1, 4):
+            res = download_upstream(name, dest, self.key)
+            if res is None and not required:
+                self.sources[tid] = "absent"
+                return None
+            if res is not True:
+                raise RuntimeError(f"{name}: not in R2 and Datafordeler download {'says it does not exist' if res is None else 'failed'}")
+            if verify_laz(dest):
+                break
+            log(f"{name}: download attempt {attempt} does not decode completely")
+            dest.unlink(missing_ok=True)
+        else:
+            raise RuntimeError(f"{name}: upstream download is incomplete after 3 attempts")
+        if r2_bad:
+            self.sources[tid] = "upstream-r2-corrupt"
+            return dest
         self.r2.publish_tile(dest, dataset=m.DEFAULT_DATASET, release=m.UNKNOWN_RELEASE, tile=name,
-                             provenance={"source": "datafordeler_prefetch", "workflow": "cph-twin-roofer"})
+                             provenance={"source": "datafordeler_prefetch", "workflow": "cph-twin-roofer", "verification": ["LASF_magic", "sha256_stream", "pdal_full_decode_count"]})
         self.sources[tid] = "published"
         return dest
 
