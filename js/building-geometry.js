@@ -14,8 +14,9 @@
 import { lod2EdgeTops, lod2RoofTriangles, lod2WallPieces } from './lod2-geometry.js';
 import { mapObservedEdges, roofSurface, observedToneSrgb } from './appearance.js';
 import { facadeStyle, windowStyle } from './facade-style.js';
-import { classifyWalls } from './groundfloor.js';
+import { classifyWalls, doorSummary } from './groundfloor.js';
 import { appendBuildingDetails, selectDetailEdges } from './building-details.js';
+import { placeDoors } from './entrances.js';
 
 const PARAPET_H = 0.45;
 const PARAPET_T = 0.22;
@@ -254,6 +255,7 @@ function addBuilding(acc, b, opts = {}) {
   const rings = [outerPts, ...holePts];
   // Ground-floor treatment per wall (street side + venue data, js/groundfloor.js); without a context the preset kind is used
   const wallKinds = opts.wallKinds || (opts.ground ? classifyWalls(b, rings, opts.ground) : null);
+  const doors = opts.ground?.entrances?.has(b.id) ? placeDoors(b, rings, opts.ground.entrances.get(b.id)) : [];
   const lod2 = opts.lod2 || null;
   const lod = lod2 ? lod2EdgeTops(lod2, b, rings, eave, ground + 1.0) : null;
   const roofTriangles = lod2 ? lod2RoofTriangles(lod2) : [];
@@ -285,7 +287,8 @@ function addBuilding(acc, b, opts = {}) {
       edgeVertices[edgeNo] = base;
       const top = lod ? lod.tops[edgeNo] : eave;
       const wt = edgeTone(edgeNo);
-      const wallKind = wallKinds?.[edgeNo]?.kind ?? kind;
+      // +0.25 marks a wall whose heuristic shader door is off (real entrance data: tsl-materials.js facadeCell reads fract(kind))
+      const wallKind = (wallKinds?.[edgeNo]?.kind ?? kind) + (wallKinds?.[edgeNo]?.doorless ? 0.25 : 0);
       if (opts.quads) opts.quads.push({ edgeNo, p0, p1, top, ground });
       const v0 = bottom - ground;
       const v1 = top - ground;
@@ -365,7 +368,7 @@ function addBuilding(acc, b, opts = {}) {
 
   wallAcc.wallRanges.push({ id: b.id, start: wallStart, end: w.index.length });
   acc.roofRanges.push({ id: b.id, start: roofStart, end: acc.roof.index.length });
-  return { wallTriangles: (w.index.length - wallStart) / 3, roofTriangles: (acc.roof.index.length - roofStart) / 3, detailTriangles, mapping, wallKinds, style, layout: { floorH, groundH, seed: idHash % 997 } };
+  return { wallTriangles: (w.index.length - wallStart) / 3, roofTriangles: (acc.roof.index.length - roofStart) / 3, detailTriangles, mapping, wallKinds, style, layout: { floorH, groundH, seed: idHash % 997 }, doors, doorInfo: wallKinds ? doorSummary(wallKinds, doors) : null };
 }
 
 /** The roofer roof surfaces with flat per-triangle normals (a pitched roof is faceted). */
