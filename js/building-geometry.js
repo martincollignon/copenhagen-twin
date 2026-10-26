@@ -4,13 +4,16 @@
 // frame the wallAttr facade shaders read (tsl-materials.js facadeCell):
 //   facadeUV   (u, v)       metres along the wall from its start, metres above the building's ground
 //   facadeWall (len, floor_h, ground_floor_h, bay_w)
-//   facadeBldg (hash 0..1, WALL_KINDS of the ground floor, inferred flag, integer seed)
+//   facadeBldg (hash 0..1, WALL_KINDS of the ground floor, style code = material + 4 * era, integer seed)
+//   facadeTop  metres from the ground to the top of the wall (cornice placement)
 //   facadeTone (r, g, b linear, window width / bay width)
 // Frame (docs/cph-geodata-schema.md): x east, z south, y up. Rings are CCW seen from above (in x / -z), holes CW, so
 // the outward normal of the wall p0 -> p1 (direction d) is (-d.z, 0, d.x) and u grows along d.
 // With a LoD2 record (opts.lod2, js/lod2-geometry.js) the roof is the roofer mesh and each wall ends at its roofer eave.
 import { lod2EdgeTops, lod2RoofTriangles, lod2WallPieces } from './lod2-geometry.js';
-import { mapObservedEdges, roofSurface } from './appearance.js';
+import { mapObservedEdges, roofSurface, observedToneSrgb } from './appearance.js';
+import { facadeStyle } from './facade-style.js';
+import { classifyWalls } from './groundfloor.js';
 
 const PARAPET_H = 0.45;
 const PARAPET_T = 0.22;
@@ -183,7 +186,7 @@ function pointInRing(x, y, ring) {
 // Accumulator: wall and roof arrays shared by every building of a streaming cell.
 // ---------------------------------------------------------------------------------------------------------------
 function createAccumulator() {
-  const wall = { position: [], normal: [], facadeUV: [], facadeWall: [], facadeBldg: [], facadeTone: [], index: [] };
+  const wall = { position: [], normal: [], facadeUV: [], facadeWall: [], facadeBldg: [], facadeTone: [], facadeTop: [], index: [] };
   const roof = { position: [], normal: [], color: [], mat: [], index: [] };
   return { wall, roof, wallRanges: [], roofRanges: [] };
 }
@@ -231,7 +234,9 @@ function addBuilding(acc, b, opts = {}) {
   const tone = (f.tone || [0.7, 0.65, 0.58]).map(srgbToLinear);
   const idHash = hashString(String(b.id));
   const kind = WALL_KIND[f.ground_type] ?? 1;
-  const inferred = b.conf_fields?.facade === 'inferred' || f.conf === 'inferred' ? 1 : 0;
+  // facadeBldg.z carries the style code (js/facade-style.js: material + era), not the old inferred flag
+  const style = facadeStyle(b, observedToneSrgb(b) || (f.tone || null));
+  const styleCode = style.code;
   const roofColour = roofColourFor(b, opts.observed !== false);
 
   const wallStart = wallAcc.wall.index.length;
@@ -239,6 +244,8 @@ function addBuilding(acc, b, opts = {}) {
   const w = wallAcc.wall;
 
   const rings = [outerPts, ...holePts];
+  // Ground-floor treatment per wall (street side + venue data, js/groundfloor.js); without a context the preset kind is used
+  const wallKinds = opts.wallKinds || (opts.ground ? classifyWalls(b, rings, opts.ground) : null);
   const lod2 = opts.lod2 || null;
   const lod = lod2 ? lod2EdgeTops(lod2, b, rings, eave, ground + 1.0) : null;
   // Observed wall tone per cleaned edge (ring/edge keyed in the data, matched by geometry); `opts.observed === false` keeps the preset
@@ -260,6 +267,7 @@ function addBuilding(acc, b, opts = {}) {
       const base = w.position.length / 3;
       const top = lod ? lod.tops[edgeNo] : eave;
       const wt = edgeTone(edgeNo);
+      const wallKind = wallKinds?.[edgeNo]?.kind ?? kind;
       if (opts.quads) opts.quads.push({ edgeNo, p0, p1, top, ground });
       const v0 = bottom - ground;
       const v1 = top - ground;
@@ -269,8 +277,9 @@ function addBuilding(acc, b, opts = {}) {
         w.normal.push(nx, 0, nz);
         w.facadeUV.push(u, v);
         w.facadeWall.push(len, floorH, groundH, bayW);
-        w.facadeBldg.push((idHash % 1000) / 1000, kind, inferred, idHash % 997);
+        w.facadeBldg.push((idHash % 1000) / 1000, wallKind, styleCode, idHash % 997);
         w.facadeTone.push(wt[0], wt[1], wt[2], Math.min(Math.max(windowW / bayW, 0.12), 0.85));
+        w.facadeTop.push(v1);
       }
       w.index.push(base, base + 1, base + 2, base, base + 2, base + 3);
     }
@@ -303,7 +312,8 @@ function addBuilding(acc, b, opts = {}) {
         w.normal.push(fx, fy, fz);
         w.facadeUV.push((q[0] - org[0]) * tx + (q[2] - org[1]) * tz, q[1] - ground);
         w.facadeWall.push(e0 ? Math.hypot(dxw, dzw) : 10, floorH, groundH, bayW);
-        w.facadeBldg.push((idHash % 1000) / 1000, WALL_KIND.blank, inferred, idHash % 997);
+        w.facadeBldg.push((idHash % 1000) / 1000, WALL_KIND.blank, styleCode, idHash % 997);
+        w.facadeTop.push(1e4); // roofer gables / step walls: no cornice
         const pt = edge >= 0 ? edgeTone(edge) : buildingTone;
         w.facadeTone.push(pt[0], pt[1], pt[2], Math.min(Math.max(windowW / bayW, 0.12), 0.85));
       }
@@ -316,7 +326,7 @@ function addBuilding(acc, b, opts = {}) {
 
   wallAcc.wallRanges.push({ id: b.id, start: wallStart, end: w.index.length });
   acc.roofRanges.push({ id: b.id, start: roofStart, end: acc.roof.index.length });
-  return { wallTriangles: (w.index.length - wallStart) / 3, roofTriangles: (acc.roof.index.length - roofStart) / 3, mapping };
+  return { wallTriangles: (w.index.length - wallStart) / 3, roofTriangles: (acc.roof.index.length - roofStart) / 3, mapping, wallKinds, style };
 }
 
 /** The roofer roof surfaces with flat per-triangle normals (a pitched roof is faceted). */
