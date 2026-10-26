@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { openTileStore, assembleArea, createTileLod2 } from '../js/tile-store.js';
 import { decodeGrid, createTerrain } from '../js/terrain-cph.js';
 import { CPH_FRAME } from '../js/city-config.js';
+import { ROOT, TILES_URL, isDistrict } from './helpers/district-tiles.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (f) => JSON.parse(fs.readFileSync(path.join(ROOT, f), 'utf8'));
 const fileFetch = async (url) => {
   const p = path.join(ROOT, String(url).replace(/^\.\//, '').replace(/\/[^/]+\/\.\.\//, '/'));
@@ -42,9 +42,9 @@ test('tile LoD2 serves records lazily from the owning tile', async () => {
   assert.equal(lod2.entry('x').conf, 'measured');
 });
 
-const haveTiles = fs.existsSync(path.join(ROOT, 'data/tiles/index.json'));
+const haveTiles = isDistrict;
 test('the district assembled from data/tiles equals the monolithic files', { skip: !haveTiles && 'run uv run tools/cph-geodata/tile_split.py first' }, async () => {
-  const store = await openTileStore({ fetchImpl: fileFetch });
+  const store = await openTileStore({ fetchImpl: fileFetch, baseUrl: TILES_URL });
   assert.ok(store);
   const ids = store.tilesForLocalBbox(CPH_FRAME.bbox, 25);
   assert.equal(ids.length, 16);
@@ -70,7 +70,7 @@ test('the district assembled from data/tiles equals the monolithic files', { ski
 
 test('tile LoD2 records equal the 1 km tile records', { skip: !haveTiles && 'run tile_split.py first' }, async () => {
   const { parseLod2Record } = await import('../js/lod2-geometry.js');
-  const store = await openTileStore({ fetchImpl: fileFetch });
+  const store = await openTileStore({ fetchImpl: fileFetch, baseUrl: TILES_URL });
   const set = await store.loadArea(CPH_FRAME.bbox);
   const index = read('data/lod2/index.json');
   let checked = 0;

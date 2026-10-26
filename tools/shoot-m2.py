@@ -731,7 +731,7 @@ try:
                        cyclists: (ts.cyclists || []).length, drawCalls: t.renderer.info.render.drawCalls, location: document.querySelector('#hud-location').textContent }; }""")
             print(json.dumps(info, default=str))
             check('buildings render', bool(info['buildings']) and info['buildings'].get('buildings', 0) > 100)
-            names = page.evaluate("() => globalThis.__twin.world.roadSurfaces.group.children.map((m) => m.name)")
+            names = page.evaluate("() => { const n = new Set(); globalThis.__twin.world.roadSurfaces.group.traverse((o) => { if (o.isMesh) n.add(o.name); }); return [...n]; }")  # streamed city: one child group per tile
             check('M4 ground surfaces built', all(n in names for n in ('ground-kbh_fortov', 'road-kerb', 'road-cycle', 'road-blue', 'road-paint')), ','.join(names))
             check('cars on the road', info['cars'] > 10, str(info['cars']))
             check('buses on the road', info['buses'] > 0, str(info['buses']))

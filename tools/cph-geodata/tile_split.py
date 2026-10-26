@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import shutil
 import sys
 import time
@@ -308,10 +309,11 @@ def write_all(tiles: Tiles, meta, roadgraph, extra, bins, out: Path, city: Path,
     out.mkdir(parents=True)
     city.mkdir(parents=True, exist_ok=True)
     dump = lambda o: json.dumps(o, ensure_ascii=False, separators=(",", ":"))  # noqa: E731
+    rel = lambda name: Path(os.path.relpath((city / f"{name}.json").resolve(), out.resolve())).as_posix()  # noqa: E731  (../city/<name>.json by default)
     index = {"version": VERSION, "generated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "tileSize": frame.TILE_SIZE,
              "frame": {"epsg": 25832, "origin": list(frame.ORIGIN), "axes": "x=east, z=south, y=up", "bbox": list(frame.LOCAL_BBOX)},
-             "city": {"meta": "../city/meta.json", "roadgraph": "../city/roadgraph.json", "streets": "../city/streets.json" if "streets" in extra else None,
-                      "lakes": "../city/lakes.json" if "lakes" in extra else None},
+             "city": {"meta": rel("meta"), "roadgraph": rel("roadgraph"), "streets": rel("streets") if "streets" in extra else None,
+                      "lakes": rel("lakes") if "lakes" in extra else None},
              "tiles": {}}
     for tid in sorted(set(tiles.layers) | set(bins)):
         tdir = out / tid

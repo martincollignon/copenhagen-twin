@@ -84,6 +84,15 @@ The twin loads per-tile layers when `data/tiles/index.json` exists (generated, g
 uv run tools/cph-geodata/tile_split.py   # data/cph-*.json + data/lod2 -> data/tiles/<e500>_<n500>/, data/city/ (format: docs/cph-geodata-schema.md)
 ```
 
+With tiles the engine **streams** (`js/tile-streamer.js`, milestone C2): it keeps the tiles around the camera resident in rings,
+**near** (750 m: buildings with facades, LoD2 roofs and doors, road surfaces, furniture, trees, grass, ground floor) and **mid**
+(2.5 km: buildings and roads), loads nearest first under a concurrency cap, aborts stale requests, and unloads a tile beyond its
+ring + 250 m (disposing its geometries, materials and photo textures). `?stream=<near m>` (and `&streammid=<m>`) shrinks the rings
+so streaming is visible inside the 2 km district; `?tiles=<url>` reads another tile index; `?debug=notiles` is the monolithic
+fallback (whole district built once). With `?hooks`, `__twin.stream.snapshot()` reports resident tiles per ring, loads, unloads,
+aborts and bytes. `uv run --with playwright python tools/shoot-stream.py` flies the district three times at `?stream=300`,
+and checks the console, the unloads and that the JS heap stays flat.
+
 `data/cph-surfaces.json` (ground-material polygons and road markings, M4) is a separate generated file:
 
 ```sh
