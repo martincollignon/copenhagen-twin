@@ -5,3 +5,5 @@ __pycache__/
 data/heroes/
 data/raw/
 data/tex/
+data/raw
+data/tex

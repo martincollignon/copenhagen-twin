@@ -143,8 +143,8 @@ function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
  * Builds the lakes into `scene`. Returns { group, ground, water, material, stats, update, attach, setPlanar }.
  * `ground` is the cut ground mesh (replaces the plain plane); `update(x, z)` gates the planar reflection pass.
  */
-function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -750, 750, 750], planar = true, terrain = null } = {}) {
-  const arrays = buildLakeArrays(doc, { bbox, terrain });
+function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -750, 750, 750], planar = true, terrain = null, modelBridge = () => false } = {}) {
+  const arrays = buildLakeArrays(doc, { bbox, terrain, modelBridge });
   const group = new THREE.Group();
   group.name = 'CopenhagenLakes';
 

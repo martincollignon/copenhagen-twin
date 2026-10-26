@@ -193,7 +193,7 @@ function surfaceArrays(ring, holes, y) {
  *   walls:   lake walls (faces towards the water), granite coping on top, bridge soffits and fascias
  *   ground:  the lakes' extended outlines (holes of the ground plane) and the islands inside them
  */
-export function buildLakeArrays(doc, { bbox = [-750, -750, 750, 750], terrain = null } = {}) {
+export function buildLakeArrays(doc, { bbox = [-750, -750, 750, 750], terrain = null, modelBridge = () => false } = {}) {
   const lakes = doc?.lakes || [];
   const measured = terrain && !terrain.flat ? terrain : null;
   // With terrain every lake sits at its MEASURED water level (the DTM over the lake is the water surface); lakes within
@@ -254,6 +254,12 @@ export function buildLakeArrays(doc, { bbox = [-750, -750, 750, 750], terrain = 
   const bridges = [];
   const soffit = new Arrays();
   for (const b of doc?.bridges || []) {
+    // The hero bridge owns its own arch vault and fascia. Preserve the bridge
+    // record/statistics and all lake cuts/water; suppress only this flat slab.
+    if (modelBridge(b)) {
+      bridges.push(b.id);
+      continue;
+    }
     const { pts, idx } = triangulatePolygon(b.ring);
     const base = soffit.vertexCount;
     // a measured deck height (the DTM along the bridge) replaces the old "deck = road layer, 0.02 above the ground"
