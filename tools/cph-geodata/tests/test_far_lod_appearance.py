@@ -8,7 +8,7 @@ import far_lod as F  # noqa: E402
 def test_summary_used_when_record_has_no_observed():
     app = {"summary": {"wall": [0.5, 0.5, 0.5], "roof": [0.2, 0.3, 0.4]}}
     assert F.wall_tone({}, app) == F.albedo_srgb([0.5, 0.5, 0.5])
-    assert F.roof_tone({}, app) == F.albedo_srgb([0.2, 0.3, 0.4])
+    assert F.roof_tone({}, app) == (0.2, 0.3, 0.4)  # roofs: the observed tone as it is (js/building-geometry.js roofColourFor), walls get the albedo gain
 
 
 def test_falls_back_without_summary():

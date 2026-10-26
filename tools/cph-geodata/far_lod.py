@@ -107,12 +107,14 @@ def wall_tone(b: dict, app: dict | None = None):
 
 
 def roof_tone(b: dict, app: dict | None = None):
+    """Roof tone as the near ring paints it: js/building-geometry.js roofColourFor uses the observed (photographed) sRGB tone as it is,
+    no albedo gain (that is for walls only), then the citywide summary roof, then the BBR roof material."""
     seen = (b.get("observed") or {}).get("roof") or {}
     if seen.get("conf") == "observed" and seen.get("tone") and len(seen["tone"]) == 3:
-        return albedo_srgb(seen["tone"])
+        return tuple(seen["tone"])
     summary = ((app or {}).get("summary") or {}).get("roof")
     if summary and len(summary) == 3:
-        return albedo_srgb([float(c) for c in summary])
+        return tuple(float(c) for c in summary)
     return ROOF_COLOURS.get(b.get("roof_material"), ROOF_DEFAULT)
 
 

@@ -46,7 +46,7 @@ def test_top_height_and_tones():
     b = _building(1, 0, 0, tone=(0.5, 0.5, 0.5))
     assert F.wall_tone(b) == (0.5, 0.5, 0.5)
     b["observed"] = {"walls": [{"conf": "observed", "tone": [0.8, 0.7, 0.6]}, {"conf": "observed", "tone": [0.6, 0.5, 0.4]}, {"conf": "inferred", "tone": [0, 0, 0]}]}
-    assert F.wall_tone(b)[0] in (0.6, 0.7, 0.8)  # the median of the observed walls, the inferred one ignored
+    assert abs(F.wall_tone(b)[0] - F.albedo_srgb([0.7, 0.6, 0.5])[0]) < 1e-9  # the albedo of the median of the observed walls, the inferred one ignored
     assert F.roof_tone({"roof_material": "tegl"}) == F.ROOF_COLOURS["tegl"]
     assert F.roof_tone({"observed": {"roof": {"conf": "observed", "tone": [0.1, 0.2, 0.3]}}}) == (0.1, 0.2, 0.3)
 
