@@ -273,8 +273,10 @@ class LightingSystem {
     this.sunLight = new SunLight(0xffca92, 5.8);
     this.sunLight.position.set(initialSun.x, initialSun.y, initialSun.z);
     this.sunLight.castShadow = true;
-    // 2048x2048 per cascade keeps the two-cascade atlas to 4096x2048. The near cascade spans about 100 m at street level.
-    const tile = 2048;
+    // Keep 3072px cascades on devices that can hold the 6144px-wide shadow atlas; use 2048 otherwise.
+    // The near cascade spans about 100 m at street level (see update).
+    const maxTex = (renderer && renderer.backend && renderer.backend.device && renderer.backend.device.limits.maxTextureDimension2D) || 4096;
+    const tile = maxTex >= 6144 ? 3072 : 2048;
     this.sunLight.shadow.mapSize.set(tile, tile);
     this.sunLight.shadow.camera.near = 0.5;
     this.sunLight.shadow.camera.far = 400;
