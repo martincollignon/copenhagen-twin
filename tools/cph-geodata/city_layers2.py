@@ -313,6 +313,9 @@ def stage_entrances(a, tiles, cells) -> None:
         return
     t0 = time.time()
     BC.ensure_secrets("DATAFORDELER_USERNAME", "DATAFORDELER_PASSWORD", "DATAFORDELER_GRAPHQL_API_KEY")
+    dar_dir, dar_tgz = BC.DATA / "raw" / "dar", BC.DATA / "raw" / "dar.tar.gz"
+    if not dar_dir.exists() and dar_tgz.exists():  # the DAR response cache is kept as one archive (100k small files cost 1.4 GB of blocks)
+        subprocess.run(["tar", "xzf", str(dar_tgz), "-C", str(dar_dir.parent)], check=True)
     import fetch
 
     frame.set_area(BC.city_bbox_utm(tiles))
@@ -366,9 +369,74 @@ def stage_entrances(a, tiles, cells) -> None:
         meta["stairwells"] = orphans
     S.atomic_write(BC.WORK / "meta_parts" / "entrances.json", BC.dump(meta))
     BC.mark_done("entrances", seconds=round(time.time() - t0), tiles=n, entrances=len(doc["entrances"]), buildings=len(blds))
+    if dar_dir.exists():
+        subprocess.run(["tar", "czf", str(dar_tgz), "-C", str(dar_dir.parent), "dar"], check=True)
+        import shutil
+
+        shutil.rmtree(dar_dir)
     log(f"[entrances] {len(doc['entrances'])} entrances in {n} tiles ({time.time() - t0:.0f}s)")
 
 
 def _ring_area(r) -> float:
     n = len(r) // 2
     return abs(sum(r[2 * i] * r[2 * ((i + 1) % n) + 1] - r[2 * ((i + 1) % n)] * r[2 * i + 1] for i in range(n))) / 2
+
+
+# ------------------------------------------------------------------------------------------- cloud job inputs (LoD2)
+
+def stage_cellsinput(a, tiles, cells) -> None:
+    """data/city/cells-input/<cell>.json: for every 1 km LAZ cell the footprints roofer needs (tools/lod2/prep.py's
+    `tile_footprints`: the cell's own buildings plus a 25 m margin of neighbours as LoD1.1 context), without the scan year
+    (known only from the LAZ header): the job sets force_lod11 for buildings whose BBR `yoc` is after the scan year."""
+    import math
+
+    out = BC.CITY_DIR / "cells-input"
+    out.mkdir(parents=True, exist_ok=True)
+    margin = 25.0
+    per: dict[str, list] = {c: [] for c in cells}
+    n_b = 0
+    for tid in sorted(tiles):
+        p = BC.TILES_DIR / tid / "buildings.json"
+        if not p.exists():
+            continue
+        for b in json.loads(p.read_text())["buildings"]:
+            n_b += 1
+            r = b["ring"]
+            if len(r) < 6:
+                continue
+            xs = [r[i] + frame.ORIGIN[0] for i in range(0, len(r), 2)]
+            ys = [-r[i + 1] + frame.ORIGIN[1] for i in range(0, len(r), 2)]
+            ce, cn = sum(xs) / len(xs), sum(ys) / len(ys)
+            for e in range(math.floor((ce - margin) / 1000), math.floor((ce + margin) / 1000) + 1):
+                for n in range(math.floor((cn - margin) / 1000), math.floor((cn + margin) / 1000) + 1):
+                    c = f"{n}_{e}"
+                    if c in per:
+                        e0, n0, e1, n1 = BC.cell_bbox_utm(c)
+                        own = e0 <= ce < e1 and n0 <= cn < n1
+                        if own or (e0 - margin <= ce < e1 + margin and n0 - margin <= cn < n1 + margin):
+                            per[c].append((b, own, tid))
+
+    def ring(flat):
+        pts = [(flat[i] + frame.ORIGIN[0], -flat[i + 1] + frame.ORIGIN[1]) for i in range(0, len(flat), 2)]
+        pts = [[round(x, 3), round(y, 3)] for x, y in pts]
+        return pts + [pts[0]]
+
+    for c, items in per.items():
+        feats = []
+        for b, own, tid in items:
+            coords = [ring(b["ring"])] + [ring(h) for h in b.get("holes", [])]
+            feats.append({"type": "Feature", "geometry": {"type": "Polygon", "coordinates": coords}, "properties": {
+                "id": b["id"].split(":", 1)[-1], "bid": b["id"], "yoc": b["year"] if isinstance(b.get("year"), int) else 0,
+                "ground": round(b["ground"] + frame.ORIGIN[2], 3), "own": own, "tile": tid,
+                "year_conf": (b.get("conf_fields") or {}).get("year", b.get("conf"))}})
+        doc = {"cell": c, "crs": "EPSG:25832", "bounds": list(BC.cell_bbox_utm(c)), "margin_m": margin, "tiles": cells[c],
+               "note": "own=true: centroid in the cell (the roof is reconstructed for it); own=false: 25 m margin context, LoD1.1 only. "
+                       "Set force_lod11 = (not own) or (yoc > scan year of the LAZ) as tools/lod2/prep.py does.",
+               "type": "FeatureCollection", "features": feats}
+        S.atomic_write(out / f"{c}.json", BC.dump(doc))
+    (out / "README.md").write_text(
+        "# Cell inputs for the LoD2 cloud job\n\nOne file per 1 km Punktsky cell (`<N km>_<E km>`, as in `PUNKTSKY_1km_<N>_<E>.laz`), "
+        "EPSG:25832 GeoJSON FeatureCollection in the shape `tools/lod2/prep.py tile_footprints` writes (`properties.id` = GeoDanmark id, "
+        "`yoc` = BBR year, `ground` = DVR90 m) plus `own`, `bid`, `tile`, `year_conf`. Own buildings + 25 m margin of neighbours. "
+        "The scan year comes from the LAZ; `force_lod11 = not own or yoc > scan_year`. Generated by `build_city.py --stage cellsinput`.\n")
+    log(f"[cellsinput] {len(per)} cells, {n_b} buildings -> {out}")

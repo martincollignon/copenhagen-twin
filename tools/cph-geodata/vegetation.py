@@ -72,7 +72,11 @@ def mosaic_classes(tids, e0, n1, shape):
             a, t = read(f"c{k}", tid)
             r0, c0 = int(round(n1 - t.f)), int(round(t.c - e0))
             h, w = a.shape
-            out[k][r0:r0 + h, c0:c0 + w] += a
+            # a neighbouring cell only overlaps the area by its margin: clip both to the common window
+            ra0, ca0 = max(r0, 0), max(c0, 0)
+            ra1, ca1 = min(r0 + h, shape[0]), min(c0 + w, shape[1])
+            if ra1 > ra0 and ca1 > ca0:
+                out[k][ra0:ra1, ca0:ca1] += a[ra0 - r0:ra1 - r0, ca0 - c0:ca1 - c0]
     return out
 
 

@@ -697,6 +697,10 @@ def stage_cells(a, tiles, cells) -> None:
     log(f"[cells] {len(todo)} of {len(cells)} cells to do, {a.workers} workers, {free_gb():.1f} GB free")
     if not todo:
         return
+    if any(not (RAW_CELLS / c / "kk_bygning.json").exists() for c in todo):  # slices are deleted when the city is done (20 s to rebuild)
+        a2 = argparse.Namespace(**vars(a))
+        a2.force_stage = lambda s: s == "buildings0"
+        stage_buildings0(a2, tiles, cells)
     t0 = time.time()
     errors = {}
     import multiprocessing as mp
@@ -804,7 +808,7 @@ def stage_index(a, tiles, cells) -> None:
     log(f"[index] {len(idx_tiles)} tiles, {total / 1e6:.1f} MB; meta.json {(CITY_DIR / 'meta.json').stat().st_size / 1e6:.2f} MB")
 
 
-STAGES = ["fetch", "fetch2", "buildings0", "geo", "cells", "surfaces", "furniture", "groundfloor", "streets", "entrances", "vegetation", "index", "report"]
+STAGES = ["fetch", "fetch2", "buildings0", "geo", "cells", "surfaces", "furniture", "groundfloor", "streets", "entrances", "cellsinput", "vegetation", "index", "report"]
 
 
 def main(argv=None):
@@ -850,7 +854,7 @@ def main(argv=None):
             import city_layers
 
             getattr(city_layers, f"stage_{s}")(a, tiles, cells)
-        elif s in ("entrances", "vegetation"):
+        elif s in ("entrances", "vegetation", "cellsinput"):
             import city_layers2
 
             getattr(city_layers2, f"stage_{s}")(a, tiles, cells)
