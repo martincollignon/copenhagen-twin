@@ -47,7 +47,7 @@ def _parts(geom):
 
 def compile_buildings(kk_bygning: dict, rasters=None, dhm_mod=None):
     """Returns (buildings, stats)."""
-    bb = box(*frame.LOCAL_BBOX)
+    bb = box(*frame.area_local())
     out = []
     stats = {"input_features": 0, "dsm": 0, "kk_eave": 0, "storey_default": 0, "no_bbr": 0}
     for f in kk_bygning["features"]:

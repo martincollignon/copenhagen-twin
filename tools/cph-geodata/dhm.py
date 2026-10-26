@@ -66,7 +66,7 @@ def load_rasters(token: str):
     for key, cov in (("dsm", "dhm_overflade"), ("dtm", "dhm_terraen")):
         paths = []
         for i, j, x0, y0, x1, y1 in _tiles():
-            p = fetch.RAW / f"dhm_{key}_{i}_{j}.tif"
+            p = fetch.cache_dir() / f"dhm_{key}_{i}_{j}.tif"
             if not p.exists():
                 w, h = int(np.ceil((x1 - x0) / RES)), int(np.ceil((y1 - y0) / RES))
                 params = dict(SERVICE="WCS", REQUEST="GetCoverage", VERSION="1.0.0", COVERAGE=cov, FORMAT="GTiff",
@@ -77,7 +77,7 @@ def load_rasters(token: str):
                 r.raise_for_status()
                 if not r.content[:4] in (b"II*\x00", b"MM\x00*"):
                     raise RuntimeError(f"WCS {cov} returned non-TIFF")
-                fetch.RAW.mkdir(parents=True, exist_ok=True)
+                p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_bytes(r.content)
                 print(f"[fetch] dhm:{key} tile {i},{j}", file=sys.stderr)
             paths.append(p)

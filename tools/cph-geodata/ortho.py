@@ -24,19 +24,22 @@ from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import frame  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data" / "raw" / "ortho"
 VEG = ROOT / "data" / "raw" / "veg"
 DOC = ROOT / "docs" / "research" / "realism" / "ortho"
 WMS = "https://api.dataforsyningen.dk/orto_foraar_DAF"
-ORIGIN = (723900.0, 6176500.0)
+ORIGIN = frame.ORIGIN[:2]
 YEAR = 2025
 TILE = 1000  # px per WMS request
 
 # (E0, N0, E1, N1, pixel m). test: Dronning Louises Bro + Peblinge Soe + Blaagaards Plads; district: the playable bbox.
 WINDOWS = {
     "test": (723460, 6176780, 724060, 6177180, 0.10),
-    "district": (723150, 6175750, 724650, 6177250, 0.25),
+    "district": (*frame.DISTRICT_UTM_BBOX, 0.25),
 }
 
 
@@ -471,7 +474,7 @@ def previews(g: Grid, gd: Grid, m, md, trees, blobs_lab, keep, yard):
     c.paste(b, (650, 0))
     save_png(c, "05_zoom_blaagaard_courtyards.png")
     # district overview at 1 m: NDVI-tinted with water + canopy, KK trees as dots
-    dbox = (-750, -750, 750, 750)
+    dbox = frame.area_local()
     base = (gd.rgb.astype("float32") * 0.6).astype("uint8")
     base[md["canopy"]] = (30, 160, 60)
     base[md["low"]] = (150, 220, 120)

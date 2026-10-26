@@ -8,17 +8,19 @@ from __future__ import annotations
 import datetime as dt
 import json
 import math
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "cph-geodata"))
+import frame  # noqa: E402  (the one source of the origin, the district bbox and the tile grid)
 RAW_DIR = ROOT / "data" / "raw" / "lod2"
 WORK_DIR = RAW_DIR / "work"
 OUT_DIR = ROOT / "data" / "lod2"
 GEODATA = ROOT / "data" / "cph-geodata.json"
 
-ORIGIN = (723900.0, 6176500.0, 6.84)
-# District: local +-750 m around the origin, in EPSG:25832
-DISTRICT_BBOX = (ORIGIN[0] - 750, ORIGIN[1] - 750, ORIGIN[0] + 750, ORIGIN[1] + 750)
+ORIGIN = frame.ORIGIN
+DISTRICT_BBOX = frame.DISTRICT_UTM_BBOX  # (minE, minN, maxE, maxN) in EPSG:25832
 MARGIN_M = 25.0  # points are cropped this far outside the tile so cut-off roofs stay whole
 ROOFER_IMAGE = "3dgi/roofer:v1.1.0-beta.1"
 

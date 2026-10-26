@@ -13,7 +13,11 @@ from shapely.strtree import STRtree
 import frame
 
 _T = Transformer.from_crs(4326, 25832, always_xy=True)
-BBOX = box(frame.ORIGIN[0] - 750, frame.ORIGIN[1] - 750, frame.ORIGIN[0] + 750, frame.ORIGIN[1] + 750)
+
+
+def _bbox():
+    """The active area (frame.area_utm()) as a shapely box."""
+    return box(*frame.area_utm())
 
 
 def _pts(geom):
@@ -25,7 +29,7 @@ def _pts(geom):
 
 
 def _inside(p):
-    return BBOX.contains(p)
+    return _bbox().contains(p)
 
 
 def _num(v):
@@ -204,7 +208,7 @@ def osm_polygons(elements, keep):
 def water(osm_wp):
     out = []
     for oid, t, g in osm_polygons(osm_wp.get("elements", []), lambda t: t.get("natural") == "water"):
-        for i, p in enumerate(_polys(g.intersection(BBOX))):
+        for i, p in enumerate(_polys(g.intersection(_bbox()))):
             if p.area < 20:
                 continue
             out.append({"id": oid + (f"#{i}" if i else ""), "name": t.get("name", ""), "ring": _ring(p),
@@ -218,7 +222,7 @@ def parks(kk_parkreg, kk_green, osm_wp):
     for nm, fc, key in (("parkregister", kk_parkreg, "navn_arealer"), ("park_groent_omr_oversigtskort", kk_green, "objekt_type")):
         for f in (fc or {}).get("features", []):
             pr = f["properties"]
-            for i, p in enumerate(_polys(shape(f["geometry"]).buffer(0).intersection(BBOX))):
+            for i, p in enumerate(_polys(shape(f["geometry"]).buffer(0).intersection(_bbox()))):
                 if p.area < 50:
                     continue
                 if any(p.intersection(u).area > 0.6 * p.area for u in kk_union):
@@ -229,7 +233,7 @@ def parks(kk_parkreg, kk_green, osm_wp):
                             "src": [f"kk:{nm}"], "conf": "observed"})
     ku = unary_union(kk_union) if kk_union else None
     for oid, t, g in osm_polygons(osm_wp.get("elements", []), lambda t: t.get("leisure") in ("park", "garden")):
-        for i, p in enumerate(_polys(g.intersection(BBOX))):
+        for i, p in enumerate(_polys(g.intersection(_bbox()))):
             if p.area < 50 or (ku is not None and p.intersection(ku).area > 0.5 * p.area):
                 continue
             out.append({"id": oid + (f"#{i}" if i else ""), "name": t.get("name", ""), "ring": _ring(p),
@@ -243,7 +247,7 @@ def sidewalks(fortov):
         pr = f["properties"]
         if pr.get("geom_status") not in (None, "Nuværende"):
             continue
-        g = shape(f["geometry"]).buffer(0).intersection(BBOX)
+        g = shape(f["geometry"]).buffer(0).intersection(_bbox())
         for i, p in enumerate(_polys(g)):
             if p.area < 2:
                 continue
@@ -256,7 +260,7 @@ def cycle_tracks(kk_cykelsti):
     out = []
     for f in (kk_cykelsti or {}).get("features", []):
         pr = f["properties"]
-        g = shape(f["geometry"]).intersection(BBOX)
+        g = shape(f["geometry"]).intersection(_bbox())
         lines = [g] if g.geom_type == "LineString" else [x for x in getattr(g, "geoms", []) if x.geom_type == "LineString"]
         for i, ln in enumerate(lines):
             if ln.length < 2:

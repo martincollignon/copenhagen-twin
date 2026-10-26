@@ -36,7 +36,8 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from frame import LOCAL_BBOX, ORIGIN, to_local  # noqa: E402
+import frame  # noqa: E402
+from frame import area_local, ORIGIN, to_local  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "data" / "cph-furniture.json"
@@ -53,7 +54,8 @@ LIC_NONE = "unstated"  # CKAN licence_id is null: treat as unconfirmed (ask byda
 
 
 def in_bbox(x: float, z: float) -> bool:
-    return LOCAL_BBOX[0] <= x <= LOCAL_BBOX[2] and LOCAL_BBOX[1] <= z <= LOCAL_BBOX[3]
+    x0, z0, x1, z1 = area_local()
+    return x0 <= x <= x1 and z0 <= z <= z1
 
 
 def r2(v: float) -> float:
@@ -861,7 +863,11 @@ def build_lake_lights(geo, roads: RoadIndex):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--refresh", action="store_true")
+    ap.add_argument("--out", default=None)
+    frame.add_area_args(ap)
     args = ap.parse_args()
+    frame.apply_area_args(args)
+    out_path = frame.resolve_out(args, OUT)
     from fetch import kk_layer
 
     kk = lambda name: kk_layer(name, refresh=args.refresh)  # noqa: E731
@@ -870,7 +876,7 @@ def main():
     doc = {
         "version": "cph-furniture/1",
         "generated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "frame": {"epsg": 25832, "origin": list(ORIGIN), "axes": "x=east, z=south, y=up", "bbox": list(LOCAL_BBOX)},
+        "frame": {"epsg": 25832, "origin": list(ORIGIN), "axes": "x=east, z=south, y=up", "bbox": list(area_local())},
         "yaw": "direction the object faces: model +z -> (sin yaw, cos yaw) in (x, z); bays/racks: axis of the row/car",
         "attribution": [
             "Københavns Kommune open data (CC BY 4.0): trae_basis, pullert, affaldskurve, parkeringspladser, parkomater, ask_glascontainer, monumenter, cykelstativ",
@@ -892,9 +898,9 @@ def main():
     doc["stats"]["lamps_wire_with_span"] = sum(1 for l in doc["lamps"] if l.get("span"))
     doc["stats"]["tree_genera"] = dict(Counter(t["genus"] for t in doc["trees"]).most_common())
     doc["stats"]["lamp_light"] = dict(Counter(l["light"] for l in doc["lamps"]))
-    OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
+    out_path.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
     print(json.dumps(doc["stats"], ensure_ascii=False, indent=1))
-    print(f"wrote {OUT} ({OUT.stat().st_size / 1e6:.2f} MB)")
+    print(f"wrote {out_path} ({out_path.stat().st_size / 1e6:.2f} MB)")
 
 
 if __name__ == "__main__":

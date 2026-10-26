@@ -35,7 +35,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from frame import LOCAL_BBOX, to_local  # noqa: E402
+import frame  # noqa: E402
+from frame import area_local, to_local  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data" / "raw" / "dar"
@@ -275,12 +276,21 @@ def histogram(ds):
 
 
 def main() -> None:
-    geo = json.loads(GEO.read_text())
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default=None)
+    ap.add_argument("--geodata", default=None)
+    frame.add_area_args(ap)
+    args = ap.parse_args()
+    frame.apply_area_args(args)
+    out_path = frame.resolve_out(args, OUT)
+    geo = json.loads((Path(args.geodata) if args.geodata else GEO).read_text())
     buildings = [b for b in geo["buildings"] if b.get("ring")]
     by_gdk = {b["id"]: b for b in buildings}
     by_bbr = {b["bbr_id"]: b for b in buildings if b.get("bbr_id")}
     index = BuildingIndex(buildings)
-    x0, z0, x1, z1 = LOCAL_BBOX
+    x0, z0, x1, z1 = area_local()
     dar = Dar()
 
     # 1. streets from per-building lookups, then every husnummer of those streets
@@ -344,12 +354,12 @@ def main() -> None:
         "entrances": entries,
         "stairwells": {k: v for k, v in sorted(stair.items())},
     }
-    OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
+    out_path.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
 
     in_district = [e for e in entries if x0 <= e["x"] <= x1 and z0 <= e["z"] <= z1]
     with_e = {e["bid"] for e in in_district}
     n_b = sum(1 for b in buildings if x0 <= b["ring"][0] <= x1 and z0 <= b["ring"][1] <= z1)
-    print(f"entrances: {len(entries)} ({len(in_district)} in district) -> {OUT}")
+    print(f"entrances: {len(entries)} ({len(in_district)} in district) -> {out_path}")
     print(f"unlinked husnumre: {unlinked}; no wall within {MAX_SNAP_M:g} m: {far}")
     print(f"buildings with >=1 entrance: {len(with_e)} / {n_b} ({100 * len(with_e) / max(n_b, 1):.1f}%)")
     print("conf:", dict(Counter(e["conf"] for e in in_district)), "link:", dict(Counter(e["link"] for e in in_district)))
