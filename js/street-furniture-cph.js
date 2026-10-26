@@ -6,6 +6,8 @@ import {
 } from './street-furniture-data.js';
 import * as G from './street-furniture-geometry.js';
 import * as T from './tree-geometry-cph.js';
+import { treeDayOfYear } from './tree-season.js';
+import { TREE_LOD, treeCapacities, originalTreeBudget, selectTreeDraws } from './tree-budget.js';
 import { resolveGenus } from './tree-species-cph.js';
 import { alignLakeFurniture } from './lake-furniture-cph.js';
 import { buildPoolWindow, encodePoolWindow, haloSize, lampPhotometry, realIntensity, selectRealLights } from './night-lights-cph.js';
@@ -21,9 +23,7 @@ import { Fn, attribute, cameraPosition, cross, float, length, mix, normalize, po
 // Everything is instanced. Each category lives in a quadtree; every few metres of camera travel the items around the
 // camera are written into per-LOD InstancedMeshes (dynamic counts), at the ground height computed once at load.
 
-const TREE_NEAR = 34;
-const TREE_MID = 200;
-const TREE_FAR = 950;
+const TREE_FAR = TREE_LOD.far;
 const CAR_NEAR = 40;
 const CAR_FAR = 300;
 const MOVE_EPS = 3;
@@ -34,11 +34,12 @@ const lin = (srgb) => new THREE.Color().setRGB(srgb[0], srgb[1], srgb[2], THREE.
 
 /** One InstancedMesh with a write cursor. `paint` (cars): the geometry carries instanced paintColor/carState attributes. */
 class MeshSet {
-  constructor(name, geometry, material, capacity, { colored = false, tinted = false, cast = false, receive = true, paint = false, parent = null } = {}) {
+  constructor(name, geometry, material, capacity, { colored = false, tinted = false, cast = false, receive = true, paint = false, seasonal = false, parent = null } = {}) {
     this.name = name;
     this.capacity = Math.max(1, capacity);
     this.paint = paint;
     this.tinted = tinted;
+    this.season = seasonal ? T.attachTreeSeasonAttributes(geometry, this.capacity) : null;
     if (paint) {
       geometry.setAttribute('paintColor', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3));
       geometry.setAttribute('carState', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 4), 4));
@@ -98,6 +99,12 @@ class MeshSet {
     return i;
   }
 
+  putSeason(slot, state) {
+    if (slot < 0) return;
+    this.season.early.array.set(state.early, slot * 4);
+    this.season.late.array.set(state.late, slot * 4);
+  }
+
   end(warm) {
     if (this.n === 0 && warm) {
       composeYaw(this.matrices, 0, 0, -50, 0, 0, 0.001, 0.001, 0.001);
@@ -107,6 +114,10 @@ class MeshSet {
     }
     this.mesh.visible = this.mesh.count > 0;
     this.mesh.instanceMatrix.needsUpdate = true;
+    if (this.season) {
+      this.season.early.needsUpdate = true;
+      this.season.late.needsUpdate = true;
+    }
     if (this.colors && this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
     if (this.tints) this.mesh.geometry.attributes.bikePaint.needsUpdate = true;
     if (this.paint) {
@@ -148,7 +159,7 @@ function textSprite(text) {
   return sprite;
 }
 
-export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 1, place = null, lakeDistance = null } = {}) {
+export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 1, place = null, lakeDistance = null, treeDate } = {}) {
   // untyped laser-detected crowns get a context genus (Soerne avenues: lime / horse chestnut), js/tree-species-cph.js
   const plan = buildFurniturePlan(doc, groundHeight, { seed, place, resolveTree: (t) => resolveGenus(t, { lakeDistance }) });
   alignLakeFurniture(plan, lakeDistance); // benches / rescue posts face the water, lake lights project over the path
@@ -164,23 +175,57 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   const count = (n, cap) => Math.max(1, Math.min(n, cap));
 
   // ------------------------------------------------------------------------------------------- trees
+  const treeDay = treeDayOfYear(treeDate);
   const atlas = T.createLeafAtlas();
   const treeMat = T.createTreeMaterial(atlas);
   const byGenus = new Map();
   for (const t of plan.trees) {
+    t.season = T.treeInstanceSeason(t.genus, treeDay, t.x, t.z, t.tint);
     if (!byGenus.has(t.genus)) byGenus.set(t.genus, []);
     byGenus.get(t.genus).push(t);
   }
-  const bill = T.createBillboardAtlas([...byGenus.keys()]);
+  const bill = T.createBillboardAtlas([...byGenus.keys()], treeDay);
   const billMat = T.createTreeMaterial(bill.texture, { billboard: true });
   const treeNear = new Map();
   const treeMid = new Map();
   const treeFar = new Map();
   for (const [genus, list] of byGenus) {
-    treeNear.set(genus, mk(`trees-near-${genus}`, T.buildNearTree(genus), treeMat, count(list.length, 260), { colored: true, cast: false }));
-    treeMid.set(genus, mk(`trees-mid-${genus}`, T.buildMidTree(genus), treeMat, count(list.length, 900), { colored: true, cast: false }));
-    treeFar.set(genus, mk(`trees-far-${genus}`, T.buildBillboard(bill.cellOf.get(genus)), billMat, count(list.length, 4000), { colored: true, receive: false }));
+    treeNear.set(genus, mk(`trees-near-${genus}`, T.buildNearTree(genus, treeDay, { variation: true }), treeMat, count(list.length, 260), { seasonal: true, cast: false }));
+    treeMid.set(genus, mk(`trees-mid-${genus}`, T.buildMidTree(genus, treeDay, { variation: true }), treeMat, count(list.length, 900), { seasonal: true, cast: false }));
+    treeFar.set(genus, mk(`trees-far-${genus}`, T.buildBillboard(bill.cellOf.get(genus)), billMat, count(list.length, 4000), { seasonal: true, receive: false }));
   }
+  const treeCosts = {}, fullTreeCosts = {};
+  for (const [genus] of byGenus) {
+    treeCosts[genus] = {}; fullTreeCosts[genus] = {};
+    for (const [lod, sets] of [['near', treeNear], ['mid', treeMid], ['far', treeFar]]) {
+      const geometry = sets.get(genus).mesh.geometry;
+      treeCosts[genus][lod] = geometry.index.count / 3;
+      fullTreeCosts[genus][lod] = geometry.userData.fullTriangles;
+    }
+  }
+  const treeCaps = treeCapacities(plan.trees);
+  const originalCaps = treeCapacities(plan.trees, true);
+  // An original genus can disappear when unspecified lakeside trees become chestnuts.
+  for (const genus of Object.keys(originalCaps)) {
+    if (fullTreeCosts[genus]) continue;
+    const near = T.buildNearTree(genus, 190), mid = T.buildMidTree(genus, 190);
+    fullTreeCosts[genus] = { near: near.index.count / 3, mid: mid.index.count / 3, far: 4 };
+    near.dispose(); mid.dispose();
+  }
+  // Optional litter uses one instanced draw only when the original camera budget has room.
+  const litter = mk('tree-litter', T.buildTreeLitterGeometry(), T.createTreeLitterMaterial(atlas), 1500, { receive: true });
+  const litterItems = [];
+  for (const t of plan.trees) {
+    const coverage = t.season.litter;
+    if (!['chestnut', 'lime'].includes(t.genus) || coverage <= 0) continue;
+    for (let i = 0; i < t.litterPoints.length; i += 2) {
+      if (((i * 0.61803398875 + t.tint) % 1) >= coverage) continue;
+      const x = t.litterOrigin[0] + t.litterPoints[i], z = t.litterOrigin[1] + t.litterPoints[i + 1];
+      litterItems.push({ cx: x, cz: z, x, z, y: (groundHeight ? groundHeight.heightAt(x, z) : 0) + 0.016,
+        yaw: i * 2.399 + t.yaw, size: 0.24 + (i % 5) * 0.025 });
+    }
+  }
+  const litterIndex = indexItems(litterItems);
   // crowns cast their shadow from a cheap blob (leaf cards in the shadow pass cost more than the whole scene)
   const shadowOnly = std({ roughness: 1, metalness: 0 });
   shadowOnly.colorWrite = false;
@@ -329,20 +374,35 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     haloN = 0;
     const on = state.on;
 
-    // trees: skeleton + leaf sprays near, leaf clusters mid, painted billboards far
-    for (const t of trees.queryRange(cx, cz, TREE_FAR)) {
-      const d = Math.hypot(t.x - cx, t.z - cz);
-      const tint = [t.tint, t.tint, t.tint];
-      if (d <= TREE_NEAR) {
-        treeNear.get(t.genus).put(t.x, t.y, t.z, t.yaw, t.sxz, t.sy, t.sxz, tint);
-        if (d <= 90) treeShadow.put(t.x, t.y + t.crown.cy, t.z, t.yaw, t.crown.rx * 0.9, t.crown.ry * 0.9, t.crown.rx * 0.9);
-      } else if (d <= TREE_MID) {
-        treeMid.get(t.genus).put(t.x, t.y, t.z, t.yaw, t.sxz, t.sy, t.sxz, tint);
-        if (d <= 90) treeShadow.put(t.x, t.y + t.crown.cy, t.z, t.yaw, t.crown.rx * 0.9, t.crown.ry * 0.9, t.crown.rx * 0.9);
+    // Compare against main's original trees at this camera before admitting additions.
+    const candidates = trees.queryRange(cx, cz, TREE_FAR).map(tree => ({ tree, distance: Math.hypot(tree.x - cx, tree.z - cz) }));
+    const budget = originalTreeBudget(candidates, fullTreeCosts, originalCaps);
+    const submitted = selectTreeDraws(candidates, treeCosts, treeCaps, budget);
+    for (const { tree: t, distance: d, lod } of submitted.selected) {
+      const set = (lod === 'far' ? treeFar : lod === 'near' ? treeNear : treeMid).get(t.genus);
+      let slot;
+      if (lod === 'far') {
+        slot = set.put(t.x, t.y, t.z, t.yaw, t.crownR * 2.0, t.height, t.crownR * 2.0);
       } else {
-        treeFar.get(t.genus).put(t.x, t.y, t.z, t.yaw, t.crownR * 2.3, t.height * 1.02, t.crownR * 2.3, tint);
+        slot = set.put(t.x, t.y, t.z, t.yaw, t.sxz, t.sy, t.sxz);
+      }
+      set.putSeason(slot, t.season);
+      const density = t.season.density;
+      if (d <= 90 && density > 0 && treeShadow.n < budget.shadows) {
+        const width = 0.9 * Math.sqrt(density);
+        treeShadow.put(t.x, t.y + t.crown.cy, t.z, t.yaw, t.crown.rx * width, t.crown.ry * 0.9, t.crown.rx * width);
       }
     }
+    if (!warm && submitted.draws < budget.draws) {
+      const limit = Math.min(litter.capacity, Math.floor((budget.triangles - submitted.triangles) / 2));
+      for (const p of litterIndex.queryRange(cx, cz, 40)) {
+        if (litter.n >= limit) break;
+        litter.put(p.x, p.y, p.z, p.yaw, p.size, 1, p.size);
+      }
+    }
+    state.stats.trees = { budget, draws: submitted.draws + (litter.n ? 1 : 0),
+      triangles: submitted.triangles + litter.n * 2, shadows: treeShadow.n, litter: litter.n,
+      instances: submitted.selected.length, candidates: candidates.length };
 
     // lamps
     seen.clear();
@@ -429,7 +489,9 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
       if (on > 0.01) putHalo(l.x, l.y + 0.97, l.z, 0.35 + Math.hypot(l.x - cx, l.z - cz) * 0.012, lin(l.color), 0.5);
     }
 
-    for (const s of sets) s.end(warm);
+    // Empty tree batches share the same pipelines as occupied batches. Do not add
+    // placeholder triangles outside the camera budget while other shaders warm.
+    for (const s of sets) s.end(warm && s !== litter && !s.name.startsWith('trees-'));
     halos.count = haloN;
     halos.visible = haloN > 0;
     haloGeo.attributes.haloPos.needsUpdate = true;

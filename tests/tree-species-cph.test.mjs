@@ -38,7 +38,11 @@ test('real data: the Soerne avenues are lime / horse chestnut, no tree stays gen
   assert.ok(side.length > 300, `${side.length} lakeside trees defaulted`);
   const share = side.filter((t) => t.genus === 'lime' || t.genus === 'chestnut').length / side.length;
   assert.ok(share > 0.8, `lime + chestnut share on the lake avenues ${share.toFixed(2)}`);
-  const recorded = fur.trees.filter((t) => t.genus !== 'generic').length;
+  for (const genus of ['lime', 'chestnut']) {
+    const fraction = side.filter(t => t.genus === genus).length / side.length;
+    assert.ok(fraction > 0.3 && fraction < 0.6, `${genus} remains present in the inferred lake mix: ${fraction}`);
+  }
+  const recorded = fur.trees.filter((t) => (t.canopy_original?.genus ?? t.genus) !== 'generic' && !t.canopy_added).length;
   assert.equal(plan.filter((t) => t.genusSource === 'recorded').length, recorded, 'recorded genera are untouched');
   assert.ok(LAKESIDE_M > 10);
 });
