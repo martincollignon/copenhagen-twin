@@ -165,6 +165,25 @@ street-facing wall, `entry` for a residential street front with a door, `rear` f
 neighbouring footprint, `blank` for outbuildings) and the facade shader reads it as `facadeBldg.y`. BBR trade use (3xx) without venue data gives an
 inferred shop. The file is optional: without it only BBR trade use makes shopfronts.
 
+## Building entrances (`data/cph-entrances.json`, `cph-entrances/1`, `tools/cph-geodata/entrances.py`)
+
+DAR (Datafordeler) `husnummer.adgangspunkt` is the entrance point of an address; `vejpunkt` the road access point. The compiler lists the
+husnumre of every street (`vejmidte`) found next to a twin building, keeps the gaeldende ones (status 3) and links each to a building by
+`geoDanmarkBygning` (== the `gdk:<id>` of the geodata), else `adgangTilBygning` (== `bbr_id`), else the footprint containing the point
+(BBR `opgang` records add stairwell-only husnumre). Raw responses are cached in `data/raw/dar/`.
+
+`entrances[]`: `id` (husnummer UUID), `bid` (twin building id), `bbr`, `text` (37A), `street`, `x, z` (the adgangspunkt), `sx, sz` (snapped to the
+nearest wall of the building: `ring` 0 outline, 1.. courtyard holes; `edge` index in the raw ring, `t` and `along` position on it, `wall_len`),
+`d` (snap distance, m), `inside` (point lies inside the footprint), `link` (`geoDanmarkBygning|bbr|footprint|nearest`), `opgang` (also a BBR
+stairwell), `acc` (DAR position accuracy class), `road` (vejpunkt), `src`, `conf`: `measured` d <= 1.5 m, `observed` <= 3 m, else `inferred`.
+DAR places most adgangspunkter 2-5 m *inside* the footprint (typically at the stairwell), so `d` measures that offset, not an error; the wall is
+the nearest one and the position along it is the point's own. `stairwells` is the BBR gaeldende opgang count per bygning id.
+
+The engine (`js/entrances.js`) builds a door (opaque leaf, frame, step, small canopy) on the nearest wall at each entry with `d <= 6 m`
+(husnumre within 0.9 m share one door). A building with at least one such door has its heuristic shader street door switched off
+(`facadeBldg.y = kind + 0.25`); a building without entrance data keeps the heuristic door and the info panel labels it `heuristic / inferred`.
+`?debug=nodoors` loads without the file (before/after shots).
+
 ## Photo facade look atlases (`data/tex-look/*.webp`, `tools/cph-geodata/facade_look.py`)
 
 Derived from `data/tex/` (gitignored like it): RGBA WebP, same layout as the JPEG atlas (`observed.atlas.walls[].px/uv` are unchanged). RGB is the

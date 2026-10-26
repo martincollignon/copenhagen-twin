@@ -398,6 +398,7 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0, wallAttr
   let gridU = uCoord.div(bayWidth);
   let inPier = float(0.0);
   let kind = float(WALL_KINDS.shop);
+  let heuristicDoor = float(1.0);
   let tone = float(0.5);
   let bayIdx = float(0.0); // bay index along the wall (0 at its corner; -1 / bays inside the corner piers)
   let bays = float(1.0);
@@ -480,6 +481,7 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0, wallAttr
     wallW = len;
     tone = fbld.x;
     kind = floor(fbld.y.add(0.5));
+    heuristicDoor = float(1.0).sub(step(0.1, fbld.y.sub(floor(fbld.y)))); // +0.25 on the kind: real entrance data, no heuristic door
     const code = floor(fbld.z.add(0.5));
     era = floor(code.div(4.0));
     matId = code.sub(era.mul(4.0));
@@ -509,7 +511,8 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0, wallAttr
   const isEntry = step(WALL_KINDS.entry - 0.5, kind).mul(float(1.0).sub(step(WALL_KINDS.entry + 0.5, kind)));
   const isShopKind = float(1.0).sub(step(WALL_KINDS.shop + 0.5, kind));
   const doorBay = step(abs(bayIdx.sub(min(floor(tone.mul(bays)), bays.sub(1.0)))), 0.5);
-  const door = floor0.mul(wallAttr ? max(isEntry, isShopKind) : isEntry).mul(wall).mul(doorBay);
+  // facadeBldg.y = kind + 0.25 marks walls of buildings with real entrance data: their doors are geometry (js/entrances.js), not this bay
+  const door = floor0.mul(wallAttr ? max(isEntry, isShopKind) : isEntry).mul(wall).mul(doorBay).mul(heuristicDoor);
   // A box that isn't a whole number of storeys (landmark tiers) ends in a solid parapet instead of slicing a row of
   // windows, and starts with one above the roof it stands on; every wall is capped by a coping at its top
   let partial = float(0.0);
