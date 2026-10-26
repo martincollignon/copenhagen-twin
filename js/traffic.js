@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { CAR_BODY_TYPES, fleetRandom, fleetVehicle } from './vehicle-fleet.js';
 import { buildRoadNetwork } from './road-network.js';
 import { createPedestrianSystem } from './pedestrian-system.js';
 import { signalOffset, vehiclePhase, walkPhase } from './signal-plan.js';
@@ -7,6 +8,7 @@ import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './veh
 import {
   BODY_SPECS,
   BUS_SPEC,
+  BUS_LONG_SPEC,
   buildCarGeometry,
   buildCarProxyGeometry,
   buildSteerableWheelGeo,
@@ -20,7 +22,7 @@ import {
 
 // js/traffic.js
 // Copenhagen traffic and pedestrians on the road graph road-network.js derives from the centreline graph:
-// - 120 cars (sedans and SUVs in private-car colours) and 12 buses keep to their lanes and follow the vehicle
+// - 120 cars (European crossovers, hatchbacks, estates, vans and taxis) and 12 buses keep to their lanes and follow the vehicle
 //   ahead (Intelligent Driver Model), change lanes to overtake or to reach a turn lane, turn into other streets,
 //   stop for the signals at the junctions the register places (signal-plan.js), give way to oncoming traffic when
 //   turning left, to the main road at unsignalized corners and to pedestrians on crosswalks, and never enter an
@@ -45,24 +47,19 @@ const VEHICLE_RADIUS = 380;
 const NEAR_RADIUS = 350;
 const VEHICLE_SPAWN_DISTANCE = 250;
 
-function createBusDestinationTexture() {
+function createBusDestinationTexture(route) {
   const c = document.createElement('canvas');
   c.width = 256;
   c.height = 64;
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#0c0f14';
   ctx.fillRect(0, 0, 256, 64);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(6, 8, 62, 48);
-  ctx.fillStyle = '#0c0f14';
-  ctx.font = '900 26px Inter, Arial, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('00', 37, 33);
-  ctx.fillStyle = '#ff9d1c';
-  ctx.font = '800 22px JetBrains Mono, monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText('NØRREBRO', 78, 33);
+  ctx.fillStyle = route === '5C' ? '#a2dded' : '#ffad35';
+  ctx.font = 'bold 30px "Arial Narrow", Arial, sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(route, 8, 33);
+  ctx.font = 'bold 23px "Arial Narrow", Arial, sans-serif';
+  ctx.fillText(route === '5C' ? 'HUSUM TORV' : 'NØRREPORT', 70, 33, 180);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -149,72 +146,39 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     };
   }
 
-  // Build 2 distinct 3D LoftGeometry vehicle classes (Sedan, SUV) with separate spinning 3D wheels
-  const sedanGeo = buildCarGeometry(BODY_SPECS.sedan, false);
-  const suvGeo = buildCarGeometry(BODY_SPECS.suv, false);
-  const carWheelLeftGeo = buildSteerableWheelGeo(BODY_SPECS.sedan, -1);
-  const carWheelRightGeo = buildSteerableWheelGeo(BODY_SPECS.sedan, 1);
-
-  const sedanMat = createLoftedCarMaterial(BODY_SPECS.sedan);
-  const suvMat = createLoftedCarMaterial(BODY_SPECS.suv);
-  const carWheelMat = createLoftedCarMaterial(BODY_SPECS.sedan, 0xffbe14);
-
-  const sedanPalette = [
-    new THREE.Color(0x1c2026), // Black Sedan
-    new THREE.Color(0xcfd6de), // Metallic Silver Sedan
-    new THREE.Color(0x1d3b6c), // Deep Navy Sedan
-    new THREE.Color(0x52575e), // Graphite Grey Sedan
-    new THREE.Color(0x6e1f24)  // Burgundy Sedan
-  ];
-  const suvPalette = [
-    new THREE.Color(0x16191e), // Black SUV
-    new THREE.Color(0xf0f3f7), // Pearl White SUV
-    new THREE.Color(0x3a434d), // Slate Metallic SUV
-    new THREE.Color(0x28382e), // Forest Green SUV
-    new THREE.Color(0xbec6cf)  // Silver SUV
-  ];
-
+  const wheelSpec = BODY_SPECS.crossoverEV;
+  const carWheelLeftGeo = buildSteerableWheelGeo(wheelSpec, -1);
+  const carWheelRightGeo = buildSteerableWheelGeo(wheelSpec, 1);
+  const carWheelMat = createLoftedCarMaterial(wheelSpec, 0x777d81);
   const cars = [];
-  let sedanCount = 0;
-  let suvCount = 0;
-
+  const bodyCounts = Object.fromEntries(CAR_BODY_TYPES.map((kind) => [kind, 0]));
   for (let i = 0; i < NUM_CARS; i++) {
-    const isSUV = i % 2 === 0;
-    let bodyType = 'sedan';
-    let col;
-
-    if (isSUV) {
-      bodyType = 'suv';
-      suvCount++;
-      col = suvPalette[i % suvPalette.length];
-    } else {
-      sedanCount++;
-      col = sedanPalette[i % sedanPalette.length];
-    }
-
-    const car = createVehicle(false, isSUV ? 2.3 : 2.25, isSUV ? 0.92 : 0.86, isSUV ? 1.4 : 1.38, CAR_DRIVER, 10 + (i % 5) * 0.9);
-    // paint as float32 values, so renderCar() can tell whether an instance slot's paint changes by comparing
+    const choice = fleetVehicle(fleetRandom(i, 0), fleetRandom(i, 1), fleetRandom(i, 2));
+    const bodyType = choice.body;
+    const spec = BODY_SPECS[bodyType];
+    const col = new THREE.Color(choice.paint);
     const paint = [Math.fround(col.r), Math.fround(col.g), Math.fround(col.b)];
-    Object.assign(car, { isSUV, bodyType, paint });
+    const car = createVehicle(false, spec.length / 2, spec.width / 2, spec.wheelZ, CAR_DRIVER, 10 + (i % 5) * 0.9);
+    Object.assign(car, { bodyType, paint, taxi: choice.taxi, massRatio: spec.massRatio });
+    bodyCounts[bodyType]++;
     cars.push(car);
   }
 
-  // Per body type: the full model (with separately instanced spinning wheels near the camera) and, beyond
-  // CAR_PROXY_DISTANCE, the ~250-triangle stand-in. Instance slots are handed out every frame to the cars the camera
-  // can see (or whose shadow it may see), see renderCar(). Per-instance paint & lamp / livery state the car material
-  // reads: brake lights, left (+x) & right (-x) turn signals.
   const bodies = {};
-  for (const [kind, geo, count, mat] of [['sedan', sedanGeo, sedanCount, sedanMat], ['suv', suvGeo, suvCount, suvMat]]) {
-    const n = Math.max(1, count);
-    const lodMesh = (g) => {
+  for (const kind of CAR_BODY_TYPES) {
+    const spec = BODY_SPECS[kind];
+    const mat = createLoftedCarMaterial(spec);
+    const n = Math.max(1, bodyCounts[kind]);
+    const lodMesh = (g, lod) => {
       g.setAttribute('paintColor', new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3));
       g.setAttribute('carState', new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4));
-      return new THREE.InstancedMesh(g, mat, n);
+      const mesh = new THREE.InstancedMesh(g, mat, n);
+      mesh.name = `traffic-${kind}-${lod}`;
+      return mesh;
     };
-    bodies[kind] = { near: lodMesh(geo), far: lodMesh(buildCarProxyGeometry(BODY_SPECS[kind])) };
+    bodies[kind] = { near: lodMesh(buildCarGeometry(spec, false), 'near'), far: lodMesh(buildCarProxyGeometry(spec), 'far') };
   }
   const bodyMeshes = Object.values(bodies).flatMap((b) => [b.near, b.far]);
-
   const carWheelLeftInst = new THREE.InstancedMesh(carWheelLeftGeo, carWheelMat, NUM_CARS * 2);
   const carWheelRightInst = new THREE.InstancedMesh(carWheelRightGeo, carWheelMat, NUM_CARS * 2);
 
@@ -267,34 +231,39 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
   // =========================================================================
   // 2. LOFTED CITY BUSES (12 BUSES)
   // =========================================================================
-  const busBodyGeo = buildLoftedBusBodyGeometry();
-  // Per-instance lamp state the bus material reads: brake lights, left (+x) & right (-x) turn signals (renderBus)
-  const busStates = new THREE.InstancedBufferAttribute(new Float32Array(NUM_BUSES * 4), 4);
-  busBodyGeo.setAttribute('busState', busStates);
-  // Destination signs above the windshield, by the front door & above the rear window
-  const busHeaderGeo = buildBusSignGeometry();
-
-  const busBodyMat = createLoftedBusMaterial();
-  const busDestMat = new THREE.MeshBasicNodeMaterial({
-    map: createBusDestinationTexture()
-  });
-
+  const busSets = {};
+  for (const spec of [BUS_SPEC, BUS_LONG_SPEC]) {
+    const capacity = Math.ceil(NUM_BUSES / 2);
+    const geo = buildLoftedBusBodyGeometry(spec);
+    const states = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4);
+    geo.setAttribute('busState', states);
+    const body = new THREE.InstancedMesh(geo, createLoftedBusMaterial(spec), capacity);
+    body.name = spec.name;
+    body.castShadow = body.receiveShadow = true;
+    const header = new THREE.InstancedMesh(buildBusSignGeometry(spec), new THREE.MeshBasicNodeMaterial({
+      map: createBusDestinationTexture(spec.aLine ? '6A' : '5C')
+    }), capacity);
+    busSets[spec.name] = { body, header, states, count: 0 };
+    group.add(body, header);
+  }
+  const busBodyMeshes = Object.values(busSets).flatMap((b) => [b.body, b.header]);
   const busWheelMat = createBusWheelMaterial();
-  const busBodyInst = new THREE.InstancedMesh(busBodyGeo, busBodyMat, NUM_BUSES);
-  const busHeaderInst = new THREE.InstancedMesh(busHeaderGeo, busDestMat, NUM_BUSES);
-  const busWheelLeftInst = new THREE.InstancedMesh(buildBusWheelGeo(-1), busWheelMat, NUM_BUSES * 2);
-  const busWheelRightInst = new THREE.InstancedMesh(buildBusWheelGeo(1), busWheelMat, NUM_BUSES * 2);
+  const busWheelLeftInst = new THREE.InstancedMesh(buildBusWheelGeo(-1), busWheelMat, NUM_BUSES * 3);
+  const busWheelRightInst = new THREE.InstancedMesh(buildBusWheelGeo(1), busWheelMat, NUM_BUSES * 3);
   const busShadowInst = new THREE.InstancedMesh(unitPlane, contactShadowMat, NUM_BUSES);
   busShadowInst.renderOrder = 998;
-
-  busBodyInst.castShadow = busBodyInst.receiveShadow = true;
   busWheelLeftInst.castShadow = busWheelLeftInst.receiveShadow = true;
   busWheelRightInst.castShadow = busWheelRightInst.receiveShadow = true;
 
   const buses = [];
-  for (let i = 0; i < NUM_BUSES; i++) buses.push(createVehicle(true, 6.0, 1.3, 3.6, BUS_DRIVER, 8 + (i % 3)));
+  for (let i = 0; i < NUM_BUSES; i++) {
+    const spec = i % 2 ? BUS_LONG_SPEC : BUS_SPEC;
+    const bus = createVehicle(true, spec.length / 2 + 0.2, spec.width / 2, spec.wheelZ, BUS_DRIVER, 8 + (i % 3));
+    Object.assign(bus, { spec, massRatio: spec.massRatio });
+    buses.push(bus);
+  }
   const vehicles = [...cars, ...buses];
-  group.add(busBodyInst, busHeaderInst, busWheelLeftInst, busWheelRightInst);
+  group.add(busWheelLeftInst, busWheelRightInst);
 
   // =========================================================================
   // 3. PEDESTRIAN SYSTEM
@@ -332,7 +301,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
 
   // Nothing shows until it has been placed
   const carInstances = [...bodyMeshes, carWheelLeftInst, carWheelRightInst, carShadowInst];
-  const busInstances = [busBodyInst, busHeaderInst, busWheelLeftInst, busWheelRightInst, busShadowInst];
+  const busInstances = [...busBodyMeshes, busWheelLeftInst, busWheelRightInst, busShadowInst];
   for (const inst of [...carInstances, ...busInstances, sparkInst]) {
     inst.frustumCulled = false;
     for (let i = 0; i < inst.count; i++) inst.setMatrixAt(i, zero);
@@ -1233,7 +1202,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     const hit = overlapWithPlayer(relX, relZ, rotY, halfW, halfL, pe.heading || 0, player.halfW, player.halfL);
     if (!hit) return;
     const { nx, nz, pen, localX, localZ, pSin, pCos } = hit;
-    const massRatio = v.bus ? 0.15 : v.isSUV ? 0.58 : 1.0 - player.push;
+    const massRatio = v.massRatio * (1.0 - player.push) / 0.5;
     const pPush = 1.0 - massRatio;
     pe.position.x += nx * pen * pPush;
     pe.position.z += nz * pen * pPush;
@@ -1364,6 +1333,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
   let wheelCars = 0;
   let visibleCars = 0;
   let visibleBuses = 0;
+  let busAxles = 0;
   let updates = 0;
 
   function flagRange(attr, n) {
@@ -1373,22 +1343,23 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
   }
 
   // 3D spinning alloy wheels & tires (left & right, front & rear), exact 1:1 ground rolling, steering front wheels.
-  // The wheel geometry is modelled at baseRadius (the sedan's 0.35 m car wheel), scaled to the vehicle's radius
-  function placeWheels(v, i, rotY, roll, radius, halfTrack, halfBase, leftInst, rightInst, baseRadius = 0.35) {
+  // Shared wheels are modelled at baseRadius, then scaled to each body’s rolling radius.
+  function placeWheels(v, i, rotY, roll, radius, halfTrack, halfBase, leftInst, rightInst, baseRadius = 0.37, axles = null) {
     const sinY = Math.sin(rotY);
     const cosY = Math.cos(rotY);
     const scale = radius / baseRadius;
     dummy.scale.set(scale, scale, scale);
-    for (let w = 0; w < 2; w++) {
-      const wz = w === 0 ? halfBase : -halfBase;
+    const count = axles ? axles.length : 2;
+    for (let w = 0; w < count; w++) {
+      const wz = axles ? axles[w] : w === 0 ? halfBase : -halfBase;
       dummy.rotation.set(v.wheelSpin + w * 0.55, rotY + (w === 0 ? v.steer : 0), roll, 'YXZ');
       dummy.position.set(v.x - halfTrack * cosY + wz * sinY, radius + groundAt(v.x, v.z), v.z + halfTrack * sinY + wz * cosY);
       dummy.updateMatrix();
-      leftInst.setMatrixAt(i * 2 + w, dummy.matrix);
+      leftInst.setMatrixAt(i + w, dummy.matrix);
 
       dummy.position.set(v.x + halfTrack * cosY + wz * sinY, radius + groundAt(v.x, v.z), v.z - halfTrack * sinY + wz * cosY);
       dummy.updateMatrix();
-      rightInst.setMatrixAt(i * 2 + w, dummy.matrix);
+      rightInst.setMatrixAt(i + w, dummy.matrix);
     }
   }
 
@@ -1436,10 +1407,12 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     const b0 = c.acc < -0.8 || c.speed < 0.3 ? 1 : 0;
     const b1 = blinkOn && c.blink < 0 ? 1 : 0;
     const b2 = blinkOn && c.blink > 0 ? 1 : 0;
-    if (state[o4] !== b0 || state[o4 + 1] !== b1 || state[o4 + 2] !== b2) {
+    const b3 = c.taxi ? 1 : 0;
+    if (state[o4] !== b0 || state[o4 + 1] !== b1 || state[o4 + 2] !== b2 || state[o4 + 3] !== b3) {
       state[o4] = b0;
       state[o4 + 1] = b1;
       state[o4 + 2] = b2;
+      state[o4 + 3] = b3;
       dirtyState.add(bodyInst);
     }
 
@@ -1447,7 +1420,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     const visIdx = visibleCars++;
     dummy.rotation.set(0, rotY, 0, 'YXZ');
     dummy.position.set(c.x, 0.018 + groundAt(c.x, c.z), c.z);
-    dummy.scale.set(2.22, 1.0, 5.05);
+    dummy.scale.set(spec.width + 0.3, 1.0, spec.length + 0.5);
     dummy.updateMatrix();
     carShadowInst.setMatrixAt(visIdx, dummy.matrix);
 
@@ -1469,23 +1442,25 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     }
 
     if (near) {
-      placeWheels(c, wheelCars++, rotY, c.roll, spec.wheelRadius, spec.wheelX, spec.wheelZ, carWheelLeftInst, carWheelRightInst);
+      placeWheels(c, wheelCars++ * 2, rotY, c.roll, spec.wheelRadius, spec.wheelX, spec.wheelZ, carWheelLeftInst, carWheelRightInst);
     }
   }
 
   function renderBus(b) {
+    const spec = b.spec;
+    const set = busSets[spec.name];
     const rotY = b.yaw + b.yawOffset;
     const sinY = Math.sin(rotY);
     const cosY = Math.cos(rotY);
     const forwardDist = (b.x - b.prevX) * sinY + (b.z - b.prevZ) * cosY;
-    const rawStep = forwardDist / BUS_SPEC.wheelRadius;
+    const rawStep = forwardDist / spec.wheelRadius;
     b.wheelSpin = (b.wheelSpin + Math.sign(rawStep) * Math.min(Math.abs(rawStep), 0.48)) % (Math.PI * 2);
     if (hasView && !visible(b.x, b.z, 22)) return;
 
     const i = visibleBuses++;
     dummy.position.set(b.x, 0.018 + groundAt(b.x, b.z), b.z);
     dummy.rotation.set(0, rotY, 0, 'YXZ');
-    dummy.scale.set(2.92, 1.0, 12.1);
+    dummy.scale.set(spec.width + 0.32, 1.0, spec.length + 0.55);
     dummy.updateMatrix();
     busShadowInst.setMatrixAt(i, dummy.matrix);
 
@@ -1494,9 +1469,10 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     dummy.rotation.set(b.pitch, rotY, b.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
-    busBodyInst.setMatrixAt(i, dummy.matrix);
-    busHeaderInst.setMatrixAt(i, dummy.matrix);
-    writeLampState(b, busStates.array, i * 4);
+    const slot = set.count++;
+    set.body.setMatrixAt(slot, dummy.matrix);
+    set.header.setMatrixAt(slot, dummy.matrix);
+    writeLampState(b, set.states.array, slot * 4);
 
     const dxCam = b.x - camX;
     const dzCam = b.z - camZ;
@@ -1515,7 +1491,8 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
       }
     }
 
-    placeWheels(b, i, rotY, 0, BUS_SPEC.wheelRadius, BUS_SPEC.wheelX, BUS_SPEC.wheelZ, busWheelLeftInst, busWheelRightInst, BUS_SPEC.wheelRadius);
+    placeWheels(b, busAxles, rotY, 0, spec.wheelRadius, spec.wheelX, spec.wheelZ, busWheelLeftInst, busWheelRightInst, spec.wheelRadius, spec.axles);
+    busAxles += spec.axles ? spec.axles.length : 2;
   }
 
   function smoothDistFade(d, start, end) {
@@ -1544,7 +1521,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
         const v = litVehicles[i];
         const fade = smoothDistFade(v._effDist, vehCutoff * 0.62, vehCutoff);
         if (fade <= 0.001) continue;
-        const spec = v.bus ? BUS_SPEC : BODY_SPECS[v.bodyType];
+        const spec = v.bus ? v.spec : BODY_SPECS[v.bodyType];
         const fullReach = HEADLIGHTS.distance;
         let maxReach = fullReach;
         if (player.active && v.pAhead > 0 && v.pAhead < 30) {
@@ -1641,8 +1618,8 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
       player.vz = player.fz * speed + (playerEntity.vz || 0);
     }
     const bicycle = activeMode === 'cyclist' || activeMode === 'cargobike';
-    player.halfW = activeMode === 'cargobike' ? 0.4 : activeMode === 'cyclist' ? 0.35 : activeMode === 'person' ? 0.32 : 0.86;
-    player.halfL = activeMode === 'cargobike' ? 1.34 : activeMode === 'cyclist' ? 0.85 : activeMode === 'person' ? 0.32 : 2.18;
+    player.halfW = activeMode === 'cargobike' ? 0.4 : activeMode === 'cyclist' ? 0.35 : activeMode === 'person' ? 0.32 : (playerEntity?.bodySpec?.width || 1.72) / 2;
+    player.halfL = activeMode === 'cargobike' ? 1.34 : activeMode === 'cyclist' ? 0.85 : activeMode === 'person' ? 0.32 : (playerEntity?.bodySpec?.length || 4.36) / 2;
     player.push = bicycle ? 0.82 : activeMode === 'person' ? 0.88 : 0.50;
 
     // 1. Cars & buses
@@ -1663,6 +1640,8 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     wheelCars = 0;
     visibleCars = 0;
     visibleBuses = 0;
+    busAxles = 0;
+    for (const set of Object.values(busSets)) set.count = 0;
     for (let i = 0; i < vehicles.length; i++) {
       const v = vehicles[i];
       if (!v.edge) continue;
@@ -1675,7 +1654,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
       locate(v);
       knock(v, dt);
       pose(v, dt);
-      if (player.active) collideWithPlayer(v, v.yaw + v.yawOffset, v.bus ? 1.30 : v.isSUV ? 0.92 : 0.86, v.bus ? 5.72 : v.isSUV ? 2.22 : 2.18);
+      if (player.active) collideWithPlayer(v, v.yaw + v.yawOffset, v.halfWidth, v.half);
       if (v.vx * v.vx + v.vz * v.vz > 0.36) knockOn(v);
 
       if (v.bus) renderBus(v);
@@ -1717,12 +1696,14 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     syncInst(carWheelLeftInst, wheelCars * 2);
     syncInst(carWheelRightInst, wheelCars * 2);
     syncInst(carShadowInst, visibleCars);
-    syncInst(busBodyInst, visibleBuses);
-    syncInst(busHeaderInst, visibleBuses);
-    syncInst(busWheelLeftInst, visibleBuses * 2);
-    syncInst(busWheelRightInst, visibleBuses * 2);
+    for (const set of Object.values(busSets)) {
+      syncInst(set.body, set.count);
+      syncInst(set.header, set.count);
+      if (set.count > 0) flagRange(set.states, set.count);
+    }
+    syncInst(busWheelLeftInst, busAxles);
+    syncInst(busWheelRightInst, busAxles);
     syncInst(busShadowInst, visibleBuses);
-    if (visibleBuses > 0) flagRange(busStates, visibleBuses);
     updateTrafficLights();
 
     // 2. Pedestrians

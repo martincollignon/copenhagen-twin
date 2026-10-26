@@ -63,8 +63,8 @@ test('cars still wait for crossing traffic, pedestrians and a blocked exit on gr
   assert.equal(mayEnter(car, 18), true);
 });
 
-test('the traffic module has no emergency-vehicle (police) or taxi code left', () => {
-  assert.ok(!/isPolice|policeLight|lightbar|taxi/i.test(source));
+test('the traffic module has no emergency-vehicle special cases', () => {
+  assert.ok(!/isPolice|policeLight|lightbar/i.test(source));
 });
 
 function populationContext() {
