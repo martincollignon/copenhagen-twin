@@ -236,7 +236,7 @@ function createInfoPanel() {
 function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {}) {
   const state = {
     enabled: true, probed: false, failures: 0, resident: new Map(), loading: new Map(), failed: new Set(), failedTiers: new Map(),
-    desiredQuality: new Map(), lastRun: 0, loaded: 0, look: 0, raw: 0
+    desiredQuality: new Map(), lastRun: 0, loaded: 0, look: 0, raw: 0, peakReservedBytes: 0
   };
   const loader = typeof createImageBitmap === 'function';
   const byId = new Map(candidates.map((c) => [c.id, c]));
@@ -321,6 +321,22 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
     return total;
   }
 
+  function memorySnapshot() {
+    let residentBytes = 0;
+    let pendingBytes = 0;
+    for (const r of state.resident.values()) residentBytes += r.bytes;
+    for (const job of state.loading.values()) pendingBytes += job.bytes;
+    return {
+      residentBytes,
+      pendingBytes,
+      reservedBytes: residentBytes + pendingBytes,
+      peakReservedBytes: state.peakReservedBytes,
+      budgetBytes: PHOTO.maxResidentBytes,
+      residentCount: state.resident.size,
+      pendingCount: state.loading.size
+    };
+  }
+
   /** Free the farthest selected resident walls first before reserving a new GPU allocation. */
   function makeRoom(bytes, protectedId, want) {
     const order = new Map(want.map((id, index) => [id, index]));
@@ -349,6 +365,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
       replacement: state.resident.has(c.id), controller: typeof AbortController === 'function' ? new AbortController() : null
     };
     state.loading.set(c.id, job);
+    state.peakReservedBytes = Math.max(state.peakReservedBytes, usedBytes());
     let bitmap = null;
     try {
       const { bitmap: loadedBitmap, hasMask } = await atlasBitmap(c, quality.maxDimension, job.controller?.signal);
@@ -436,7 +453,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
     }
   }
 
-  return { state, update, evict, get active() { return state.resident.size; } };
+  return { state, update, evict, get active() { return state.resident.size; }, get memory() { return memorySnapshot(); } };
 }
 
 /** Venues (data/cph-groundfloor.json, tools/cph-geodata/groundfloor.py); the file is optional: without it only BBR trade use gives shops. */
