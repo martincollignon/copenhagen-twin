@@ -30,7 +30,7 @@ export function streamConfig(opts = {}) {
   const mid = Number.isFinite(opts.mid) ? opts.mid : near === DEFAULT_STREAM.near ? DEFAULT_STREAM.mid : Math.round((near * 10) / 3);
   const hysteresis = Number.isFinite(opts.hysteresis) ? opts.hysteresis : Math.min(DEFAULT_STREAM.hysteresis, Math.round(near / 3));
   if (!(near > 0) || mid < near || hysteresis < 0) throw new Error(`bad stream config ${JSON.stringify({ near, mid, hysteresis })}`);
-  return { near, mid, hysteresis, maxConcurrent: opts.maxConcurrent ?? 4 };
+  return { near, mid, hysteresis, maxConcurrent: opts.maxConcurrent ?? 4, maxBuilds: opts.maxBuilds ?? 1 };
 }
 
 /** Distance from (x, z) to the rectangle [x0, z0, x1, z1] (0 inside). */

@@ -5,6 +5,7 @@ import { ssrReflectionWeight } from './surface-materials-cph.js';
 import { createPostProcessing } from './post-processing.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
 import { isTypingInField, TELEPORT_LOCATIONS } from './city-config.js';
+import { CITY_TELEPORT_LOCATIONS } from './city-teleports.js';
 import { buildWorld } from './world.js';
 import { ThirdPersonControllerManager } from './controllers.js';
 import { TouchControls } from './touch-controls.js';
@@ -476,18 +477,22 @@ async function initApp() {
     return destination;
   }
 
+  // The district presets are always there; the citywide ones (js/city-teleports.js, positions on the citywide road graph) only where the
+  // tile index covers them (world.tileExists), so a district-only build does not offer places it does not have.
+  const presetFor = (key) => TELEPORT_LOCATIONS[key] || (CITY_TELEPORT_LOCATIONS[key] && world.tileExists?.(CITY_TELEPORT_LOCATIONS[key].x, CITY_TELEPORT_LOCATIONS[key].z) ? CITY_TELEPORT_LOCATIONS[key] : null);
   teleportButtons.forEach((btn) => {
     // Hide the buttons that have no location
-    if (!TELEPORT_LOCATIONS[btn.getAttribute('data-teleport')]) btn.hidden = true;
+    btn.hidden = !presetFor(btn.getAttribute('data-teleport'));
     btn.addEventListener('click', () => {
-      const key = btn.getAttribute('data-teleport');
-      const loc = TELEPORT_LOCATIONS[key];
+      const loc = presetFor(btn.getAttribute('data-teleport'));
       if (loc) {
         teleportTo(loc.x, loc.z, loc.heading);
       }
       closePopovers();
     });
   });
+  const cityTitle = document.getElementById('tp-city-title');
+  if (cityTitle) cityTitle.hidden = !Object.keys(CITY_TELEPORT_LOCATIONS).some((k) => presetFor(k));
 
   if (hudToggleBtn) {
     hudToggleBtn.addEventListener('click', () => {

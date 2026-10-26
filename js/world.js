@@ -647,7 +647,8 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     });
   }
 
-  const cfg = streamConfig(stream || {});
+  // with the CPU halves in workers two tiles build at once: one waits for its worker while the main thread makes the other's meshes
+  const cfg = streamConfig({ ...(stream || {}), maxBuilds: pool ? 2 : 1 });
   const streamer = createTileStreamer({ store, data, layers, cfg });
   const origin = start || { x: 0, z: 0 };
   await streamer.settle(origin.x, origin.z);
@@ -749,7 +750,9 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     tileData: data,
     far,
     agents,
-    pool
+    pool,
+    /** True when the tile index has a tile at this local point (the citywide teleport presets use it). */
+    tileExists: (x, z) => !!index.tiles[tileOfLocal(x, z)]
   };
 }
 

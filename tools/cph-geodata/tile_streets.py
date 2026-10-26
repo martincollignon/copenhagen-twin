@@ -80,7 +80,19 @@ def remap_graph(graph: dict, survey: dict | None, city: dict) -> tuple[dict, dic
     """streets graph fixes (district indices) -> citywide indices."""
     report = {"nodes": [0, 0], "widths": [0, 0], "dropLinks": [0, 0], "identity": False}
     cn = city["nodes"]
-    if survey is None or (len(survey["nodes"]) == len(cn) and survey["nodes"][:40] == cn[:40]):
+
+    def fits() -> bool:
+        """The layout's graph indices already number the citywide graph (a citywide streets.json, or the district's own graph)."""
+        nodes = graph["nodes"]
+        if not nodes:
+            return True
+        step = max(1, len(nodes) // 40)
+        for i, x, z in nodes[::step]:
+            if 2 * i + 1 >= len(cn) or math.hypot(cn[2 * i] - x, cn[2 * i + 1] - z) > 30:
+                return False
+        return True
+
+    if fits() or survey is None:
         report["identity"] = True
         return {"nodes": graph["nodes"], "widths": graph["widths"], "dropLinks": graph.get("dropLinks", [])}, report
     at: dict[tuple[float, float], int] = {}

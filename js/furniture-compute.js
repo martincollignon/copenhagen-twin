@@ -25,7 +25,7 @@ export function makeFurnitureJob(ctx, { doc, water, margin = 30 }) {
   const near = (list) => (list || []).filter((l) => l.ring && inBox(l.ring, bbox));
   return {
     bbox, doc,
-    geo: { roads: g.roads, sidewalks: g.sidewalks, cycleTracks: g.cycleTracks, buildings: (g.buildings || []).map((b) => ({ id: b.id, ring: b.ring, holes: b.holes })) },
+    geo: { roads: g.roads, sidewalks: g.sidewalks, cycleTracks: g.cycleTracks, buildings: (g.buildings || []).map((b) => ({ id: b.id, ring: b.ring, holes: b.holes, eave: b.eave, ground: b.ground })) }, // eave and ground: trees trim their crowns against it
     surfaces: ctx.surfaces,
     lakes: water ? { ...water, lakes: near(water.lakes), ponds: near(water.ponds), bridges: near(water.bridges) } : null
   };

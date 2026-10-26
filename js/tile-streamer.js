@@ -38,7 +38,7 @@ export function createTileStreamer({ store, data, layers, cfg, interval = 200, o
   let demand = new Map();
   let cam = { x: 0, z: 0 };
   let lastRun = -Infinity;
-  let busy = false; // a build loop is running
+  let active = 0; // tile builds running (cfg.maxBuilds at most)
   const waiters = [];
 
   const stats = {
@@ -211,16 +211,17 @@ export function createTileStreamer({ store, data, layers, cfg, interval = 200, o
     for (const id of building) { if (wanted.has(id)) cancelled.delete(id); else cancelled.add(id); }
     releaseData();
     fetchMissing();
-    if (!busy) {
-      const order = (a, b) => (a.ring === b.ring ? a.d - b.d : a.ring === 'near' ? -1 : 1);
-      const next = [...plan.build, ...plan.rebuild].sort(order)[0];
-      if (next) {
-        busy = true;
-        buildTile(next.id, next.ring).then(() => { busy = false; pump(); }, (error) => { busy = false; stats.errors++; onError(error); pump(); });
-      } else {
-        for (const w of waiters.splice(0)) w();
+    const order = (a, b) => (a.ring === b.ring ? a.d - b.d : a.ring === 'near' ? -1 : 1);
+    const maxBuilds = cfg.maxBuilds ?? 1;
+    if (active < maxBuilds) {
+      const todo = [...plan.build, ...plan.rebuild].filter((n) => !building.has(n.id)).sort(order);
+      for (const next of todo) {
+        if (active >= maxBuilds) break;
+        active++;
+        buildTile(next.id, next.ring).then(() => { active--; pump(); }, (error) => { active--; stats.errors++; onError(error); pump(); });
       }
     }
+    if (!active && !plan.build.length && !plan.rebuild.length) for (const w of waiters.splice(0)) w();
     const resident = { near: 0, mid: 0 };
     for (const ring of ringOfBuilt.values()) resident[ring]++;
     stats.peak.near = Math.max(stats.peak.near, resident.near);

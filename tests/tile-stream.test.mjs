@@ -36,7 +36,7 @@ for (let a = -3; a <= 3; a++) for (let b = -3; b <= 3; b++) ids.push(`${ie + a}_
 const LAYERS = ['buildings', 'terrain', 'lod2', 'surfaces', 'vegetation', 'furniture', 'entrances', 'groundfloor'];
 
 /** A store whose requests are controlled by the test, a data store that only remembers layers, and recording layer modules. */
-function harness({ near = 300, mid = 1000, maxConcurrent = 3 } = {}) {
+function harness({ near = 300, mid = 1000, maxConcurrent = 3, maxBuilds = 1, slowAdd = null } = {}) {
   const requests = []; // { id, name, resolve, reject, signal, aborted }
   const store = {
     index: { tiles: Object.fromEntries(ids.map((id) => [id, { layers: Object.fromEntries(LAYERS.map((l) => [l, 100])) }])) },
@@ -64,11 +64,11 @@ function harness({ near = 300, mid = 1000, maxConcurrent = 3 } = {}) {
   const resident = { buildings: new Map(), furniture: new Map() };
   const mkLayer = (name, rings, fidelity = false) => ({
     name, rings, fidelity,
-    async add(ctx, ring) { log.push(`+${name}:${ctx.id}:${ring}`); resident[name]?.set(ctx.id, ring); },
+    async add(ctx, ring) { log.push(`+${name}:${ctx.id}:${ring}`); if (slowAdd) await slowAdd(name, ctx.id); resident[name]?.set(ctx.id, ring); },
     remove(id) { log.push(`-${name}:${id}`); resident[name]?.delete(id); }
   });
   const layers = [mkLayer('buildings', ['near', 'mid'], true), mkLayer('furniture', ['near'])];
-  const streamer = createTileStreamer({ store, data, layers, cfg: streamConfig({ near, mid, maxConcurrent }), interval: 0, yieldFrame: () => Promise.resolve(), onError: (e) => { throw e; } });
+  const streamer = createTileStreamer({ store, data, layers, cfg: streamConfig({ near, mid, maxConcurrent, maxBuilds }), interval: 0, yieldFrame: () => Promise.resolve(), onError: (e) => { throw e; } });
   const flush = async (n = 20) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0)); };
   /** Answers every pending request (in arrival order) until none is left, letting builds run in between. */
   const drain = async () => {
@@ -102,6 +102,33 @@ test('streamer: loads the camera tile first, respects the concurrency cap, build
   const lastNear = h.log.map((l, i) => (l.startsWith('+buildings') && l.endsWith(':near') ? i : -1)).reduce((a, b) => Math.max(a, b), -1);
   assert.ok(lastNear < firstMid + 40);
   assert.ok(h.streamer.stats.loads > 0 && h.streamer.stats.builds > 0);
+});
+
+test('streamer: maxBuilds tiles build at once, never more, and every tile is built once', async () => {
+  let inFlight = 0;
+  let peak = 0;
+  const slowAdd = async (name) => {
+    if (name !== 'buildings') return;
+    inFlight++;
+    peak = Math.max(peak, inFlight);
+    await new Promise((r) => setTimeout(r, 2));
+    inFlight--;
+  };
+  const one = harness({ maxBuilds: 1, slowAdd });
+  one.streamer.update(0, 0, 0);
+  await one.drain();
+  assert.equal(peak, 1);
+  const builtOne = one.streamer.stats.builds;
+  peak = 0;
+  const two = harness({ maxBuilds: 2, slowAdd });
+  two.streamer.update(0, 0, 0);
+  await two.drain();
+  assert.equal(peak, 2, 'two tiles overlap');
+  assert.equal(two.streamer.stats.builds, builtOne);
+  assert.equal(two.streamer.stats.errors, 0);
+  // no tile is built twice (a tile in flight is not started again)
+  const adds = two.log.filter((l) => l.startsWith('+buildings')).map((l) => l.split(':')[1]);
+  assert.equal(new Set(adds).size, adds.length);
 });
 
 test('streamer: moving away unloads, aborts requests nobody wants, releases data', async () => {

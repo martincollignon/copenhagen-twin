@@ -8,7 +8,7 @@ export function createTilePool({ size = null, url = new URL('./tile-worker.js', 
   const n = size ?? Math.max(1, Math.min(2, ((globalThis.navigator?.hardwareConcurrency) || 4) - 2));
   const workers = [];
   const queue = [];
-  const stats = { jobs: 0, inline: 0, busyMs: 0, maxMs: 0, workers: 0, failed: 0, byKind: {} };
+  const stats = { jobs: 0, inline: 0, busyMs: 0, maxMs: 0, workers: 0, failed: 0, byKind: {}, kinds: {} };
   let broken = !WorkerCtor;
 
   function spawn() {
@@ -23,6 +23,8 @@ export function createTilePool({ size = null, url = new URL('./tile-worker.js', 
           const ms = performance.now() - w.started;
           stats.busyMs += ms;
           stats.maxMs = Math.max(stats.maxMs, ms);
+          const k = (stats.kinds[job.kind] ||= { n: 0, ms: 0, max: 0 });
+          k.n++; k.ms += ms; k.max = Math.max(k.max, ms);
           if (error) { stats.failed++; console.warn('[cph] building worker:', error); job.resolve(null); } else job.resolve(result);
         }
         pump();

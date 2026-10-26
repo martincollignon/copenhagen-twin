@@ -16,6 +16,7 @@ import { createEntranceIndex, createDoorAccumulator, addDoors } from './entrance
 import { CPH_FRAME, toLocal } from './city-config.js';
 import { disposeTree } from './dispose-tree.js';
 import { nextFrame } from './yield-frame.js';
+import { createHeroCache } from './hero-cache.js';
 
 // js/buildings-real.js
 // Copenhagen's real buildings (M2): every geodata building is extruded from its measured footprint (rings with holes)
@@ -139,24 +140,10 @@ async function loadHero(hero, { fetchImpl = globalThis.fetch } = {}) {
   return group;
 }
 
-// A hero glTF is parsed once (and cloned for every build of its tile: a tile rebuilds when it moves between the near and the mid ring, and
-// streams out and in again); the clones share the geometries, materials and textures, which the cache owns (userData.cached). A hero that
-// failed to load (the glb is not on this machine) is not asked for again for HERO_RETRY_MS.
-const HERO_RETRY_MS = 5 * 60 * 1000;
-const heroCache = new Map(); // building id -> { template: Promise<Group>, error?: Error, at }
-
-async function loadHeroCached(hero, opts = {}) {
-  const key = String(hero.building_id);
-  let entry = heroCache.get(key);
-  if (entry?.error && performance.now() - entry.at < HERO_RETRY_MS) throw entry.error;
-  if (!entry || entry.error) {
-    entry = { at: performance.now(), template: loadHero(hero, opts).then((group) => { group.userData.cached = true; return group; }) };
-    entry.template.catch((error) => { entry.error = error; entry.at = performance.now(); });
-    heroCache.set(key, entry);
-  }
-  const group = (await entry.template).clone();
-  return group;
-}
+// A hero glTF is parsed once and cloned for every build of its tile (js/hero-cache.js); the clones share its geometries, materials and
+// textures, which the cache owns (userData.cached)
+const heroCache = createHeroCache((hero) => loadHero(hero));
+const loadHeroCached = (hero) => heroCache.get(hero);
 
 function describeBuilding(b, lod2Info = null) {
   const metres = (v) => `${v.toFixed(1)} m`;

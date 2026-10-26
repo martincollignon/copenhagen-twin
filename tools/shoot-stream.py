@@ -23,6 +23,8 @@ ap.add_argument('--height', type=float, default=22.0, help='camera height above 
 ap.add_argument('--heap-pct', type=float, default=15.0)
 ap.add_argument('--query', default='', help='extra query string')
 ap.add_argument('--profile', action='store_true', help='record a CDP CPU profile of loop 1 and print the hottest functions')
+ap.add_argument('--city', action='store_true', help='a citywide index: skip the checks that assume the 16-tile district')
+ap.add_argument('--shot-every', type=float, default=0.0, help='a screenshot every N seconds of the lap (loop 1)')
 ap.add_argument('--path', default='', help='custom lap as x,z;x,z;... (local frame); default is the district lap')
 args = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -74,7 +76,7 @@ FLY_JS = '''([path, speed, height]) => {
 SNAP_JS = '''() => { const t = globalThis.__twin; const s = t.stream.snapshot(); const m = t.renderer.info.memory;
   return { resident: s.resident.near + '+' + s.resident.mid, near: s.resident.near, mid: s.resident.mid, total: s.resident.total, held: s.held, fetching: s.fetching, building: s.building,
            loads: s.loads, builds: s.builds, rebuilds: s.rebuilds, unloads: s.unloads, aborts: s.aborts, errors: s.errors, bytesMB: +(s.bytes / 1e6).toFixed(1),
-           geometries: m.geometries, textures: m.textures, calls: t.renderer.info.render.drawCalls, triangles: t.renderer.info.render.triangles,
+           far: t.world.far ? { tiles: t.world.far.stats.tiles, visible: t.world.far.stats.visible, triangles: t.world.far.stats.triangles } : null, geometries: m.geometries, textures: m.textures, calls: t.renderer.info.render.drawCalls, triangles: t.renderer.info.render.triangles,
            ids: s.resident.ids }; }'''
 
 fails = []
@@ -132,7 +134,7 @@ try:
         sn = settle()
         print('boot resident', sn['resident'], 'loads', sn['loads'], 'bytes MB', sn['bytesMB'])
         report['boot'] = {k: v for k, v in sn.items() if k != 'ids'}
-        check('boot streams a subset (stream < district)', sn['total'] < 16, str(sn['total']))
+        if not args.city: check('boot streams a subset (stream < district)', sn['total'] < 16, str(sn['total']))
         page.screenshot(path=f'{out}/loop0-start.png')
 
         # a short hold at the start for the first heap sample (loop 0 = the warm state after boot)
@@ -154,7 +156,10 @@ try:
                 cam = page.evaluate('() => globalThis.__twin.freeCam.pos')
                 samples.append({'t': round(time.time() - t_loop, 1), 'cam': [round(cam[0]), round(cam[2])], **{k: v for k, v in sn.items() if k != 'ids'}})
                 print(f"  loop {loop} t={samples[-1]['t']:5.1f}s cam=({cam[0]:6.0f},{cam[2]:6.0f}) resident {sn['near']}n+{sn['mid']}m held {sn['held']} fetching {sn['fetching']} building {sn['building']} loads {sn['loads']} unloads {sn['unloads']} {sn['bytesMB']} MB")
-                if loop == 1 and shots < 3 and abs(cam[0]) > 500 and abs(cam[2]) > 500 and (shots == 0 or samples[-1]['t'] - 1 > 0):
+                if args.shot_every:
+                    if loop == 1 and samples[-1]['t'] >= (shots + 1) * args.shot_every:
+                        page.screenshot(path=f'{out}/loop1-t{int(samples[-1]["t"]):03d}-x{cam[0]:.0f}z{cam[2]:.0f}.png'); shots += 1
+                elif loop == 1 and shots < 3 and abs(cam[0]) > 500 and abs(cam[2]) > 500 and (shots == 0 or samples[-1]['t'] - 1 > 0):
                     page.screenshot(path=f'{out}/loop1-corner{shots}.png'); shots += 1
                 if smallest_far is None or sn['total'] < smallest_far: smallest_far = sn['total']
                 if page.evaluate('() => !!globalThis.__twin.flyDone'): break
@@ -178,7 +183,7 @@ try:
         errs = [l for l in logs if l.startswith(('error', 'pageerror'))]
         check('no console errors', not errs, '\n'.join(errs[:10]))
         check('tiles unload while flying', final['unloads'] > 0, f"unloads {final['unloads']}")
-        check('the far corners hold fewer tiles than the district', smallest_far is not None and smallest_far < 16, f'smallest resident total {smallest_far}')
+        if not args.city: check('the far corners hold fewer tiles than the district', smallest_far is not None and smallest_far < 16, f'smallest resident total {smallest_far}')
         check('no streamer errors', final['errors'] == 0, str(final['errors']))
         if len(heaps) >= 3:
             base = heaps[1]  # after the first loop: caches, shaders and pools are warm

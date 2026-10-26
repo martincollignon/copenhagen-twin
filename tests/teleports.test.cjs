@@ -5,9 +5,10 @@ const test = require('node:test');
 const vm = require('node:vm');
 
 const read = (path) => readFileSync(join(__dirname, '..', path), 'utf8');
-let TELEPORT_LOCATIONS, ISLAND_BOUNDS, swanNavigationModule, lakeDoc;
+let TELEPORT_LOCATIONS, ISLAND_BOUNDS, CITY_TELEPORT_LOCATIONS, swanNavigationModule, lakeDoc;
 test.before(async () => {
   ({ TELEPORT_LOCATIONS, ISLAND_BOUNDS } = await import('../js/city-config.js'));
+  ({ CITY_TELEPORT_LOCATIONS } = await import('../js/city-teleports.js'));
   swanNavigationModule = await import('../js/swan-navigation.js');
   lakeDoc = JSON.parse(read('data/cph-lakes.json'));
 });
@@ -29,12 +30,41 @@ function distanceToStreet(geo, name, x, z) {
 
 test('every teleport button has a Copenhagen destination inside the district', () => {
   const buttons = [...read('index.html').matchAll(/data-teleport="([^"]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(Object.keys(TELEPORT_LOCATIONS).sort(), buttons.sort());
+  assert.deepEqual([...Object.keys(TELEPORT_LOCATIONS), ...Object.keys(CITY_TELEPORT_LOCATIONS)].sort(), buttons.sort());
   assert.ok(buttons.length >= 5);
   for (const [name, point] of Object.entries(TELEPORT_LOCATIONS)) {
     assert.ok(Number.isFinite(point.heading), `${name} has a heading`);
     assert.ok(point.x > ISLAND_BOUNDS.minX && point.x < ISLAND_BOUNDS.maxX, `${name} inside the district in x`);
     assert.ok(point.z > ISLAND_BOUNDS.minZ && point.z < ISLAND_BOUNDS.maxZ, `${name} inside the district in z`);
+  }
+});
+
+test('the citywide presets are finite, hidden until a tile covers them, and lie on vehicular links of the citywide road graph', () => {
+  const names = ['rhus', 'nyhavn', 'slot', 'brygge', 'vesterbro', 'frbrhus', 'frballe', 'trianglen'];
+  assert.deepEqual(Object.keys(CITY_TELEPORT_LOCATIONS), names);
+  for (const [key, p] of Object.entries(CITY_TELEPORT_LOCATIONS)) {
+    assert.ok([p.x, p.z, p.heading].every(Number.isFinite) && p.name && p.sub, key);
+    assert.ok(!(key in TELEPORT_LOCATIONS), `${key} does not shadow a district preset`);
+  }
+  // the buttons start hidden (main.js shows them where world.tileExists says so)
+  const html = read('index.html');
+  for (const key of names) assert.match(html, new RegExp(`data-teleport="${key}" type="button" hidden`), `${key} is hidden by default`);
+  // on the citywide graph (gitignored: only where the data is built): within 3 m of a vehicular link
+  let graph = null;
+  try { graph = JSON.parse(read('data/city/roadgraph.json')); } catch { return; }
+  if (graph.links.length < 50000) return; // the district's graph does not reach them
+  const N = graph.nodes;
+  const vehicular = new Set(['primary', 'secondary', 'residential']);
+  for (const [key, p] of Object.entries(CITY_TELEPORT_LOCATIONS)) {
+    let best = Infinity;
+    for (const l of graph.links) {
+      if (!vehicular.has(graph.classes[l[7]])) continue;
+      const ax = N[2 * l[0]], az = N[2 * l[0] + 1], bx = N[2 * l[1]], bz = N[2 * l[1] + 1];
+      const dx = bx - ax, dz = bz - az;
+      const t = Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.z - az) * dz) / (dx * dx + dz * dz || 1)));
+      best = Math.min(best, Math.hypot(ax + dx * t - p.x, az + dz * t - p.z));
+    }
+    assert.ok(best < 3, `${key} is ${best.toFixed(1)} m from a vehicular link`);
   }
 });
 
@@ -86,6 +116,9 @@ test('preset teleports share arrival resets', () => {
   const calls = [];
   const environment = {
     TELEPORT_LOCATIONS,
+    CITY_TELEPORT_LOCATIONS,
+    world: { tileExists: () => true }, // the tile index covers every city preset
+    document: { getElementById: () => ({ hidden: true }) },
     controllerManager: {
       teleportActiveTo: (...args) => { calls.push(['teleport', ...args]); return { x: 0, z: 0 }; }
     },
@@ -93,18 +126,35 @@ test('preset teleports share arrival resets', () => {
     gamepadControls: { reset: () => calls.push(['gamepad']) },
     cameraSystem: { resetForTeleport: () => calls.push(['camera']) },
     selectCamera: (...args) => calls.push(['selectCamera', ...args]),
-    teleportButtons: Object.keys(TELEPORT_LOCATIONS).map((key) => ({
+    teleportButtons: [...Object.keys(TELEPORT_LOCATIONS), ...Object.keys(CITY_TELEPORT_LOCATIONS)].map((key) => ({
       getAttribute: () => key,
+      hidden: true,
       addEventListener: (_event, handler) => handlers.set(key, handler)
     })),
     closePopovers: () => {}
   };
   vm.runInNewContext(main.slice(start, end), environment);
-  for (const [name, point] of Object.entries(TELEPORT_LOCATIONS)) {
+  for (const [name, point] of Object.entries({ ...TELEPORT_LOCATIONS, ...CITY_TELEPORT_LOCATIONS })) {
     calls.length = 0;
     handlers.get(name)();
     assert.deepEqual(calls, [
       ['teleport', point.x, point.z, point.heading], ['touch'], ['gamepad'], ['camera'], ['selectCamera', 'chase', true]
     ]);
+  }
+});
+
+test('the citywide preset buttons are only offered where the tile index has a tile', () => {
+  const main = read('js/main.js');
+  const start = main.indexOf('  function teleportTo(');
+  const end = main.indexOf('  if (hudToggleBtn) {', start);
+  for (const covered of [false, true]) {
+    const buttons = [...Object.keys(TELEPORT_LOCATIONS), ...Object.keys(CITY_TELEPORT_LOCATIONS)].map((key) => ({ key, getAttribute: () => key, hidden: null, addEventListener() {} }));
+    const title = { hidden: null };
+    vm.runInNewContext(main.slice(start, end), {
+      TELEPORT_LOCATIONS, CITY_TELEPORT_LOCATIONS, world: { tileExists: () => covered }, document: { getElementById: () => title },
+      controllerManager: {}, touchControls: {}, gamepadControls: {}, cameraSystem: {}, selectCamera() {}, teleportButtons: buttons, closePopovers() {}
+    });
+    for (const b of buttons) assert.equal(b.hidden, b.key in CITY_TELEPORT_LOCATIONS ? !covered : false, `${b.key} with tiles ${covered}`);
+    assert.equal(title.hidden, !covered);
   }
 });

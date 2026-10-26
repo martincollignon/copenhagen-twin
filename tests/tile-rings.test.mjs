@@ -13,7 +13,8 @@ const tiles = ids.map((id) => ({ id, bounds: tileBoundsLocal(id) }));
 const exists = (id) => ids.includes(id);
 
 test('stream config defaults and ?stream=<near>', () => {
-  assert.deepEqual({ ...cfg }, { near: 750, mid: 2500, hysteresis: 250, maxConcurrent: 4 });
+  assert.deepEqual({ ...cfg }, { near: 750, mid: 2500, hysteresis: 250, maxConcurrent: 4, maxBuilds: 1 });
+  assert.equal(streamConfig({ maxBuilds: 2 }).maxBuilds, 2);
   const c = streamConfig({ near: 300 });
   assert.equal(c.near, 300);
   assert.equal(c.mid, 1000);
