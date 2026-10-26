@@ -34,6 +34,8 @@ Headless browser check (Playwright; boots the twin, asserts the HUD and console,
 uv run --with playwright python tools/shoot-m2.py --verify --query hooks --out docs/cleanup
 ```
 
+Facade look: photo walls are on by default between about 14 m and 150 m of the camera (procedural brick, plaster and windows closer, tone + procedural beyond; `?tex=0` turns the photos off). They need `data/tex/` (photo atlases) and the processed `data/tex-look/` (`uv run --with pillow --with numpy --with scipy python tools/cph-geodata/facade_look.py`); without them the twin falls back to the procedural facades. Ground-floor shopfronts come from `data/cph-groundfloor.json` (`uv run --with requests --with pyproj python tools/cph-geodata/groundfloor.py`). Facade shots: `uv run --with playwright python tools/shoot-look.py --out docs/look/facades/x [--perf]`.
+
 ## Rebuild the data
 
 `data/cph-geodata.json` is generated and never edited by hand:
