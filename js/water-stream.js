@@ -5,6 +5,7 @@ import { applyGroundWindow } from './ground-shader-cph.js';
 import { buildTileWaterArrays, shoreWindow, groundWindow, windowOrigin } from './water-tiles-cph.js';
 import { tileBoundsLocal } from './tile-grid.js';
 import { disposeTree } from './dispose-tree.js';
+import { sidePlanes, boxVisible } from './reflect-gate.js';
 
 // js/water-stream.js
 // The generic water of the streamed city (milestone C4): every harbour basin, canal, lake and pond that is not one of the Soerne. The `water`
@@ -27,6 +28,17 @@ const MOVE_REBUILD = 384; // m the camera may move from the window centre before
 const REBUILD_INTERVAL = 350; // ms: tiles streaming in make the rasters dirty; this debounces them
 export const PLANAR_RANGE = 260;
 export const PLANAR_CEILING = 220;
+/**
+ * Reflection pass options from `?reflect=` (comma separated): `full` the old pass (no gating, no small-object culling, 0.35 scale), `novis` no
+ * visible-water gate, `nosmall` keep agents / furniture / grass in the reflection, `rN` the render target scale N / 100 (default 25), `dN` the range in metres of the tiles the pass draws (default 1100).
+ */
+export function reflectOptions(search = globalThis.location?.search || '') {
+  const set = new Set((new URLSearchParams(search).get('reflect') || '').split(',').filter(Boolean));
+  const full = set.has('full');
+  const r = [...set].map((t) => /^r(\d+)$/.exec(t)).find(Boolean);
+  const d = [...set].map((t) => /^d(\d+)$/.exec(t)).find(Boolean);
+  return { gate: !full && !set.has('novis'), small: !full && !set.has('nosmall'), scale: r ? +r[1] / 100 : full ? 0.35 : 0.25, range: d ? +d[1] : 1100 };
+}
 
 /**
  * @param {THREE.Scene} scene
@@ -45,6 +57,7 @@ export function createWaterLayer(scene, { header, groundMaterial, lakeRings = []
   wallsRoot.name = 'stream-water-walls';
   group.add(wallsRoot);
   const sea = header?.sea ?? -6.84;
+  const reflect = reflectOptions();
 
   // window rasters
   const origin = uniform(new THREE.Vector2(-1e6, -1e6));
@@ -57,7 +70,7 @@ export function createWaterLayer(scene, { header, groundMaterial, lakeRings = []
   sdfTex.generateMipmaps = false;
   sdfTex.needsUpdate = true;
   const { material, reflectorNode } = createWaterMaterial({
-    sdf: sdfTex, planar: planar ? { resolutionScale: 0.35 } : null, level: sea,
+    sdf: sdfTex, planar: planar ? { resolutionScale: reflect.scale } : null, level: sea,
     window: { origin, size: sizeU, reflLevel, reflOn }
   });
   material.name = 'cph-water-stream';
@@ -118,7 +131,13 @@ export function createWaterLayer(scene, { header, groundMaterial, lakeRings = []
     }
     const green = [];
     for (const g of payload.green || []) green.push(g.ring, ...(g.holes || []));
-    const rec = { holder, surface, walls, pts, green, triangles: arrays.stats.triangles + arrays.stats.wallTriangles };
+    let box = null;
+    if (surface) {
+      surface.geometry.computeBoundingBox();
+      const bb = surface.geometry.boundingBox;
+      box = { min: [bb.min.x, bb.min.y, bb.min.z], max: [bb.max.x, bb.max.y, bb.max.z] };
+    }
+    const rec = { holder, surface, walls, pts, green, box, triangles: arrays.stats.triangles + arrays.stats.wallTriangles };
     tiles.set(ctx.id, rec);
     stats.tiles = tiles.size;
     stats.triangles += rec.triangles;
@@ -196,6 +215,18 @@ export function createWaterLayer(scene, { header, groundMaterial, lakeRings = []
     reflectorNode.reflector.updateBeforeType = on ? NodeUpdateType.FRAME : NodeUpdateType.NONE;
   };
 
+  // the reflection is only worth its pass when some water of the reflected level is inside the camera's side frustum (a 30 m margin; the water
+  // does not have to be near: the sea at the horizon counts, as does the far ring's)
+  const planes = new Float64Array(16);
+  function waterInView(level) {
+    camera.updateMatrixWorld?.();
+    sidePlanes(camera.projectionMatrix.elements, camera.matrixWorldInverse.elements, planes);
+    for (const rec of tiles.values()) {
+      if (rec.box && Math.abs(rec.box.min[1] - level) < 0.5 && boxVisible(planes, rec.box.min, rec.box.max, 30)) return true;
+    }
+    return false;
+  }
+
   let lastNear = { distance: Infinity, level: sea };
   let lastNearAt = -Infinity;
 
@@ -217,7 +248,8 @@ export function createWaterLayer(scene, { header, groundMaterial, lakeRings = []
       if (!reflectorNode) return;
       const n = this.nearest(x, z, now);
       const camY = camera ? camera.position.y : 0;
-      const on = allow && wantPlanar && n.distance < PLANAR_RANGE && camY < PLANAR_CEILING && camY > n.level + 0.2;
+      let on = allow && wantPlanar && n.distance < PLANAR_RANGE && camY < PLANAR_CEILING && camY > n.level + 0.2;
+      if (on && reflect.gate && camera) on = waterInView(n.level);
       if (on) {
         reflLevel.value = n.level;
         reflectorNode.target.position.y = n.level;

@@ -30,7 +30,8 @@ import { streamConfig, extentOfTiles, distanceToRect } from './tile-rings.js';
 import { createBuildingsLayer } from './buildings-stream.js';
 import { createSlicer, nextFrame } from './yield-frame.js';
 import { createGroundLayer } from './ground-stream.js';
-import { createWaterLayer } from './water-stream.js';
+import { createWaterLayer, reflectOptions } from './water-stream.js';
+import { sidePlanes, pointVisible } from './reflect-gate.js';
 import { createTilePool } from './tile-pool.js';
 import { makeRoadJob } from './road-compute.js';
 import { makeFurnitureJob } from './furniture-compute.js';
@@ -160,7 +161,7 @@ function groundTexture() {
 }
 
 const GROUND_SIZE = 8000;
-const REFLECT_RANGE = 1100; // m: the planar reflection of the streamed city draws the tiles within this of the camera (and no far ring)
+// the planar reflection of the streamed city draws the tiles within `reflectOpts.range` (1100 m, `?reflect=dN`) of the camera (and no far ring)
 
 function groundMaterial() {
   const texture = groundTexture();
@@ -500,6 +501,7 @@ const ringsBbox = (rings) => {
  */
 async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDate, stream, start, adoptMesh = null }) {
   const flags = new Set(debug.split(','));
+  const reflectOpts = reflectOptions();
   const city = await store.loadCity();
   const ids = store.ids;
   const index = store.index;
@@ -592,8 +594,24 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
   // (the planar reflection pass renders the scene again: it leaves out the far ring and the tiles beyond REFLECT_RANGE of the camera, see reflectionCull)
   let cullRefs = { far: null, buildings: null, roads: null, camera: null };
   const boundsOfTile = new Map();
+  // small things that add draw calls but nothing to a reflection at 25 % scale: people, cyclists and cars, grass tufts, street furniture other than
+  // trees and lamp poles (`?reflect=nosmall` keeps them)
+  const SMALL = /^(bollards|bins|bin-stands|glass-containers|benches|bike-|bikes-|parking-meters|bus-|rescue-posts|lake-posts|monuments|lamp-wires|lamp-pendants|tree-litter|PeopleNear|PeopleFar)/;
+  let smallRefs = [];
+  let smallAge = Infinity;
+  const smallThings = () => {
+    if (!reflectOpts.small) return [];
+    if (smallAge++ >= 90) {
+      smallAge = 0;
+      smallRefs = [];
+      scene.traverse((o) => {
+        if (o.name === 'CopenhagenCyclists' || o.name === 'TrafficAndPedestrians' || o.name === 'grass-tufts' || SMALL.test(o.name)) smallRefs.push(o);
+      });
+    }
+    return smallRefs;
+  };
   const reflectionCull = () => {
-    const out = [cullRefs.far?.group];
+    const out = [cullRefs.far?.group, ...smallThings()];
     const cam = cullRefs.camera;
     if (cam) {
       for (const root of [cullRefs.buildings?.group, cullRefs.roads?.group]) {
@@ -602,7 +620,7 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
           if (!id) continue;
           let b = boundsOfTile.get(id);
           if (!b) boundsOfTile.set(id, (b = tileBoundsLocal(id)));
-          if (distanceToRect(cam.position.x, cam.position.z, b) > REFLECT_RANGE) out.push(child);
+          if (distanceToRect(cam.position.x, cam.position.z, b) > reflectOpts.range) out.push(child);
         }
       }
     }
@@ -772,6 +790,14 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
   const lakePts = [];
   for (const l of lakesDoc?.lakes || []) for (let i = 0; i < l.ring.length; i += 8) lakePts.push(l.ring[i], l.ring[i + 1]);
   const lakeDistance = (x, z) => { let d = Infinity; for (let i = 0; i < lakePts.length; i += 2) d = Math.min(d, Math.hypot(lakePts[i] - x, lakePts[i + 1] - z)); return d; };
+  // the Soerne's reflection only when some lake outline (every 4th vertex) is inside the camera's side frustum, 30 m margin
+  const lakePlanes = new Float64Array(16);
+  const lakeInView = (cam, level) => {
+    cam.updateMatrixWorld?.();
+    sidePlanes(cam.projectionMatrix.elements, cam.matrixWorldInverse.elements, lakePlanes);
+    for (let i = 0; i < lakePts.length; i += 2) if (pointVisible(lakePlanes, lakePts[i], level, lakePts[i + 1], 30)) return true;
+    return false;
+  };
   let lakeDistAt = -Infinity;
   let lakeDist = Infinity;
   return {
@@ -788,7 +814,8 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
         if (now - lakeDistAt > 250) { lakeDistAt = now; lakeDist = lakeDistance(x, z); }
         const dl = lakeDist;
         const near = waterLayer.nearest(x, z);
-        const lakesWant = dl < 300 && camY < 450 && camY > lakes.level + 0.2;
+        let lakesWant = dl < 300 && camY < 450 && camY > lakes.level + 0.2;
+        if (lakesWant && reflectOpts.gate && camera) lakesWant = lakeInView(camera, lakes.level);
         const lakesFirst = lakesWant && dl <= near.distance;
         lakes.setPlanar(lakesFirst && water !== 'simple');
         waterLayer.update(x, z, { allow: !lakesFirst });
