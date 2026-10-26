@@ -56,13 +56,36 @@ def load_layers(failed: dict, refresh: bool):
     return kk, osm
 
 
+def patch_roads(a):
+    """Re-run roads.py on the cached raw layers and splice `roads` / `roadGraph` / `meta.road_stats` into the existing file."""
+    failed: dict[str, str] = {}
+    kk, osm = load_layers(failed, a.refresh)
+    if failed:
+        print("raw layers failed:", failed)
+    _sig, sig_utm = P.signals(kk.get("trafiksignal_oversigt"), osm.get("nodes"))
+    roads, ways, names, rstats = R.compile_roads(
+        osm.get("roads", {"elements": []}),
+        {k: kk.get(k) for k in ("Kommunevej", "trafikhastigheder", "ensrettede_gader", "cykelsti")}, sig_utm)
+    graph = R.build_road_graph(roads, ways, names, sig_utm)
+    out = Path(a.out)
+    doc = json.loads(out.read_text())
+    doc["roads"], doc["roadGraph"] = roads, graph
+    doc.setdefault("meta", {})["road_stats"] = dict(rstats)
+    out.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
+    print(f"patched roads ({len(roads)}) + roadGraph ({len(graph['links'])} links) into {out}; stats {dict(rstats)}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="data/cph-geodata.json")
     ap.add_argument("--refresh", action="store_true", help="re-download raw layers")
     ap.add_argument("--env-file", help="optional .env with DHM_TERRAIN_TOKEN/GSEARCH_TOKEN for DSM/DTM heights")
     ap.add_argument("--no-dhm", action="store_true")
+    ap.add_argument("--patch-roads", action="store_true",
+                    help="recompile ONLY roads + roadGraph (roads.py) into the existing --out file; every other field is kept as it is")
     a = ap.parse_args(argv)
+    if a.patch_roads:
+        return patch_roads(a)
 
     failed: dict[str, str] = {}
     kk, osm = load_layers(failed, a.refresh)

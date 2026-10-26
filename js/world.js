@@ -5,6 +5,7 @@ import { loadLod2 } from './lod2-geometry.js';
 import { createTrafficSystem } from './traffic.js';
 import { buildCphRoadSurfaces } from './road-surfaces-cph.js';
 import { createCyclistSystem } from './cyclists.js';
+import { buildDirectionOverlay } from './direction-overlay.js';
 import { buildSignalHeads } from './signal-heads-cph.js';
 import { createWalkSpace } from './walk-space-cph.js';
 import { buildLakes } from './water-cph.js';
@@ -203,7 +204,7 @@ const nullTraffic = () => ({
 });
 
 // Road surfaces, the drivable network, traffic, pedestrians, cyclists and signal heads from the geodata
-async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null, terrain = null }) {
+async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null, terrain = null, debug = '' }) {
   const surfaces = await buildCphRoadSurfaces(scene, geo, { surfaces: surfacesDoc, terrain });
   markInit('roadSurfaces');
   const walk = createWalkSpace(geo);
@@ -227,6 +228,8 @@ async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null, terra
   const signalNodes = traffic.network.nodes.filter((n) => n.signal);
   cyclists = createCyclistSystem(scene, geo, signalNodes, { groundHeight: surfaces.groundHeight });
   markInit('cyclists');
+  // `?debug=oneway`: arrows for the direction of cars and bicycles (direction-overlay.js)
+  if (debug.split(',').includes('oneway')) markInit(`directions(${JSON.stringify(buildDirectionOverlay(scene, geo, cyclists.network, surfaces.groundHeight).counts)})`);
   const heads = buildSignalHeads(scene, signalNodes, { groundHeight: surfaces.groundHeight });
   markInit('signalHeads');
   const trafficUpdate = traffic.update;
@@ -344,7 +347,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   let surfacesCut = null;
   if (geo?.roadGraph && !debug.split(',').includes('noroads')) {
     surfacesCut = applySurfaceCuts(await loadCphSurfaces(), mergeSurfaceCuts(lakesDoc?.surface_cuts, geo.surfaceCuts));
-    traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: surfacesCut, terrain });
+    traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: surfacesCut, terrain, debug });
   }
 
   // M4: street furniture (data/cph-furniture.json): trees, lamps, parked cars, bins, bollards, benches, racks, bus stops

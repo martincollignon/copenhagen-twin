@@ -12,6 +12,7 @@ import { buildPavementBuckets, createSurfaceIndex } from './pavement-cph.js';
 import { createHeightGrid, composeHeightField } from './ground-height-cph.js';
 import { densifyPts, drapePositions } from './terrain-cph.js';
 import { computeMouthLayouts, subtractIntervals } from './junction-mouths-cph.js';
+import { hasContraflow, bikeBanned, stripCoverage } from './bike-direction.js';
 
 // Heights (m): carriageway -> (10 cm kerb) -> cycle track -> (8 cm kerb) -> pavement
 export const SURFACE_Y = { asphalt: 0.02, paint: 0.035, cycle: 0.12, cyclePaint: 0.128, kerbTop: 0.002, sidewalk: 0.2, ground: 0.014 };
@@ -170,6 +171,46 @@ export function createSegmentIndex(cell = 16) {
       return false;
     }
   };
+}
+
+
+// ---- contraflow cycle lanes: a solid white line 1.5 m in from the left kerb of a one-way street and a bicycle pictogram
+// every SYMBOL_EVERY m, upright for a rider coming towards the cars --------------------------------------------------------
+const CONTRA_LANE_W = 1.5;
+const SYMBOL_EVERY = 16;
+
+// a thick line a-b (world x, z) as one quad
+function thickLine(layer, a, b, w, y) {
+  const dx = b[0] - a[0];
+  const dz = b[1] - a[1];
+  const l = Math.hypot(dx, dz) || 1;
+  const nx = (-dz / l) * (w / 2);
+  const nz = (dx / l) * (w / 2);
+  layer.quad([a[0] - nx, a[1] - nz], [b[0] - nx, b[1] - nz], [b[0] + nx, b[1] + nz], [a[0] + nx, a[1] + nz], y);
+}
+
+/** A bicycle pictogram in side view laid on the road at (cx, cz); (ux, uz) is the way the rider travels. */
+export function bikeSymbol(layer, cx, cz, ux, uz, y, scale = 1) {
+  const vx = -uz; // "up" of the pictogram: to the rider's right
+  const vz = ux;
+  const P = (u, v) => [cx + (ux * u + vx * v) * scale, cz + (uz * u + vz * v) * scale];
+  const W = 0.055 * scale;
+  const ring = (u0) => {
+    const n = 14;
+    for (let i = 0; i < n; i++) {
+      const t0 = (i / n) * Math.PI * 2;
+      const t1 = ((i + 1) / n) * Math.PI * 2;
+      thickLine(layer, P(u0 + Math.cos(t0) * 0.21, Math.sin(t0) * 0.21), P(u0 + Math.cos(t1) * 0.21, Math.sin(t1) * 0.21), W, y);
+    }
+  };
+  ring(-0.42);
+  ring(0.42);
+  const rear = [-0.42, 0];
+  const bb = [-0.04, 0];
+  const seat = [-0.2, 0.36];
+  const head = [0.24, 0.38];
+  const front = [0.42, 0];
+  for (const [a, b] of [[rear, bb], [rear, seat], [seat, bb], [seat, head], [bb, head], [head, front], [head, [0.18, 0.5]], [[-0.26, 0.4], [-0.12, 0.4]]]) thickLine(layer, P(...a), P(...b), W, y);
 }
 
 const cycleSides = (r) => {
@@ -391,6 +432,25 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
       for (const [ts, te, jx, jz] of [[0, trim0, x0, z0], [L - trim1, L, x1, z1]]) {
         if (te - ts < 1 || blueNear(jx, jz, 25) || !ranges.length) continue;
         ribbon(blue, slicePts(r.pts, ts, te), ...sd(h, o2), SURFACE_Y.asphalt + 0.012, { u0: ts });
+      }
+    }
+    // a contraflow cycle lane on a one-way street: solid line and pictograms at the left edge, the rider coming towards us
+    if (hasContraflow(r) && !bikeBanned(r) && (r.bike.contraKind === 'lane' || r.bike.contraKind === 'track') && !stripCoverage(r, strips).back && L > 14) {
+      const lineV = -(h - CONTRA_LANE_W);
+      const body = slicePts(r.pts, 4, L - 4);
+      ribbon(paint, body, lineV - LINE_W / 2, lineV + LINE_W / 2, SURFACE_Y.paint);
+      const nSym = Math.max(1, Math.floor((L - 8) / SYMBOL_EVERY));
+      for (let k = 0; k < nSym; k++) {
+        const sAt = 4 + ((L - 8) * (k + 0.5)) / nSym;
+        const q = slicePts(r.pts, sAt - 0.6, sAt + 0.6);
+        if (q.length < 4) continue;
+        const tx = q[q.length - 2] - q[0];
+        const tz = q[q.length - 1] - q[1];
+        const tl = Math.hypot(tx, tz) || 1;
+        const mx = (q[0] + q[q.length - 2]) / 2;
+        const mz = (q[1] + q[q.length - 1]) / 2;
+        const off = -(h - CONTRA_LANE_W / 2);
+        bikeSymbol(paint, mx + (-tz / tl) * off, mz + (tx / tl) * off, -tx / tl, -tz / tl, SURFACE_Y.paint);
       }
     }
     if (r.class === 'service' || w < 4) continue;

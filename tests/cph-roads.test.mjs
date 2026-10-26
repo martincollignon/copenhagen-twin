@@ -58,11 +58,11 @@ test('signal plans: cars and cross traffic never both green, bikes get an early 
   assert.ok(signalOffset(1, 2) !== signalOffset(3, 4));
 });
 
-test('cyclists ride only on cycle-track lanes, follow the lane geometry and nobody is stuck after 10 minutes', () => {
+test('cyclists ride only on cycle lanes (tracks, paths, contraflow lanes), follow the lane geometry and nobody is stuck after 10 minutes', () => {
   const signals = network.nodes.filter((n) => n.signal).map((n) => ({ x: n.x, z: n.z, sigOffset: signalOffset(n.x, n.z), arms: n.arms }));
   const bikes = buildCyclistNetwork(geo, signals);
   assert.ok(bikes.stats.lengthKm > 50, 'a city-scale cycle network');
-  assert.ok(bikes.lanes.every((l) => l.kind === 'track' || l.kind === 'path'));
+  assert.ok(bikes.lanes.every((l) => ['track', 'path', 'contra', 'shared'].includes(l.kind)));
   for (const name of ['Nørre Søgade', 'Dronning Louises Bro', 'Nørrebrogade']) {
     assert.ok(bikes.lanes.some((l) => l.name === name), `${name} has cycle lanes`);
   }
@@ -80,7 +80,7 @@ test('cyclists ride only on cycle-track lanes, follow the lane geometry and nobo
     for (const c of sim.riders) {
       if (!c.placed) continue;
       ridden++;
-      assert.ok(c.lane.kind === 'track' || c.lane.kind === 'path');
+      assert.ok(['track', 'path', 'contra', 'shared'].includes(c.lane.kind));
       lanePoint(c.lane, c.s, p);
       assert.ok(Math.hypot(p.x - c.x, p.z - c.z) < 0.01, 'on the lane polyline');
       assert.ok(c.speed <= c.v0 + 0.5, `speed ${c.speed}`);

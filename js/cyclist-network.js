@@ -16,6 +16,7 @@
 
 import { bikePhase } from './signal-plan.js';
 import { carriagewayWidth, cycleStrips, slicePts } from './road-width-cph.js';
+import { bikeBanned, bikeCarriageway, hasContraflow, stripCoverage, stripDirection } from './bike-direction.js';
 
 export const CYCLE_STRIP = { kerb: 0.18, width: 2.2 };
 export const BIKE_DRIVER = { a: 1.0, b: 2.0, T: 1.0, s0: 1.5 };
@@ -81,7 +82,7 @@ function nearestRoadSide(roads, grid, x, z, reach) {
       if (d < bd) {
         bd = d;
         const l = Math.sqrt(l2);
-        best = { dx: dx / l, dz: dz / l, side: (x - p[i]) * -dz / l + (z - p[i + 1]) * dx / l }; // + : right of the road
+        best = { road: r, dx: dx / l, dz: dz / l, side: (x - p[i]) * -dz / l + (z - p[i + 1]) * dx / l }; // + : right of the road
       }
     }
   }
@@ -125,16 +126,37 @@ export function buildCyclistNetwork(geo, signalNodes = []) {
   const grid = roadGrid(vehicular);
   const raw = []; // { pts, kind, name, width, src }
 
-  // 1. tracks beside carriageways: the strips of the street layout (measured width, where they stand) or the OSM tag
+  // 1. tracks beside carriageways: the strips of the street layout (measured width, where they stand) or the OSM tag. Each
+  //    is ridden in its own direction (bike-direction.js): a right-hand track with the cars of its side, a two-way track
+  //    both ways, one lane per direction. `along` is +1 for a lane that runs with the road's pts, -1 against them.
+  const lane = (pts, kind, r, side, along, width) => raw.push({ pts, kind, name: r.name, width, src: r.id, side, along });
+  const both = (pts, off, w, kind, r, side) => { // two lanes on a two-way track: each on its own right-hand half
+    lane(offsetLine(pts, off + w / 4), kind, r, side, 1, w);
+    lane(reversed(offsetLine(pts, off - w / 4)), kind, r, side, -1, w);
+  };
   for (const r of vehicular) {
     if (r.drop) continue;
-    for (const sp of cycleStrips(r)) {
-      const c = carriagewayWidth(r) / 2 + CYCLE_STRIP.kerb + sp.w / 2;
+    const hw = carriagewayWidth(r) / 2;
+    const strips = cycleStrips(r);
+    for (const sp of strips) {
+      const c = hw + CYCLE_STRIP.kerb + sp.w / 2;
+      const dir = stripDirection(r, sp.side);
       const pieces = sp.ranges ? sp.ranges.map(([a, b]) => slicePts(r.pts, a, b)).filter((q) => q.length >= 4) : [r.pts];
       for (const q of pieces) {
-        if (sp.side > 0) raw.push({ pts: offsetLine(q, c), kind: 'track', name: r.name, width: sp.w, src: r.id });
-        else raw.push({ pts: reversed(offsetLine(q, -c)), kind: 'track', name: r.name, width: sp.w, src: r.id });
+        const off = sp.side * c;
+        if (dir === 'both') both(q, off, sp.w, 'track', r, sp.side);
+        else if (dir === 'fwd') lane(offsetLine(q, off), 'track', r, sp.side, 1, sp.w);
+        else lane(reversed(offsetLine(q, off)), 'track', r, sp.side, -1, sp.w);
       }
+    }
+    // a one-way street with contraflow for bicycles but no track carrying it: the lane (or shared stretch) at the left
+    // edge of the carriageway runs against the cars; the right edge carries the bicycles with them, so that the two
+    // directions join up with the tracks round the corner
+    if (hasContraflow(r) && !bikeBanned(r)) {
+      const cov = stripCoverage(r, strips);
+      const edge = Math.max(0.8, hw - 0.85);
+      if (!cov.back) lane(reversed(offsetLine(r.pts, -edge)), 'contra', r, -1, -1, 1.5);
+      if (!cov.fwd) lane(offsetLine(r.pts, edge), 'shared', r, 1, 1, 1.5);
     }
   }
   // 2. KK cycle tracks: ridden the way their side of the nearest road dictates
@@ -146,21 +168,30 @@ export function buildCyclistNetwork(geo, signalNodes = []) {
     const w = t.width || 2.5;
     const dir = t.pts.length / 2 > 1 ? [t.pts[t.pts.length - 2] - t.pts[0], t.pts[t.pts.length - 1] - t.pts[1]] : [1, 0];
     if (road && Math.abs(road.side) > 1.5 && Math.abs(dir[0] * road.dx + dir[1] * road.dz) > 0.5 * Math.hypot(dir[0], dir[1])) {
-      const along = dir[0] * road.dx + dir[1] * road.dz > 0;
-      // right of the road rides with its drawn direction, left against it
-      const forward = (road.side > 0) === along;
-      raw.push({ pts: forward ? t.pts.slice() : reversed(t.pts), kind: 'track', name: t.name, width: w, src: t.id });
+      const along = dir[0] * road.dx + dir[1] * road.dz > 0; // the polyline runs with the road's pts
+      const sd = stripDirection(road.road, road.side > 0 ? 1 : -1);
+      const ride = (withPts) => raw.push({ pts: withPts === along ? t.pts.slice() : reversed(t.pts), kind: 'track', name: t.name, width: w, src: t.id, road: road.road.id, side: road.side > 0 ? 1 : -1, along: withPts ? 1 : -1 });
+      if (sd === 'both') {
+        raw.push({ pts: offsetLine(t.pts, w / 4), kind: 'track', name: t.name, width: w, src: t.id, road: road.road.id, side: road.side > 0 ? 1 : -1, along: 0 });
+        raw.push({ pts: reversed(offsetLine(t.pts, -w / 4)), kind: 'track', name: t.name, width: w, src: t.id, road: road.road.id, side: road.side > 0 ? 1 : -1, along: 0 });
+      } else ride(sd === 'fwd');
     } else {
-      raw.push({ pts: offsetLine(t.pts, w / 4), kind: 'track', name: t.name, width: w, src: t.id });
-      raw.push({ pts: reversed(offsetLine(t.pts, -w / 4)), kind: 'track', name: t.name, width: w, src: t.id });
+      raw.push({ pts: offsetLine(t.pts, w / 4), kind: 'track', name: t.name, width: w, src: t.id, along: 0 });
+      raw.push({ pts: reversed(offsetLine(t.pts, -w / 4)), kind: 'track', name: t.name, width: w, src: t.id, along: 0 });
     }
   }
-  // 3. cycleways: both ways
+  // 3. cycleways: the way's own direction (a one-way path is ridden one way), else both
   for (const r of roads) {
     if (r.class !== 'cycleway') continue;
     const w = r.width || 2.2;
-    raw.push({ pts: offsetLine(r.pts, w / 4), kind: 'path', name: r.name, width: w, src: r.id });
-    raw.push({ pts: reversed(offsetLine(r.pts, -w / 4)), kind: 'path', name: r.name, width: w, src: r.id });
+    const d = bikeCarriageway(r);
+    if (d === 'none') continue;
+    if (d === 'fwd') raw.push({ pts: offsetLine(r.pts, 0), kind: 'path', name: r.name, width: w, src: r.id, along: 1 });
+    else if (d === 'back') raw.push({ pts: reversed(r.pts), kind: 'path', name: r.name, width: w, src: r.id, along: -1 });
+    else {
+      raw.push({ pts: offsetLine(r.pts, w / 4), kind: 'path', name: r.name, width: w, src: r.id, along: 1 });
+      raw.push({ pts: reversed(offsetLine(r.pts, -w / 4)), kind: 'path', name: r.name, width: w, src: r.id, along: -1 });
+    }
   }
 
   // 4. junction nodes: lane ends within SNAP of one another
@@ -194,7 +225,7 @@ export function buildCyclistNetwork(geo, signalNodes = []) {
   }
   const lanes = [];
   for (const r of raw) {
-    const pts = dedupe(r.pts);
+    const pts = densify(dedupe(r.pts), 4);
     if (pts.length < 4) continue;
     let len = 0;
     for (let i = 2; i < pts.length; i += 2) len += Math.hypot(pts[i] - pts[i - 2], pts[i + 1] - pts[i - 1]);
@@ -202,7 +233,7 @@ export function buildCyclistNetwork(geo, signalNodes = []) {
     const a = nodeAt(pts[0], pts[1]);
     const b = nodeAt(pts[pts.length - 2], pts[pts.length - 1]);
     if (a === b && len < 12) continue;
-    const lane = { id: lanes.length, pts, kind: r.kind, name: r.name, width: r.width, src: r.src, from: a, to: b };
+    const lane = { id: lanes.length, pts, kind: r.kind, name: r.name, width: r.width, src: r.src, road: r.road ?? r.src, side: r.side ?? 0, along: r.along ?? 0, from: a, to: b };
     a.out.push(lane);
     b.in.push(lane);
     lanes.push(lane);
@@ -270,23 +301,9 @@ export function buildCyclistNetwork(geo, signalNodes = []) {
       n.out = [];
     }
   }
-  // lane ends sit exactly on their junction, so lanes join without a step
-  for (const l of lanes) {
-    l.pts[0] = l.from.x;
-    l.pts[1] = l.from.z;
-    l.pts[l.pts.length - 2] = l.to.x;
-    l.pts[l.pts.length - 1] = l.to.z;
-    l.cum = [0];
-    for (let i = 2; i < l.pts.length; i += 2) l.cum.push(l.cum[l.cum.length - 1] + Math.hypot(l.pts[i] - l.pts[i - 2], l.pts[i + 1] - l.pts[i - 1]));
-    l.len = l.cum[l.cum.length - 1];
-    l.occ = [];
-    const n = l.pts.length;
-    const d0 = Math.hypot(l.pts[2] - l.pts[0], l.pts[3] - l.pts[1]) || 1;
-    const d1 = Math.hypot(l.pts[n - 2] - l.pts[n - 4], l.pts[n - 1] - l.pts[n - 3]) || 1;
-    l.startDir = [(l.pts[2] - l.pts[0]) / d0, (l.pts[3] - l.pts[1]) / d0];
-    l.endDir = [(l.pts[n - 2] - l.pts[n - 4]) / d1, (l.pts[n - 1] - l.pts[n - 3]) / d1];
-  }
-  for (const n of nodes) { // the junction stands at the mean of its lane ends
+  // a junction stands at the mean of the lane ends that meet there (so two lanes of one street that were joined at its end,
+  // a contraflow lane on the left and a lane with the cars on the right, meet on its centreline)
+  for (const n of nodes) {
     const ends = [...n.in.map((l) => [l.pts.length - 2, l]), ...n.out.map((l) => [0, l])];
     if (ends.length < 2) continue;
     let x = 0;
@@ -298,20 +315,25 @@ export function buildCyclistNetwork(geo, signalNodes = []) {
     n.x = x / ends.length;
     n.z = z / ends.length;
   }
-  for (const l of lanes) { // re-pin after the junction moved
-    l.pts[0] = l.from.x;
-    l.pts[1] = l.from.z;
-    l.pts[l.pts.length - 2] = l.to.x;
-    l.pts[l.pts.length - 1] = l.to.z;
+  // lane ends sit exactly on their junction, so lanes join without a step; the shift fades out over PIN_BLEND metres so
+  // that the lane keeps its side of the street (a lane of two points would otherwise swing across the whole street)
+  for (const l of lanes) {
+    pinEnds(l);
     l.cum = [0];
     for (let i = 2; i < l.pts.length; i += 2) l.cum.push(l.cum[l.cum.length - 1] + Math.hypot(l.pts[i] - l.pts[i - 2], l.pts[i + 1] - l.pts[i - 1]));
     l.len = l.cum[l.cum.length - 1];
+    l.occ = [];
+    const n = l.pts.length;
+    const d0 = Math.hypot(l.pts[2] - l.pts[0], l.pts[3] - l.pts[1]) || 1;
+    const d1 = Math.hypot(l.pts[n - 2] - l.pts[n - 4], l.pts[n - 1] - l.pts[n - 3]) || 1;
+    l.startDir = [(l.pts[2] - l.pts[0]) / d0, (l.pts[3] - l.pts[1]) / d0];
+    l.endDir = [(l.pts[n - 2] - l.pts[n - 4]) / d1, (l.pts[n - 1] - l.pts[n - 3]) / d1];
   }
 
   // lanes that ended up (nearly) nothing once their ends were pinned to the junctions
   for (let i = lanes.length - 1; i >= 0; i--) {
     const l = lanes[i];
-    if (l.len >= 3 && !(l.from === l.to && l.len < 12)) continue;
+    if (l.len >= 3 && !(l.from === l.to && l.len < 12) && !returnsOnItself(l)) continue;
     l.from.out.splice(l.from.out.indexOf(l), 1);
     l.to.in.splice(l.to.in.indexOf(l), 1);
     lanes.splice(i, 1);
@@ -364,6 +386,49 @@ export function buildCyclistNetwork(geo, signalNodes = []) {
     deadEnds: lanes.filter((l) => !l.next.length).length
   };
   return { lanes, nodes, stats };
+}
+
+const PIN_BLEND = 12;
+// Moves the lane's first and last vertex onto its junctions and drags the vertices within PIN_BLEND metres of them along,
+// the shift fading out linearly with the distance
+function pinEnds(l) {
+  const p = l.pts;
+  const n = p.length / 2;
+  const cum = [0];
+  for (let i = 1; i < n; i++) cum.push(cum[i - 1] + Math.hypot(p[2 * i] - p[2 * i - 2], p[2 * i + 1] - p[2 * i - 1]));
+  const len = cum[n - 1];
+  const d0 = [l.from.x - p[0], l.from.z - p[1]];
+  const d1 = [l.to.x - p[2 * n - 2], l.to.z - p[2 * n - 1]];
+  for (let i = 0; i < n; i++) {
+    const w0 = Math.max(0, 1 - cum[i] / PIN_BLEND);
+    const w1 = Math.max(0, 1 - (len - cum[i]) / PIN_BLEND);
+    p[2 * i] += d0[0] * w0 + d1[0] * w1;
+    p[2 * i + 1] += d0[1] * w0 + d1[1] * w1;
+  }
+  p[0] = l.from.x;
+  p[1] = l.from.z;
+  p[2 * n - 2] = l.to.x;
+  p[2 * n - 1] = l.to.z;
+}
+
+// Inserts points so that no segment is longer than `step`
+function densify(pts, step) {
+  const out = [pts[0], pts[1]];
+  for (let i = 2; i < pts.length; i += 2) {
+    const dx = pts[i] - pts[i - 2];
+    const dz = pts[i + 1] - pts[i - 1];
+    const k = Math.max(1, Math.ceil(Math.hypot(dx, dz) / step));
+    for (let j = 1; j <= k; j++) out.push(pts[i - 2] + (dx * j) / k, pts[i - 1] + (dz * j) / k);
+  }
+  return out;
+}
+
+// A lane whose ends were pinned to one junction and that never gets away from it (a stub folded back on itself): not a way
+function returnsOnItself(l) {
+  if (l.from !== l.to) return false;
+  let far = 0;
+  for (let i = 0; i < l.pts.length; i += 2) far = Math.max(far, Math.hypot(l.pts[i] - l.pts[0], l.pts[i + 1] - l.pts[1]));
+  return far < 0.3 * l.len;
 }
 
 // position and unit direction at arc length s along a lane

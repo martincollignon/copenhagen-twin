@@ -12,6 +12,7 @@ from shapely.ops import unary_union
 from shapely.prepared import prep
 from shapely.strtree import STRtree
 
+import bikedir
 import frame
 import roadgraph
 
@@ -160,6 +161,8 @@ def compile_roads(osm: dict, kk: dict, signal_pts_utm: list[tuple[float, float]]
     speed_ev = Evidence(kk.get("trafikhastigheder", {}).get("features", []), "hastighedsgraense") if kk.get("trafikhastigheder") else None
     one_ev = Evidence(kk.get("ensrettede_gader", {}).get("features", []), "vejnavn") if kk.get("ensrettede_gader") else None
     cyc_ev = Evidence(kk.get("cykelsti", {}).get("features", []), None, max_d=14.0) if kk.get("cykelsti") else None
+    contra_ev = Evidence(kk.get("ensrettede_gader", {}).get("features", []), "cykling_mod_ensretning") if kk.get("ensrettede_gader") else None
+    ways_seen: dict[str, set] = {}
 
     names = [""]
     name_idx = {"": 0}
@@ -218,22 +221,52 @@ def compile_roads(osm: dict, kk: dict, signal_pts_utm: list[tuple[float, float]]
                     wconf = "scaled"
                     src.append("kk:Kommunevej")
             conf_fields["width"] = wconf
-            # cycle tracks
-            sides = osm_cycle_sides(tags) if cls in CARRIAGEWAY else set()
+            # cycle tracks: OSM sides, merged with the KK cykelsti layer
+            carriage = cls in CARRIAGEWAY
+            osm_b = bikedir.parse_bike(tags, cls, ow, carriage)
+            sides = bikedir.cycle_track_side_set(osm_b)
             if sides:
                 src.append("osm:cycleway")
-            if cyc_ev and cls in CARRIAGEWAY:
-                cs = set()
+            kk_sides = {}
+            if cyc_ev and carriage:
                 for p in _samples(seg):
                     i = cyc_ev.tree.nearest(p)
                     g = cyc_ev.geoms[i]
                     d = g.distance(p)
                     if 2.0 <= d <= 14.0:
-                        cs.add(side_of(seg, g.interpolate(g.project(p))))
-                if cs:
-                    sides |= cs
+                        side = side_of(seg, g.interpolate(g.project(p)))
+                        kk_sides[side] = "lane" if (cyc_ev.vals[i] or {}).get("sti_type") == 12 else "track"
+                if kk_sides:
                     src.append("kk:cykelsti")
+            # direction of cars and bicycles (bikedir.py): KK-only tracks get the right-hand-traffic default direction
+            b = bikedir.parse_bike(tags, cls, ow, carriage, {s_: k for s_, k in kk_sides.items() if s_ not in sides})
+            sides = bikedir.cycle_track_side_set(b)
             cyc = "both" if sides >= {"left", "right"} else (next(iter(sides)) if sides else "none")
+            if carriage:
+                kk_flag = contra_ev.majority(seg) if contra_ev else None
+                verdict = bikedir.add_kk_contraflow(b, None if kk_flag is None else bool(int(kk_flag)))
+                if verdict:
+                    stats[f"contraflow_kk_{verdict}"] += 1
+                    if verdict in ("granted", "agree"):
+                        src.append("kk:ensrettede_gader:cykling_mod_ensretning")
+                if tags.get("oneway:bicycle") or any(k.startswith("cycleway") for k in tags):
+                    src.append("osm:bicycle-direction")
+            conf_fields["bike"] = "inferred" if b["inferred"] or (sides and not b["explicit"]) else "observed"
+            if b["contraflow"]:
+                conf_fields["contraflow"] = "observed"
+            wid = el["id"]
+            if carriage:
+                if b["contraflow"]:
+                    ways_seen.setdefault("contraflow", set()).add(wid)
+                    ways_seen.setdefault(f"contraflow_{b['contraKind']}", set()).add(wid)
+                if b["left"] == "both" or b["right"] == "both":
+                    ways_seen.setdefault("two_way_track", set()).add(wid)
+                if b["ban"]:
+                    ways_seen.setdefault("bike_ban", set()).add(wid)
+                if b["sidepath"]:
+                    ways_seen.setdefault("sidepath_side", set()).add(wid)
+            elif cls == "cycleway":
+                ways_seen.setdefault("cycleway_two_way" if b["carriageway"] == "both" else "cycleway_oneway", set()).add(wid)
             nm = tags.get("name", "")
             if nm not in name_idx:
                 name_idx[nm] = len(names)
@@ -245,9 +278,12 @@ def compile_roads(osm: dict, kk: dict, signal_pts_utm: list[tuple[float, float]]
                 "pts": frame.flat([frame.to_local(x, y) for x, y in coords]),
                 "width": width, "lanesFwd": fwd, "lanesBack": back, "oneway": bool(ow),
                 "speedKmh": speed, "cycleTrack": cyc,
+                "carDir": b["carDir"], "bike": {k: v for k, v in b.items() if not k.startswith("_") and k not in ("carDir", "explicit", "inferred")},
                 "src": src, "conf": "observed", "conf_fields": conf_fields,
             })
             ways_for_graph.append((len(roads) - 1, coords))
+    for k, v in ways_seen.items():
+        stats[f"ways_{k}"] = len(v)
     return roads, ways_for_graph, names, stats
 
 
