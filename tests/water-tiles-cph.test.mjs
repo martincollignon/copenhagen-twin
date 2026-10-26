@@ -157,3 +157,13 @@ test('the tile context carries the water layer and its surface cuts trim the reg
   assert.equal(s.length, 1);
   assert.deepEqual(s[0].ring, [0, 0, 0, 10, 5, 10, 5, 0]);
 });
+
+test('sand runs get a flat beach slope of kind 4 (no coping)', () => {
+  const beach = { s: 's', pts: [100, 0, 100, 50], top: [0.5, 0.5] };
+  const a = buildTileWaterArrays({ bodies: [{ id: 'w:1', level: -1, polys: [{ ring: LAKE }], walls: [beach] }] });
+  const kinds = new Set(a.walls.kind);
+  assert.ok(kinds.has(4) && !kinds.has(1) && !kinds.has(3), 'only sand');
+  let foot = Infinity;
+  for (let i = 0; i < a.walls.kind.length; i++) if (a.walls.position[3 * i + 1] < 0) foot = Math.min(foot, a.walls.position[3 * i]);
+  assert.ok(foot < 100 - 4, 'the foot is several metres inward of the outline (1 : 4)');
+});

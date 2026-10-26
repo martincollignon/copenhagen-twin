@@ -1,4 +1,4 @@
-import { Arrays, wallAlong, surfaceArrays, WATER, KIND, BANK_BATTER } from './lakes-cph.js';
+import { Arrays, wallAlong, surfaceArrays, WATER, KIND, BANK_BATTER, BEACH_BATTER } from './lakes-cph.js';
 import { chamfer } from './ground-field-cph.js';
 
 // js/water-tiles-cph.js
@@ -6,7 +6,7 @@ import { chamfer } from './ground-field-cph.js';
 // (data/tiles/<id>/water.json, tools/cph-geodata/city_water.py) holds, for every body that touches the tile:
 //   polys   the body clipped to the tile (flat rings, x east, z south, counter-clockwise from above, holes the other way)
 //   level   the water level (local y)
-//   walls   shore runs: { s: 'q' quay | 'b' natural bank, pts: [x, z, ...], top: [y per vertex] }; the water is on the LEFT of travel
+//   walls   shore runs: { s: 'q' quay | 'b' natural bank | 's' sand beach, pts: [x, z, ...], top: [y per vertex] }; the water is on the LEFT of travel
 //   pond    flat water, no walls (fountains, pools: 1500 m2 and smaller)
 // plus the ground-mesh cut (`cut`), the green ground (`green`) and the trimmed surface polygons (`surfaceCuts`).
 // The quay / bank geometry is the district's (js/lakes-cph.js wallAlong): granite wall with a coping, or a grassed bank with a 1 : 1.6 batter.
@@ -38,12 +38,13 @@ export function buildTileWaterArrays(payload) {
     for (const run of body.walls || []) {
       if (!run.pts || run.pts.length < 4) continue;
       const bank = run.s === 'b';
+      const sand = run.s === 's';
       wallMetres += wallAlong(walls, run.pts, {
         faceSign: 1, open: true,
         yBottom: level + (WATER.bedY - WATER.surfaceY),
         yTop: (x, z, k) => run.top[k],
         vOf: (y) => y - level + WATER.surfaceY,
-        ...(bank ? { batter: BANK_BATTER, kind: KIND.bank, coping: false } : { coping: true })
+        ...(sand ? { batter: BEACH_BATTER, kind: KIND.sand, coping: false } : bank ? { batter: BANK_BATTER, kind: KIND.bank, coping: false } : { coping: true })
       });
     }
   }

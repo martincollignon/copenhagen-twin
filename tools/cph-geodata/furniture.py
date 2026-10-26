@@ -679,10 +679,18 @@ def bays_in_polygon(poly, count, kind):
 def single_points(kk, layer):
     from shapely.geometry import shape
 
+    # the KK `pullert` WFS has 20 bollards (Proviantbroen, "Vandroershegn") that come back 79 times each: 79 features with different
+    # WFS ids but the same attribute id and the same coordinates. The placement relaxation pushed the 79 copies apart into a bollard
+    # forest at Nyhavn, so a point that repeats (attribute id + coordinates) in one layer is yielded once.
+    seen = set()
     for f in kk(layer)["features"]:
         for p in pts_of(shape(f["geometry"])):
             x, z = to_local(p.x, p.y)
             if in_bbox(x, z):
+                key = (f["properties"].get("id"), round(p.x, 2), round(p.y, 2))
+                if key in seen:
+                    continue
+                seen.add(key)
                 yield x, z, f["properties"], f
 
 

@@ -108,10 +108,12 @@ export class Arrays {
   }
 }
 
-export const KIND = Object.freeze({ wall: 0, coping: 1, soffit: 2, bank: 3 });
+export const KIND = Object.freeze({ wall: 0, coping: 1, soffit: 2, bank: 3, sand: 4 });
 
 /** Natural lakes (OSM water without a name, e.g. park ponds) have grassed banks, not quay walls: 1 : BANK_BATTER slope. */
 export const BANK_BATTER = 1.6;
+/** Natural beaches (OSM natural=beach / sand at the sea): a flatter slope of sand. */
+export const BEACH_BATTER = 4.0;
 export const isNaturalLake = (lake) => !lake.name || lake.name === 'Lake';
 
 /**

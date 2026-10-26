@@ -81,7 +81,9 @@ def test_tile_block_layout_decodes(tmp_path):
     assert (n_outer, n_holes) == (4, 0)
     assert base == round((3.0 - 1.0) * 100) and top == round(12.0 * 100)
     wall = struct.unpack_from("<BBB", data, off + 6)
-    assert wall == (153, 102, 76)  # 0.6, 0.4, 0.3 in sRGB bytes
+    # the facade preset tone (0.6, 0.4, 0.3) is pulled WALL_DESAT of the way to its luminance (f8880b2: the far city is not painted brick orange)
+    y = 0.3 * 0.6 + 0.59 * 0.4 + 0.11 * 0.3
+    assert wall == tuple(round(255 * (c + (y - c) * F.WALL_DESAT)) for c in (0.6, 0.4, 0.3))  # (141, 106, 88)
     xs = [struct.unpack_from("<hh", data, off + 12 + 4 * k) for k in range(4)]
     # relative to the tile's north-west corner, in decimetres
     assert xs[0] == (1000, 2000)

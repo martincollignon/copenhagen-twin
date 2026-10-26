@@ -21,8 +21,11 @@ tile_streets.py. It never edits what build_city.py / city_layers2.py write; it r
 Sources (water): GeoDanmark `soe` + `bassin` polygons, OSM natural=water (data/raw/city/osm_water.json), the sea from the OSM coastline
 (land on the left of a way; polygonised against the OSM request bbox, so harbour basins and Oeresund come out as water).
 Level of a body: the median of the compiled terrain (DTM) over it, 0 m DVR90 (the sea, -6.84 local) when it lies within 0.25 m of that.
-Shores: every boundary of the water union is a shore wall; `q` (quay: granite wall + coping) where a building, pavement or road lies within
-QUAY_NEAR_M of it, `b` (natural bank) elsewhere. The Soerne (parkregister .161 + OSM Peblinge) are NOT generic: they are the district's hand-made
+Shores: every boundary of the water union is a shore wall. Water at the sea level (the harbour, Sydhavn, Nordhavn, the canals) is quayed
+(`q`: granite wall + coping) by default, as the real harbour is, except where OSM says the coast is natural: `s` (sand beach) near
+natural=beach / sand / shingle, `b` (grassed bank) near wetland / bare rock / forest / meadow / nature reserve land that no building, pavement
+or road touches (Amager Strandpark, Vestamager, Kalvebod Faelled). Fortification moats (OSM water=moat: Stadsgraven, Kastelsgraven, Kastrup Fort)
+and every other water use the old rule: `q` where a building, pavement or road lies within QUAY_NEAR_M, `b` elsewhere. The Soerne (parkregister .161 + OSM Peblinge) are NOT generic: they are the district's hand-made
 lakes (bridge strip split at Dronning Louises Bro, basins, hero bridge, swans) and ship as `override` in the same format as data/cph-lakes.json,
 unclipped to the city; the generic layer leaves them out of the surfaces, walls and far water but they cut the ground.
 
@@ -73,13 +76,26 @@ MIN_CUT_M2 = 2.0  # overlaps smaller than this are ignored (lakes.py MIN_CUT_M2)
 DECK_ABOVE_M = 1.0  # a surface whose terrain over the water stands this far above it is a bridge deck
 SOERNE_NAMES = ("Søerne", "Peblinge", "Sortedam", "Sankt Jørgens", "Sankt Jorgens")
 SOERNE_REGISTER_PREFIX = "kk:parkregister:parkregister.161"
-GDK_TYPES = ("soe", "bassin", "rekreativtomraade", "begravelsesomraade", "skov")
+GDK_TYPES = ("soe", "bassin", "rekreativtomraade", "begravelsesomraade", "skov", "kyst", "havn")  # kyst / havn: the coast lines
 OSM_EXTRA = ('[out:json][timeout:240][bbox:55.58,12.43,55.74,12.74];('
              'way["landuse"~"^(grass|cemetery|village_green|recreation_ground|meadow|allotments|forest)$"];'
              'relation["landuse"~"^(grass|cemetery|village_green|recreation_ground|meadow|allotments|forest)$"];'
              'way["natural"~"^(grassland|wood|scrub|heath)$"];relation["natural"~"^(grassland|wood|scrub|heath)$"];'
              'way["leisure"~"^(common|golf_course|nature_reserve)$"];relation["leisure"~"^(common|golf_course|nature_reserve)$"];'
              'way["waterway"~"^(river|canal|stream)$"];);out geom tags;')
+OSM_SHORE = ('[out:json][timeout:180][bbox:55.58,12.43,55.74,12.74];(way["natural"~"^(beach|shingle|sand|bare_rock|wetland|shoal)$"];'
+             'relation["natural"~"^(beach|shingle|sand|wetland)$"];way["man_made"~"^(quay|pier|breakwater|groyne|dyke|embankment)$"];'
+             'way["waterway"="dock"];way["leisure"~"^(bathing_place|marina|slipway)$"];node["leisure"="bathing_place"];node["name"~"Strand$"];);out geom tags;')
+HAVN_NEAR_M = 20.0  # GeoDanmark `havn` line (harbour coast: quay, jetty) this close: quay
+KYST_NEAR_M = 20.0  # GeoDanmark `kyst` line (open coast) this close: natural coast
+BEACH_NODE_M = 350.0  # a natural coast this close to a bathing place / "... Strand" node (OSM) is a beach
+SAND_NATURAL = ("beach", "sand", "shingle")  # a shore near these is a beach
+NATURE_NATURAL = ("wetland", "bare_rock", "grassland", "scrub", "heath", "wood")  # a shore near these (and not developed) is a natural bank
+NATURE_LANDUSE = ("forest", "meadow")
+NATURE_LEISURE = ("nature_reserve",)
+HARBOUR_MIN_M2 = 40000.0  # a sea-level body this big is harbour
+NATURAL_NEAR_M = 30.0  # a shore vertex this close to natural land is natural coast
+MOAT_NAME = ("stadsgrav", "kastelsgrav", "voldgrav")
 CITY_UTM_BBOX = (716400.0, 6168400.0, 735100.0, 6182600.0)
 
 
@@ -108,6 +124,23 @@ def _secret(name: str, secret: str) -> str:
     return v
 
 
+def fetch_shore(force: bool = False) -> None:
+    """OSM shore evidence (beaches, sand, wetland, piers, breakwaters, marinas) into data/raw/city/water/osm_shore.json (small)."""
+    import city_sources as S
+
+    path = RAW_WATER / "osm_shore.json"
+    if path.exists() and not force:
+        return
+    RAW_WATER.mkdir(parents=True, exist_ok=True)
+    for url in S.OVERPASS:
+        r = S.request("POST", url, what="overpass", data={"data": OSM_SHORE}, tries=4)
+        if r.status_code == 200:
+            S.atomic_write(path, json.dumps(r.json(), ensure_ascii=False, separators=(",", ":")))
+            log(f"[fetch] osm shore evidence: {len(r.json().get('elements', []))} elements")
+            return
+    raise SystemExit("overpass unavailable")
+
+
 def fetch(force: bool = False) -> None:
     """GeoDanmark (Datafordeler GEODKV WFS) soe / bassin / rekreativtomraade / begravelsesomraade / skov for the city bbox and the OSM
     extras (landuse, waterway) into data/raw/city/water/. Credentials come from tools/adc-secret.sh and are never printed."""
@@ -134,13 +167,14 @@ def fetch(force: bool = False) -> None:
                 if fid in seen:
                     continue
                 seen.add(fid)
-                keep = {k: p.get(k) for k in ("id_lokalId", "soetype", "bassintype", "anvendelse") if p.get(k) is not None}
+                keep = {k: p.get(k) for k in ("id_lokalId", "soetype", "bassintype", "anvendelse", "havnetype") if p.get(k) is not None}
                 feats.append({"type": "Feature", "geometry": f["geometry"], "properties": keep})
             if len(got) < page:
                 break
             start += page
         S.atomic_write(path, json.dumps({"type": "FeatureCollection", "features": feats}, ensure_ascii=False, separators=(",", ":")))
         log(f"[fetch] gdk {t}: {len(feats)} features")
+    fetch_shore(force)
     path = RAW_WATER / "osm_extra.json"
     if force or not path.exists():
         doc = None
@@ -457,6 +491,66 @@ def smooth_flags(flags, passes=1):
     return f
 
 
+def natural_shore_geoms():
+    """(sand, nature): shapely geometries (x / z) of the OSM beaches and of the natural land (wetland, bare rock, scrub, forest, meadow,
+    nature reserve; GeoDanmark skov) that make a harbour shore natural coast. Open ways (a beach drawn as a line) become lines."""
+    sand, nature = [], []
+    for el in (read_json(RAW_WATER / "osm_shore.json") or {}).get("elements", []):
+        t = el.get("tags", {})
+        if t.get("natural") in SAND_NATURAL + ("wetland", "bare_rock"):
+            (sand if t.get("natural") in SAND_NATURAL else nature).append(el)
+    sand_g, nature_g = [], []
+    for els, out in ((sand, sand_g), (nature, nature_g)):
+        for i, t, g in osm_geoms(els, lambda t: True):
+            out.append(to_xz(g))
+        for el in els:
+            if el["type"] == "way" and el.get("geometry") and len(el["geometry"]) >= 2:
+                pts = _geom_pts(el["geometry"])
+                if pts[0] != pts[-1]:
+                    out.append(to_xz(LineString(pts)).buffer(3.0))
+    extra = (read_json(RAW_WATER / "osm_extra.json") or {}).get("elements", [])
+    nat = lambda t: (t.get("natural") in NATURE_NATURAL or t.get("landuse") in NATURE_LANDUSE or t.get("leisure") in NATURE_LEISURE)  # noqa: E731
+    nature_g += [to_xz(g) for _, _, g in osm_geoms([e for e in extra if "waterway" not in e.get("tags", {})], nat)]
+    nature_g += [to_xz(g) for _, _, g in gdk_geoms(RAW_WATER / "gdk_skov.json")]
+    return [g for g in sand_g if not g.is_empty], [g for g in nature_g if not g.is_empty]
+
+
+def gdk_lines(name):
+    """GeoDanmark coast lines (`kyst`: open coast, `havn`: harbour coast and landing jetties) in x / z (lines are not made valid, buffer(0) would empty them)."""
+    doc = read_json(RAW_WATER / f"gdk_{name}.json")
+    out = []
+    for f in (doc or {}).get("features", []):
+        try:
+            g = shapely.force_2d(shape(f["geometry"]))
+            g = shapely.transform(g, lambda a: np.column_stack([a[:, 0] - frame.ORIGIN[0], -(a[:, 1] - frame.ORIGIN[1])]))
+            if not g.is_empty:
+                out.append(g)
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
+def beach_nodes():
+    """Points (x / z) of OSM bathing places and "... Strand" name nodes (Amager Strandpark, Hellerup Strand)."""
+    out = []
+    for el in (read_json(RAW_WATER / "osm_shore.json") or {}).get("elements", []):
+        t = el.get("tags", {})
+        if el["type"] == "node" and (t.get("leisure") == "bathing_place" or (set(t) <= {"name", "source"} and (t.get("name") or "").endswith("Strand"))):
+            x, y = _to_local_xy(el["lon"], el["lat"])
+            out.append(Point(x, -y))
+    return out
+
+
+def near_flags(V, geoms, dist):
+    """Boolean per shore vertex: some geometry of `geoms` lies within `dist` metres."""
+    out = np.zeros(len(V), dtype=bool)
+    if geoms and len(V):
+        tree = STRtree(geoms)
+        hit = tree.query(shapely.buffer(shapely.points(V), dist), predicate="intersects")
+        out[np.unique(hit[0])] = True
+    return out
+
+
 def developed_geoms(ids_needed, tiles_dir: Path):
     """Footprints, pavements and road corridors of the given tiles as shapely geometries (x / z): what makes a shore a quay."""
     out = []
@@ -652,9 +746,11 @@ def build(args) -> int:
             lvl = SEA
         if abs(lvl - SEA) < SEA_SNAP_M:
             lvl = SEA
+        moat = any((t.get("water") == "moat" or any(m in (t.get("name") or "").lower() for m in MOAT_NAME)) and g.intersection(p).area > 0.3 * g.area
+                   for _, t, g in osm_w if g.intersects(p))
         pond = p.area < POND_MAX_M2 and not is_sea
         kind = "pond" if pond else classify_kind([s[1] for s in hits], is_sea, p.area)
-        bodies.append({"id": f"w:{k}", "poly": p, "level": round(float(lvl), 2), "pond": pond, "kind": kind, "name": named[0][1] if named else "", "sea": is_sea})
+        bodies.append({"id": f"w:{k}", "poly": p, "level": round(float(lvl), 2), "pond": pond, "kind": kind, "name": named[0][1] if named else "", "sea": is_sea, "moat": moat})
     lakes_b = [b for b in bodies if not b["pond"]]
     cut_water = unary_union([b["poly"] for b in lakes_b] + [ovr_union])
     all_water = unary_union([cut_water] + [b["poly"] for b in bodies if b["pond"]])
@@ -693,10 +789,35 @@ def build(args) -> int:
         hit = tree.query(buf, predicate="intersects")
         dev[np.unique(hit[0])] = True
 
+    sand_g, nature_g = natural_shore_geoms()
+    near_sand = near_flags(V, sand_g, NATURAL_NEAR_M)
+    near_nature = near_flags(V, nature_g, NATURAL_NEAR_M)
+    log(f"natural shore evidence: {len(sand_g)} beach / sand, {len(nature_g)} natural land polygons; vertices near sand {int(near_sand.sum())}, near nature {int(near_nature.sum())}")
+
+    havn_g, kyst_g = gdk_lines("havn"), gdk_lines("kyst")
+    near_havn = near_flags(V, havn_g, HAVN_NEAR_M)
+    near_kyst = near_flags(V, kyst_g, KYST_NEAR_M) & ~near_havn
+    near_beach_node = near_flags(V, beach_nodes(), BEACH_NODE_M)
+    log(f"GeoDanmark coast: {len(havn_g)} havn lines (vertices near {int(near_havn.sum())}), {len(kyst_g)} kyst lines (vertices near {int(near_kyst.sum())})")
+
+    def harbour(b):
+        # the sea-level harbour and its canals and docks: quayed unless the coast is natural. Small sea-level lakes (Oerestad's park lakes)
+        # and moats keep the developed / not developed rule
+        return (abs(b["level"] - SEA) < 0.05 and not b["moat"]
+                and (b["sea"] or b["poly"].area >= HARBOUR_MIN_M2 or b["kind"] in ("canal", "harbour", "basin") or any(k in b["name"].lower() for k in ("kanal", "havn", "brygge"))))
+
     walls = {}  # body id -> tile id -> [runs]
-    shore_m = {"q": 0.0, "b": 0.0}
+    shore_m = {"q": 0.0, "b": 0.0, "s": 0.0}
     for b, s, e in rings:
         flags = smooth_flags(list(dev[s:e]), 2)
+        if harbour(b):
+            # GeoDanmark `havn` (harbour coast) is quay; `kyst` (open coast) is natural: sand near a beach, else a grassed bank; shores no
+            # GeoDanmark line covers (inner canals, docks) are quay unless OSM puts beach / natural land right there
+            sandf = smooth_flags(list((near_sand[s:e] | (near_kyst[s:e] & near_beach_node[s:e])) & ~near_havn[s:e]), 2)
+            natf = smooth_flags(list((near_kyst[s:e] | (near_nature[s:e] & ~dev[s:e])) & ~near_havn[s:e]), 2)
+            vstyle = ["s" if sandf[i] else "b" if natf[i] else "q" for i in range(e - s)]
+        else:
+            vstyle = ["q" if f else "b" for f in flags]
         run = None
         for k in range(s, e - 1):
             x0, z0, x1, z1 = V[k][0], V[k][1], V[k + 1][0], V[k + 1][1]
@@ -704,7 +825,8 @@ def build(args) -> int:
             if edge_zone.contains(Point(mx, mz)):
                 run = None
                 continue
-            style = "q" if (flags[k - s] or flags[k + 1 - s]) else "b"
+            a_, b_ = vstyle[k - s], vstyle[k + 1 - s]
+            style = a_ if a_ == b_ else "s" if "s" in (a_, b_) else "q" if "q" in (a_, b_) else "b"
             owner = frame.tile_of_local(mx, mz)
             if owner not in idset:
                 run = None
@@ -715,7 +837,7 @@ def build(args) -> int:
             run["pts"] += [round(float(x1), 2), round(float(z1), 2)]
             run["top"].append(round(float(tops[k + 1]), 2))
             shore_m[style] += math.hypot(x1 - x0, z1 - z0)
-    log(f"shore walls: quay {shore_m['q'] / 1000:.1f} km, natural bank {shore_m['b'] / 1000:.1f} km")
+    log(f"shore walls: quay {shore_m['q'] / 1000:.1f} km, natural bank {shore_m['b'] / 1000:.1f} km, beach {shore_m['s'] / 1000:.1f} km")
 
     # ---- per tile
     layers = {tid: {"tile": tid, "ord": {}, "bodies": []} for tid in ids}
@@ -834,7 +956,7 @@ def build(args) -> int:
         "version": VERSION, "sea": SEA,
         "method": "GeoDanmark soe + bassin and OSM natural=water polygons, the sea from the OSM coastline; levels from the compiled terrain; "
                   "shore walls by development; Soerne as the district override; tools/cph-geodata/city_water.py",
-        "stats": {"bodies": len(lakes_b), "ponds": len(bodies) - len(lakes_b), "quay_km": round(shore_m["q"] / 1000, 1), "bank_km": round(shore_m["b"] / 1000, 1),
+        "stats": {"bodies": len(lakes_b), "ponds": len(bodies) - len(lakes_b), "quay_km": round(shore_m["q"] / 1000, 1), "bank_km": round(shore_m["b"] / 1000, 1), "beach_km": round(shore_m["s"] / 1000, 1),
                   "water_km2": round(cut_water.area / 1e6, 3), "green_km2": round(green_in / 1e6, 3), "tiles": len(sizes)},
         "bodies": table, "far": far, "override": ovr_doc,
     }

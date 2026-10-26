@@ -93,7 +93,11 @@ function createLakeWallMaterial() {
     const grassC = mix(vec3(0.07, 0.12, 0.035), vec3(0.14, 0.2, 0.06), n1);
     const mud = mix(vec3(0.05, 0.04, 0.03), vec3(0.09, 0.075, 0.05), n1);
     const bank = mix(mud, grassC, smoothstep(-0.95, -0.35, v));
-    return mix(mix(mix(wallWet, cope, isCope), concrete, isConcrete), bank, isBank);
+    // beach (kind 4): pale sand, damp and darker at the water line
+    const isSand = step(3.5, kind);
+    const sandC = mix(vec3(0.46, 0.4, 0.28), vec3(0.58, 0.51, 0.37), n1);
+    const beach = mix(sandC.mul(0.55), sandC, smoothstep(-0.95, -0.55, v));
+    return mix(mix(mix(mix(wallWet, cope, isCope), concrete, isConcrete), bank, isBank), beach, isSand);
   })();
   return m;
 }
