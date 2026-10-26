@@ -463,7 +463,8 @@ export function createCyclists(network, { count = 60, random = Math.random } = {
   for (let i = 0; i < count; i++) {
     riders.push({
       id: i, lane: null, s: 0, speed: 0, acc: 0, v0: 5.0 + random() * 1.1, // 18-22 km/h
-      next: null, wait: 0, stoppedFor: 0, x: 0, z: 0, dx: 0, dz: 1, prevX: 0, prevZ: 0, yaw: 0, lean: 0,
+      next: null, wait: 0, stoppedFor: 0, x: 0, z: 0, dx: 0, dz: 1, prevX: 0, prevZ: 0,
+      contactX: 0, contactZ: 0, yaw: 0, lean: 0,
       pedal: random() * 6.28, gap: Infinity, leaderSpeed: 0, half: HALF, placed: false, stuck: false
     });
   }
@@ -489,6 +490,8 @@ export function createCyclists(network, { count = 60, random = Math.random } = {
     c.next = chooseNext(c);
     c.wait = 0;
     c.placed = true;
+    c.contactX = 0;
+    c.contactZ = 0;
     sync(c);
     c.prevX = c.x;
     c.prevZ = c.z;
@@ -498,8 +501,8 @@ export function createCyclists(network, { count = 60, random = Math.random } = {
   const pt = { x: 0, z: 0, dx: 0, dz: 1 };
   function sync(c) {
     lanePoint(c.lane, c.s, pt);
-    c.x = pt.x;
-    c.z = pt.z;
+    c.x = pt.x + c.contactX;
+    c.z = pt.z + c.contactZ;
     c.dx = pt.dx;
     c.dz = pt.dz;
   }
@@ -554,6 +557,7 @@ export function createCyclists(network, { count = 60, random = Math.random } = {
   }
 
   function step(c, dt) {
+    if (!(dt > 0)) return;
     const lane = c.lane;
     let acc = 1.0 * (1 - (c.speed / c.v0) ** 4);
     let worst = 0;

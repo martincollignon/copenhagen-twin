@@ -19,6 +19,9 @@ import { createStreetFurniture } from './street-furniture-cph.js';
 import { createZoneMap } from './zones-cph.js';
 import { placeFurniture } from './placement-cph.js';
 import { createGrass } from './grass-cph.js';
+import { BODY_SPECS } from './actor-models.js';
+import { createCityCollisions } from './city-collisions.js';
+import { buildStaticColliders, createStaticIndex } from './static-colliders.js';
 
 // js/world.js
 // The Copenhagen world: a ground plane in the Copenhagen frame (docs/cph-geodata-schema.md) plus data/cph-geodata.json,
@@ -30,6 +33,7 @@ const CPH_GEODATA_URL = './data/cph-geodata.json';
 const CPH_SURFACES_URL = './data/cph-surfaces.json';
 const CPH_LAKES_URL = './data/cph-lakes.json';
 const CPH_VEGETATION_URL = './data/cph-vegetation.json';
+const COLLIDING_PLAYER_MODES = new Set(['person', 'car', 'cyclist', 'cargobike', 'helicopter']);
 
 /** Optional ground-surface register and road markings (tools/cph-geodata/surfaces.py); null when absent. */
 async function loadCphSurfaces(url = CPH_SURFACES_URL, fetchImpl = globalThis.fetch) {
@@ -254,13 +258,93 @@ async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null, lakes
   if (debug.split(',').includes('oneway')) markInit(`directions(${JSON.stringify(buildDirectionOverlay(scene, geo, cyclists.network, surfaces.groundHeight).counts)})`);
   const heads = buildSignalHeads(scene, signalNodes, { groundHeight: surfaces.groundHeight });
   markInit('signalHeads');
+  let collisionStage = null;
+  let controllerManager = null;
+  const inactivePlayerActors = [];
+  const playerActorByEntity = new WeakMap();
+
+  const playerActor = (entity, mode) => {
+    let actor = playerActorByEntity.get(entity);
+    if (!actor) {
+      actor = {
+        entity, kind: 'player', mode, radius: 0.32, mass: 72,
+        x: 0, y: 0, z: 0, prevX: 0, prevY: 0, prevZ: 0, _wasPlaced: false,
+        getVelocity(out) {
+          const heading = entity.heading || 0, speed = entity.speed || 0;
+          out.x = Math.sin(heading) * speed + (entity.vx || 0);
+          out.z = Math.cos(heading) * speed + (entity.vz || 0);
+          return out;
+        },
+        applyVelocity(dx, dz) {
+          const heading = entity.heading || 0;
+          const vx = Math.sin(heading) * (entity.speed || 0) + (entity.vx || 0) + dx;
+          const vz = Math.cos(heading) * (entity.speed || 0) + (entity.vz || 0) + dz;
+          const speed = vx * Math.sin(heading) + vz * Math.cos(heading);
+          entity.speed = speed;
+          if (entity.type === 'car') {
+            entity.vx = vx - Math.sin(heading) * speed;
+            entity.vz = vz - Math.cos(heading) * speed;
+          }
+        },
+        move(dx, dz) {
+          entity.position.x += dx;
+          entity.position.z += dz;
+          entity.mesh?.position?.copy(entity.position);
+          return { x: entity.position.x, z: entity.position.z };
+        }
+      };
+      playerActorByEntity.set(entity, actor);
+    }
+    actor.entity = entity;
+    actor.kind = 'player';
+    actor.mode = mode;
+    actor.spec = entity.bodySpec || null;
+    actor.bodyTop = mode === 'helicopter' ? 3.2 : mode === 'car' ? entity.bodySpec?.height || 1.8 : 1.9;
+    actor.bodyBottom = mode === 'helicopter' ? -0.25 : 0;
+    actor.radius = mode === 'helicopter' ? 4.5 : mode === 'cargobike' ? 0.4 : mode === 'cyclist' ? 0.38 : mode === 'car' ? (entity.bodySpec?.width || 1.72) / 2 : mode === 'person' ? 0.48 : 0.32;
+    actor.mass = mode === 'helicopter' ? 2200 : mode === 'car' ? 1250 : mode === 'cargobike' ? 135 : mode === 'cyclist' ? 95 : 72;
+    actor.x = entity.position.x; actor.y = entity.position.y; actor.z = entity.position.z;
+    actor.heading = entity.heading || 0;
+    actor.placed = true;
+    return actor;
+  };
+
+  traffic.setCollisionPhase((actors, frame) => {
+    cyclists.simulate(frame.dt, frame.elapsed, frame.focusPos || { x: 0, z: 0 }, null);
+    cyclists.syncCollisionActors();
+    for (const actor of cyclists.collisionActors) actors.push(actor);
+    inactivePlayerActors.length = 0;
+    if (controllerManager) {
+      for (const [mode, entity] of Object.entries(controllerManager.entities || {})) {
+        if (!COLLIDING_PLAYER_MODES.has(mode) || (controllerManager.activeMode === 'swanboat' && mode === 'person')) continue;
+        if (entity === frame.playerEntity || entity.mesh?.visible === false) continue;
+        inactivePlayerActors.push(playerActor(entity, mode));
+      }
+      for (const actor of inactivePlayerActors) actors.push(actor);
+    }
+    const result = collisionStage?.resolve(actors, { dt: frame.dt });
+    if (result?.movedActors.some((actor) => actor.kind === 'player')) {
+      for (const actor of result.movedActors) {
+        if (actor.kind !== 'player') continue;
+        actor.entity.mesh?.position?.copy(actor.entity.position);
+      }
+      controllerManager?.poseCharacters?.(0);
+    }
+  });
+
   const trafficUpdate = traffic.update;
   traffic.update = (dt, elapsed, focusPos, playerEntity, activeMode, camera) => {
     trafficUpdate(dt, elapsed, focusPos, playerEntity, activeMode, camera);
-    cyclists.update(dt, elapsed, focusPos || { x: 0, z: 0 }, null);
+    cyclists.render();
     heads.update(elapsed, focusPos);
   };
-  Object.assign(traffic, { cyclists: cyclists.riders, cyclistSystem: cyclists, signalNodes });
+  Object.assign(traffic, {
+    cyclists: cyclists.riders,
+    cyclistSystem: cyclists,
+    signalNodes,
+    setCollisionStage(stage) { collisionStage = stage; },
+    attachControllerManager(manager) { controllerManager = manager || null; }
+  });
   return { surfaces, traffic, heads };
 }
 
@@ -400,8 +484,19 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     }
   }
 
+  const noBuildings = debug.split(',').includes('nobuildings');
+  const collisionGeo = noBuildings && geo ? { ...geo, buildings: [] } : geo;
+  const groundHeight = traffic?.surfaces?.groundHeight || null;
+  const colliders = buildStaticColliders(collisionGeo, {
+    furniturePlan: furniture?.plan || null,
+    carSpecs: BODY_SPECS,
+    groundHeight: groundHeight || (terrain.flat ? null : terrain)
+  });
+  const collisionStage = createCityCollisions({ staticIndex: createStaticIndex(colliders), groundHeight });
+  traffic?.traffic.setCollisionStage(collisionStage);
+
   return {
-    colliders: [],
+    colliders,
     // the player's surroundings: buildings, lakes and street furniture stream in around the camera; `night` is the
     // lighting system's night factor (lamps switch on above ~0.1)
     update: (x, z, night = 0) => {
@@ -423,7 +518,12 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     ground,
     debugFootprints,
     buildings,
-    attach: (context) => { buildings?.attach(context); lakes?.attach(context); },
+    attach: (context) => {
+      traffic?.traffic.attachControllerManager(context?.controllerManager || null);
+      buildings?.attach(context);
+      lakes?.attach(context);
+    },
+    collisions: collisionStage,
     lakes,
     lakeData: lakesDoc,
     grass,

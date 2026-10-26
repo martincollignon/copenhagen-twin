@@ -106,8 +106,21 @@ export function createCyclistSystem(scene, geo, signalNodes = [], { groundHeight
   const rotation = new THREE.Quaternion();
   const xAxis = new THREE.Vector3(1, 0, 0);
 
-  function update(dt, elapsed, focus, visible = null) {
+  let frameDt = 0;
+  let frameFocus = null;
+  let frameVisible = null;
+
+  function simulate(dt, elapsed, focus, visible = null) {
+    frameDt = dt;
+    frameFocus = focus;
+    frameVisible = visible;
     sim.update(dt, elapsed, focus, 300);
+  }
+
+  function render() {
+    const dt = frameDt;
+    const focus = frameFocus;
+    const visible = frameVisible;
     crowd.begin();
     for (const b of batches) b.begin();
     let drawn = 0;
@@ -149,5 +162,56 @@ export function createCyclistSystem(scene, geo, signalNodes = [], { groundHeight
     return drawn;
   }
 
-  return { group, network, sim, riders: sim.riders, update };
+  function update(dt, elapsed, focus, visible = null) {
+    simulate(dt, elapsed, focus, visible);
+    return render();
+  }
+
+  const collisionActors = sim.riders.map((rider, index) => {
+    const bike = bikes[index];
+    const actor = {
+      entity: rider,
+      kind: 'cyclist',
+      mode: bike.look.cargo ? 'cargobike' : 'cyclist',
+      radius: bike.look.cargo ? 0.45 : 0.52,
+      bodyShapeOverrides: bike.look.variant === 'cargo-longjohn'
+        ? { hx: 0.38, hz: 1.38, offsetForward: 0.43 }
+        : bike.look.variant === 'cargo-trike'
+          ? { hx: 0.43, hz: 1.28, offsetForward: 0.1 }
+          : null,
+      mass: bike.look.cargo ? 135 : 95,
+      x: 0, y: 0, z: 0, prevX: 0, prevY: 0, prevZ: 0,
+      _wasPlaced: false,
+      getVelocity(out) {
+        out.x = rider.dx * rider.speed;
+        out.z = rider.dz * rider.speed;
+        return out;
+      },
+      applyVelocity(dx, dz) {
+        rider.speed = Math.max(0, rider.speed + dx * rider.dx + dz * rider.dz);
+      },
+      move(dx, dz) {
+        rider.contactX += dx;
+        rider.contactZ += dz;
+        rider.x += dx;
+        rider.z += dz;
+        return rider;
+      }
+    };
+    return actor;
+  });
+
+  function syncCollisionActors() {
+    for (let i = 0; i < collisionActors.length; i++) {
+      const actor = collisionActors[i];
+      const rider = sim.riders[i];
+      actor.x = rider.x;
+      actor.z = rider.z;
+      actor.y = groundHeight ? groundHeight.heightAt(rider.x, rider.z) : 0;
+      actor.heading = rider.yaw;
+      actor.placed = rider.placed;
+    }
+  }
+
+  return { group, network, sim, riders: sim.riders, collisionActors, syncCollisionActors, simulate, render, update };
 }
