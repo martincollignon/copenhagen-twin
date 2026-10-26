@@ -1312,7 +1312,8 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   mat.roughnessNode = rough;
   mat.metalnessNode = metal;
   mat.emissiveNode = headlamps.add(tail).add(stop).add(turn).add(signColor.mul(signFace).mul(nightHeadlamp.mul(0.8).add(0.15)));
-  if (spec.taxiSign) mat.positionNode = mix(p, vec3(0, roof, -0.35), isSign.mul(one.sub(state.w)));
+  // positionNode runs after instancing; mask unused signs without resetting the chassis to model space.
+  if (spec.taxiSign) mat.maskNode = isSign.mul(one.sub(state.w)).lessThan(0.5);
 
   _carMaterialCache.set(cacheKey, mat);
   return mat;
