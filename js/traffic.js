@@ -14,7 +14,6 @@ import {
   buildSteerableWheelGeo,
   createLoftedCarMaterial,
   buildLoftedBusBodyGeometry,
-  buildBusSignGeometry,
   buildBusWheelGeo,
   createBusWheelMaterial,
   createLoftedBusMaterial
@@ -46,24 +45,6 @@ const LOOKAHEAD = 70; // metres a driver looks ahead for vehicles, stop lines an
 const VEHICLE_RADIUS = 380;
 const NEAR_RADIUS = 350;
 const VEHICLE_SPAWN_DISTANCE = 250;
-
-function createBusDestinationTexture(route) {
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 64;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#0c0f14';
-  ctx.fillRect(0, 0, 256, 64);
-  ctx.fillStyle = route === '5C' ? '#a2dded' : '#ffad35';
-  ctx.font = 'bold 30px "Arial Narrow", Arial, sans-serif';
-  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillText(route, 8, 33);
-  ctx.font = 'bold 23px "Arial Narrow", Arial, sans-serif';
-  ctx.fillText(route === '5C' ? 'HUSUM TORV' : 'NØRREPORT', 70, 33, 180);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
@@ -217,7 +198,10 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
   const carShadowInst = new THREE.InstancedMesh(unitPlane, contactShadowMat, NUM_CARS);
   carShadowInst.renderOrder = 998;
 
-  for (const m of bodyMeshes) m.castShadow = m.receiveShadow = true;
+  for (const { near, far } of Object.values(bodies)) {
+    near.castShadow = true;
+    near.receiveShadow = far.receiveShadow = true;
+  }
   carWheelLeftInst.castShadow = carWheelLeftInst.receiveShadow = true;
   carWheelRightInst.castShadow = carWheelRightInst.receiveShadow = true;
 
@@ -240,13 +224,10 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     const body = new THREE.InstancedMesh(geo, createLoftedBusMaterial(spec), capacity);
     body.name = spec.name;
     body.castShadow = body.receiveShadow = true;
-    const header = new THREE.InstancedMesh(buildBusSignGeometry(spec), new THREE.MeshBasicNodeMaterial({
-      map: createBusDestinationTexture(spec.aLine ? '6A' : '5C')
-    }), capacity);
-    busSets[spec.name] = { body, header, states, count: 0 };
-    group.add(body, header);
+    busSets[spec.name] = { body, states, count: 0 };
+    group.add(body);
   }
-  const busBodyMeshes = Object.values(busSets).flatMap((b) => [b.body, b.header]);
+  const busBodyMeshes = Object.values(busSets).map((b) => b.body);
   const busWheelMat = createBusWheelMaterial();
   const busWheelLeftInst = new THREE.InstancedMesh(buildBusWheelGeo(-1), busWheelMat, NUM_BUSES * 3);
   const busWheelRightInst = new THREE.InstancedMesh(buildBusWheelGeo(1), busWheelMat, NUM_BUSES * 3);
@@ -1322,7 +1303,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
   // =========================================================================
   // 7. RENDERING
   // =========================================================================
-  // Beyond CAR_PROXY_DISTANCE, cars use the ~250-triangle stand-in with built-in wheels instead of the full lofted
+  // Beyond CAR_PROXY_DISTANCE, cars use the ~500-triangle stand-in with built-in wheels instead of the full lofted
   // body + 4 separate wheel instances; vehicles outside the view frustum (with a margin for cast shadows and headlight
   // cones) are skipped altogether.
   const CAR_PROXY_DISTANCE = 90;
@@ -1471,7 +1452,6 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     dummy.updateMatrix();
     const slot = set.count++;
     set.body.setMatrixAt(slot, dummy.matrix);
-    set.header.setMatrixAt(slot, dummy.matrix);
     writeLampState(b, set.states.array, slot * 4);
 
     const dxCam = b.x - camX;
@@ -1698,7 +1678,6 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     syncInst(carShadowInst, visibleCars);
     for (const set of Object.values(busSets)) {
       syncInst(set.body, set.count);
-      syncInst(set.header, set.count);
       if (set.count > 0) flagRange(set.states, set.count);
     }
     syncInst(busWheelLeftInst, busAxles);

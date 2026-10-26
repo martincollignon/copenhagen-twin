@@ -67,6 +67,14 @@ class BoxGeometry extends BufferGeometry {
     this.computeVertexNormals();
   }
 }
+class PlaneGeometry extends BufferGeometry {
+  constructor(w, h) {
+    super();
+    this.setAttribute('position', new BufferAttribute([-w / 2, h / 2, 0, w / 2, h / 2, 0, -w / 2, -h / 2, 0, w / 2, -h / 2, 0], 3));
+    this.setAttribute('uv', new BufferAttribute([0, 1, 1, 1, 0, 0, 1, 0], 2));
+    this.setIndex([0, 2, 1, 2, 3, 1]).computeVertexNormals();
+  }
+}
 class CircleGeometry extends BufferGeometry {
   constructor(r, segments = 16, start = 0, span = Math.PI * 2) {
     super();
@@ -101,7 +109,7 @@ class LatheGeometry extends BoxGeometry {
     super(r * 2, Math.max(...ys) - Math.min(...ys), r * 2);
   }
 }
-const THREE = { Vector2, Vector3, BufferAttribute, Float32BufferAttribute: BufferAttribute, BufferGeometry, BoxGeometry, CircleGeometry, Shape, ExtrudeGeometry, LatheGeometry,
+const THREE = { Vector2, Vector3, BufferAttribute, Float32BufferAttribute: BufferAttribute, BufferGeometry, BoxGeometry, PlaneGeometry, CircleGeometry, Shape, ExtrudeGeometry, LatheGeometry,
   ShapeUtils: {
     isClockWise: (p) => p.reduce((s, a, i) => { const b = p[(i + 1) % p.length]; return s + a.x * b.y - b.x * a.y; }, 0) < 0,
     triangulateShape: (p) => Array.from({ length: p.length - 2 }, (_, i) => [0, i + 1, i + 2])

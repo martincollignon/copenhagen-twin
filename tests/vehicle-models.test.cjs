@@ -95,13 +95,15 @@ test('long buses have three wheel arches and a visible 18.75 m bellows body', ()
     checkGeometry(g);
     const p = g.attributes.position, ids = g.attributes.partId;
     const zs = [];
-    let bellows = 0;
+    let bellows = 0, signs = 0;
     for (let i = 0; i < p.count; i++) {
       if (ids.getX(i) === 0) zs.push(p.getZ(i));
       if (ids.getX(i) === 3) bellows++;
+      if (ids.getX(i) === 4) signs++;
     }
     assert.ok(Math.abs(Math.max(...zs) - Math.min(...zs) - s.length) < 0.01);
     assert.equal(bellows > 0, s === models.BUS_LONG_SPEC);
+    assert.equal(signs, 12, 'front, side and rear displays share the body draw');
   }
   assert.equal(models.BUS_LONG_SPEC.axles.length, 3);
   assert.equal(models.BUS_LONG_SPEC.length, 18.75);

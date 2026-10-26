@@ -908,7 +908,7 @@ function buildCarGeometry(spec, includeWheels = true) {
   return mergeGeometries(parts);
 }
 
-// A ~250-triangle stand-in for distant cars (a few pixels tall): the same body & glasshouse lofted from a handful of
+// A ~500-triangle stand-in for distant cars (a few pixels tall): the same body & glasshouse lofted from a handful of
 // coarse sections and dark wheel blocks. Same attributes (partId, uv, normal) as the full
 // model, so it renders with the same material and per-instance paint.
 function buildCarProxyGeometry(spec) {
@@ -1025,7 +1025,7 @@ function taxiSignTexture() {
 /**
  * Creates the TSL material for lofted vehicles.
  * Instanced traffic reads the per-instance `paintColor` (vec3) and `carState` (vec4: brake, left (+x) & right (-x)
- * turn signal) attributes; with a fixed `fixedColorHex` (the player's car, wheels) the state is the
+ * turn signal, taxi sign) attributes; with a fixed `fixedColorHex` (the player's car, wheels) the state is the
  * `material.userData.carState` uniform instead.
  * Every mask is built once and shared by the colour, roughness, metalness & emissive graphs (TSL turns nodes used
  * more than once into temporaries), so the fragment shader evaluates each SDF a single time.
@@ -1351,7 +1351,8 @@ const BUS_PARTS = {
   BODY: 0,
   TRIM: 1,
   POD: 2,
-  BELLOWS: 3
+  BELLOWS: 3,
+  SIGN: 4
 };
 
 const BUS_SPEC = {
@@ -1403,7 +1404,7 @@ function buildLoftedBusBodyGeometry(s = BUS_SPEC) {
   const pos = body.attributes.position;
   for (let i = 0; i < pos.count; i++) pos.setZ(i, pos.getZ(i) - busRake(pos.getY(i), pos.getZ(i), s));
   body.computeVertexNormals();
-  const parts = [part(body, BUS_PARTS.BODY)];
+  const parts = [part(body, BUS_PARTS.BODY), part(buildBusSignGeometry(s), BUS_PARTS.SIGN)];
 
   // Bumpers and stalk mirrors
   parts.push(part(roundedBox(1.24, 0.12, 0.24, 0.07, 0.03).translate(0, 0.5, s.zFront - 0.05), BUS_PARTS.TRIM));
@@ -1538,6 +1539,28 @@ function createBusWheelMaterial() {
   return mat;
 }
 
+const _busDestinationTextures = new Map();
+
+function createBusDestinationTexture(route) {
+  if (_busDestinationTextures.has(route)) return _busDestinationTextures.get(route);
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 64;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#0c0f14';
+  ctx.fillRect(0, 0, 256, 64);
+  ctx.fillStyle = route === '5C' ? '#a2dded' : '#ffad35';
+  ctx.font = 'bold 30px "Arial Narrow", Arial, sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(route, 8, 33);
+  ctx.font = 'bold 23px "Arial Narrow", Arial, sans-serif';
+  ctx.fillText(route === '5C' ? 'HUSUM TORV' : 'NØRREPORT', 70, 33, 180);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _busDestinationTextures.set(route, tex);
+  return tex;
+}
+
 const _busLoftedMats = new Map();
 
 /**
@@ -1559,6 +1582,8 @@ function createLoftedBusMaterial(s = BUS_SPEC) {
   const isTrim = step(abs(partId.sub(BUS_PARTS.TRIM)), 0.25);
   const isPod = step(abs(partId.sub(BUS_PARTS.POD)), 0.25);
   const isBellows = step(abs(partId.sub(BUS_PARTS.BELLOWS)), 0.25);
+  const isSign = step(abs(partId.sub(BUS_PARTS.SIGN)), 0.25);
+  const signColor = texture(createBusDestinationTexture(s.aLine ? '6A' : '5C'), attribute('uv', 'vec2')).rgb;
   const ax = abs(p.x);
   const one = float(1.0);
 
@@ -1636,9 +1661,9 @@ function createLoftedBusMaterial(s = BUS_SPEC) {
   const col = mix(mix(mix(body, color(0x1b1f24), isTrim), color(0xc9ced3), isPod), color(0x424549), isBellows);
 
   const mat = new THREE.MeshStandardNodeMaterial();
-  mat.colorNode = col;
+  mat.colorNode = mix(col, color(0x000000), isSign);
   mat.roughnessNode = mix(mix(mix(float(0.3), float(0.16), max(glass, max(headLamp, tailCol))), float(0.7), max(isTrim, seal.mul(one.sub(glass)))), float(0.72), max(isPod, isBellows));
-  mat.metalnessNode = mix(mix(float(0.22), float(0.7), glass), float(0.05), max(max(isTrim, isPod), isBellows));
+  mat.metalnessNode = mix(mix(float(0.22), float(0.7), glass), float(0.05), max(max(isTrim, isPod), max(isBellows, isSign)));
 
   const brake = state.x;
   const blink = max(state.y.mul(step(0.0, p.x)), state.z.mul(step(p.x, 0.0)));
@@ -1647,7 +1672,8 @@ function createLoftedBusMaterial(s = BUS_SPEC) {
     .mul(pod.mul(0.45).add(headLamp.mul(1.35)))
     .mul(nightHeadlamp)
     .add(color(0xff9a14).mul(max(turnFront, turnRear).mul(blink).mul(2.0)))
-    .add(color(0xff0a12).mul(tailLamp.mul(brake.mul(1.5).add(0.75))));
+    .add(color(0xff0a12).mul(tailLamp.mul(brake.mul(1.5).add(0.75))))
+    .add(signColor.mul(isSign));
 
   _busLoftedMats.set(s.name, mat);
   return mat;
