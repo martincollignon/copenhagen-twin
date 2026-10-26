@@ -65,10 +65,11 @@ export function createGroundLayer(scene, { terrain, material, size = 8000, tileB
     frame,
     stats: { tiles: 0, triangles: 0 },
     /** Builds (or rebuilds at the new fidelity) the ground of a tile. */
-    addTile(id, bounds, { near = true } = {}) {
+    addTile(id, bounds, { near = true, tileCut = null } = {}) {
       this.removeTile(id);
       if (generic) {
-        const mesh = toMesh(buildTileGroundArrays(terrain, { cut, region: bounds, step: near || cutTouchesRegion(cut, bounds) ? 1 : 2, uvSize: size }), `ground-${id}`);
+        // `tileCut`: the water cut of this tile (the `water` layer, tools/cph-geodata/city_water.py): meshed at the fine lattice
+        const mesh = toMesh(buildTileGroundArrays(terrain, { cut, tileCut, region: bounds, step: near || tileCut || cutTouchesRegion(cut, bounds) ? 1 : 2, uvSize: size }), `ground-${id}`);
         group.add(mesh);
         tiles.set(id, mesh);
         this.stats.tiles = tiles.size;

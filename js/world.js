@@ -23,13 +23,14 @@ import { openTileStore, createTileLod2, createFurnitureAssembler } from './tile-
 import { createRoadSurfaceLayer } from './road-surfaces-cph.js';
 import { createTiledHeightField } from './ground-height-cph.js';
 import { createTiledLawnMask } from './grass-layout-cph.js';
-import { tileOfLocal } from './tile-grid.js';
+import { tileOfLocal, tileBoundsLocal } from './tile-grid.js';
 import { createBaseGeo, graphFixFits, createTileData } from './tile-data.js';
 import { createTileStreamer } from './tile-streamer.js';
 import { streamConfig, extentOfTiles, distanceToRect } from './tile-rings.js';
 import { createBuildingsLayer } from './buildings-stream.js';
 import { createSlicer, nextFrame } from './yield-frame.js';
 import { createGroundLayer } from './ground-stream.js';
+import { createWaterLayer } from './water-stream.js';
 import { createTilePool } from './tile-pool.js';
 import { makeRoadJob } from './road-compute.js';
 import { makeFurnitureJob } from './furniture-compute.js';
@@ -159,6 +160,7 @@ function groundTexture() {
 }
 
 const GROUND_SIZE = 8000;
+const REFLECT_RANGE = 1100; // m: the planar reflection of the streamed city draws the tiles within this of the camera (and no far ring)
 
 function groundMaterial() {
   const texture = groundTexture();
@@ -487,9 +489,9 @@ const ringsBbox = (rings) => {
 
 /**
  * The city from the tile store, kept resident around the camera by the tile streamer (js/tile-streamer.js).
- *   global (built once at boot):  the road graph, the lakes that have the district's water treatment (a level in the terrain header) and
- *                                 the DLB bridge, the generic water of the rest (the far layer's polygons), the shared materials
- *   streamed per tile:            terrain heights, ground mesh, road surfaces + the ground-height chunk, buildings (facades,
+ *   global (built once at boot):  the road graph, the lakes that have the district's water treatment (a level in the terrain header: the
+ *                                 Soerne) and the DLB bridge, the shared materials
+ *   streamed per tile:            terrain heights, ground mesh (cut under the water), generic water (surface, quay walls, banks), road surfaces + the ground-height chunk, buildings (facades,
  *                                 LoD2, doors in the near ring), street furniture and trees, the lawn mask of the grass,
  *                                 the footprints pedestrians cannot walk through, the tile's roads and street layout
  *   regional (agent-region.js):   traffic, cyclists and pedestrians run on the road graph and the near-ring roads of a region around
@@ -518,7 +520,14 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
   globalThis.CPH_GEO = geo;
   markInit(`geodata(${geo.roadGraph.links.length} links)`);
 
-  const terrain = city.meta.terrain && !flags.has('flat') ? createStreamTerrain(city.meta.terrain) : FLAT_TERRAIN;
+  // The generic water (data/city/water.json, tools/cph-geodata/city_water.py): bodies come per tile; the Soerne are the district's hand-made lakes
+  // (`override`: the lake document of data/cph-lakes.json, unclipped, with the levels and deck heights the terrain header would carry)
+  const cityWater = city.water && !flags.has('nowater') ? city.water : null;
+  const override = cityWater?.override?.lakes?.length ? cityWater.override : null;
+  const terrainHeader = city.meta.terrain && override
+    ? { ...city.meta.terrain, lakes: [...(city.meta.terrain.lakes || []), ...(override.terrain?.lakes || [])], ponds: [...(city.meta.terrain.ponds || []), ...(override.terrain?.ponds || [])], bridges: [...(city.meta.terrain.bridges || []), ...(override.terrain?.bridges || [])] }
+    : city.meta.terrain;
+  const terrain = terrainHeader && !flags.has('flat') ? createStreamTerrain(terrainHeader) : FLAT_TERRAIN;
   const lod2 = city.meta.lod2 && !flags.has('nolod2') ? createTileLod2(city.meta, store.fetchBin) : null;
   const streets = flags.has('nostreets') ? null : city.streets;
   const data = createTileData({ index, meta: city.meta, streets, lakes: city.lakes, geo, terrain, lod2 });
@@ -526,13 +535,15 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
 
   // Lakes with a level in the terrain header get the district's water (walls, coping, the shore field, reflections); they are global:
   // their rims are baked into the water meshes, so the terrain under them is loaded once and pinned, and the furniture of the tiles
-  // under the bridges feeds the DLB model. Every other lake, pond and the harbour is the far layer's flat water (js/far-lod.js).
+  // under the bridges feeds the DLB model. With data/city/water.json these are the Soerne (`override`) and every other water body is the generic
+  // water of the tiles (js/water-stream.js); without it every other lake, pond and the harbour is the far layer's flat water (js/far-lod.js).
   const hasLevel = (kind, id) => terrain.flat || (kind === 'lake' ? terrain.lakeLevel(id) : kind === 'pond' ? terrain.pondLevel(id) : terrain.deckHeight(id)) != null;
-  const lakesDoc = city.lakes && !flags.has('nowater') ? {
-    ...city.lakes,
-    lakes: (city.lakes.lakes || []).filter((l) => hasLevel('lake', l.id)),
-    ponds: (city.lakes.ponds || []).filter((l) => hasLevel('pond', l.id)),
-    bridges: (city.lakes.bridges || []).filter((b) => hasLevel('bridge', b.id))
+  const lakeSource = override || city.lakes;
+  const lakesDoc = lakeSource && !flags.has('nowater') ? {
+    ...lakeSource,
+    lakes: (lakeSource.lakes || []).filter((l) => hasLevel('lake', l.id)),
+    ponds: (lakeSource.ponds || []).filter((l) => hasLevel('pond', l.id)),
+    bridges: (lakeSource.bridges || []).filter((b) => hasLevel('bridge', b.id))
   } : null;
   const hasLakes = !!lakesDoc?.lakes?.length;
   const waterDoc = !flags.has('nowater') ? city.lakes : null; // every lake, pond and bridge strip: where nothing may stand or walk
@@ -561,7 +572,9 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
   }
 
   // water (global) and the ground material the tiles share
-  const sharedGround = hasLakes ? groundMaterial() : applyPlainGround(new THREE.MeshStandardNodeMaterial());
+  // (with the generic water layer the ground shader reads a window raster that follows the camera: grass in the parks everywhere, the gravel path
+  // along the Soerne; js/water-stream.js. Without it: the district's static field over the lakes, plain stone elsewhere)
+  const sharedGround = cityWater ? new THREE.MeshStandardNodeMaterial({ roughness: 0.95, metalness: 0 }) : hasLakes ? groundMaterial() : applyPlainGround(new THREE.MeshStandardNodeMaterial());
   let lakes = null;
   if (hasLakes) {
     // the shore fields are rasters over the data frame: for a citywide index, over the lakes only (padded), not over 18 km of city
@@ -569,19 +582,48 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     const frame = getDataBbox();
     const waterBox = citywide && lakeBox ? [lakeBox[0] - 120, lakeBox[1] - 120, lakeBox[2] + 120, lakeBox[3] + 120] : frame;
     lakes = buildLakes(scene, lakesDoc, { groundMaterial: sharedGround, size: GROUND_SIZE, bbox: waterBox, planar: water !== 'simple', terrain,
-      parks: [], modelBridge: (bridge) => bridgeDLB?.layout.bridgeId === bridge.id, skipGround: true });
+      parks: cityWater ? null : [], lakeField: !!cityWater, hideDuringReflection: () => (cityWater ? reflectionCull() : []), modelBridge: (bridge) => bridgeDLB?.layout.bridgeId === bridge.id, skipGround: true });
     markInit(`lakes(${lakes.stats.lakes})`);
   }
   const tileBoundsMap = new Map(ids.map((id) => [id, index.tiles[id].local]));
   const ground = createGroundLayer(scene, { terrain, material: sharedGround, size: GROUND_SIZE, tileBounds: tileBoundsMap, cut: city.meta.terrain?.cut, generic: citywide });
   markInit('ground');
+  // generic water: harbour, canals, lakes, ponds (surface + shore walls per tile), the window rasters of the ground and the water shader
+  // (the planar reflection pass renders the scene again: it leaves out the far ring and the tiles beyond REFLECT_RANGE of the camera, see reflectionCull)
+  let cullRefs = { far: null, buildings: null, roads: null, camera: null };
+  const boundsOfTile = new Map();
+  const reflectionCull = () => {
+    const out = [cullRefs.far?.group];
+    const cam = cullRefs.camera;
+    if (cam) {
+      for (const root of [cullRefs.buildings?.group, cullRefs.roads?.group]) {
+        for (const child of root?.children || []) {
+          const id = /(\d+_\d+)$/.exec(child.name)?.[1];
+          if (!id) continue;
+          let b = boundsOfTile.get(id);
+          if (!b) boundsOfTile.set(id, (b = tileBoundsLocal(id)));
+          if (distanceToRect(cam.position.x, cam.position.z, b) > REFLECT_RANGE) out.push(child);
+        }
+      }
+    }
+    return out;
+  };
+  const waterLayer = cityWater
+    ? createWaterLayer(scene, {
+      header: cityWater, groundMaterial: sharedGround, planar: water !== 'simple',
+      lakeRings: (lakesDoc?.lakes || []).flatMap((l) => [l.ring, ...(l.holes || [])]),
+      hideDuringReflection: () => [lakes?.walls, ...reflectionCull()]
+    })
+    : null;
+  if (waterLayer) markInit(`water(${cityWater.stats?.bodies ?? '?'} bodies, ${cityWater.stats?.quay_km ?? '?'} km quay)`);
 
   // the CPU halves of the buildings and the road surfaces run in Web Workers (`?debug=noworker`: on the main thread, in slices)
   const pool = flags.has('noworker') ? null : createTilePool();
 
   // the layers the streamer fills
   const layers = [];
-  layers.push({ name: 'ground', rings: ['near', 'mid'], fidelity: true, add: (ctx, ring) => ground.addTile(ctx.id, ctx.bounds, { near: ring === 'near' }), remove: (id) => ground.removeTile(id) });
+  layers.push({ name: 'ground', rings: ['near', 'mid'], fidelity: true, add: (ctx, ring) => ground.addTile(ctx.id, ctx.bounds, { near: ring === 'near', tileCut: waterLayer ? ctx.water?.cut || null : null }), remove: (id) => ground.removeTile(id) });
+  if (waterLayer) layers.push(waterLayer.layer);
 
   const tiledHeight = createTiledHeightField(terrain.flat ? null : terrain, tileOfLocal);
   let roads = null;
@@ -653,12 +695,17 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
   const origin = start || { x: 0, z: 0 };
   await streamer.settle(origin.x, origin.z);
   markInit(`stream(${streamer.snapshot().resident.near} near, ${streamer.snapshot().resident.mid} mid)`);
+  waterLayer?.flush(origin.x, origin.z); // the first frame already has the grass and the shore field
 
   // the far ring: block meshes for the tiles that are not resident, the harbour and the sea (`?far=0` off; `?far` forces it on a district index)
   let far = null;
   if ((citywide || flags.has('far')) && !flags.has('nofar') && !(new URLSearchParams(globalThis.location?.search).get('far') === '0')) {
     const skipWater = new Set([...(lakesDoc?.lakes || []), ...(lakesDoc?.ponds || [])].map((l) => l.id));
-    far = await loadFarLayer(scene, store, { isResident: (id) => streamer.isBuilt(id), skipWater });
+    far = await loadFarLayer(scene, store, {
+      isResident: (id) => streamer.isBuilt(id), skipWater,
+      // the generic water's far pieces ride with their tiles and use its water material, so the harbour reads as one water out to the horizon
+      ...(waterLayer ? { waterTiles: cityWater.far, waterMaterial: waterLayer.material } : {})
+    });
     if (far) { far.flush(origin.x, origin.z, 40); markInit(`far(${store.post.far.tiles} tiles, ${(far.stats.bytes / 1e6).toFixed(1)} MB, ${far.stats.builds} built)`); }
   }
 
@@ -719,6 +766,14 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     markInit(`agents(${region.stats.links} links, ${region.stats.edges} edges, ${region.stats.lanes} bike lanes, ${region.stats.signals} signals)`);
   }
 
+  let camera = null;
+  cullRefs = { far, buildings, roads, get camera() { return camera; } };
+  // the Soerne's reflection runs when the camera is near the water itself, not near the bounding box of the lakes
+  const lakePts = [];
+  for (const l of lakesDoc?.lakes || []) for (let i = 0; i < l.ring.length; i += 8) lakePts.push(l.ring[i], l.ring[i + 1]);
+  const lakeDistance = (x, z) => { let d = Infinity; for (let i = 0; i < lakePts.length; i += 2) d = Math.min(d, Math.hypot(lakePts[i] - x, lakePts[i + 1] - z)); return d; };
+  let lakeDistAt = -Infinity;
+  let lakeDist = Infinity;
   return {
     colliders: [],
     update: (x, z, night = 0) => {
@@ -726,7 +781,21 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
       agents?.update(x, z);
       far?.update(x, z);
       buildings?.update(x, z, night);
-      lakes?.update(x, z);
+      if (waterLayer && lakes) {
+        // two planar reflectors never run together: the Soerne's, or the generic water's, whichever is nearer
+        const camY = camera ? camera.position.y : 0;
+        const now = performance.now();
+        if (now - lakeDistAt > 250) { lakeDistAt = now; lakeDist = lakeDistance(x, z); }
+        const dl = lakeDist;
+        const near = waterLayer.nearest(x, z);
+        const lakesWant = dl < 300 && camY < 450 && camY > lakes.level + 0.2;
+        const lakesFirst = lakesWant && dl <= near.distance;
+        lakes.setPlanar(lakesFirst && water !== 'simple');
+        waterLayer.update(x, z, { allow: !lakesFirst });
+      } else {
+        lakes?.update(x, z);
+        waterLayer?.update(x, z);
+      }
       grass?.update(x, z);
       furniture?.update(x, z, night);
       bridgeDLB?.update(night);
@@ -744,8 +813,10 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     groundLayer: ground,
     debugFootprints: null,
     buildings,
-    attach: (context) => { buildings?.attach(context); lakes?.attach(context); },
+    attach: (context) => { camera = context.camera; buildings?.attach(context); lakes?.attach(context); waterLayer?.attach(context); },
     lakes,
+    waterLayer,
+    cityWater,
     lakeData: hasLakes ? lakesDoc : null,
     grass,
     geo,

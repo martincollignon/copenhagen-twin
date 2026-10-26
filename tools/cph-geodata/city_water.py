@@ -44,7 +44,7 @@ from pathlib import Path
 import numpy as np
 import shapely
 from shapely import STRtree, contains_xy
-from shapely.geometry import LineString, MultiLineString, MultiPolygon, Point, Polygon, box, shape
+from shapely.geometry import LineString, Point, Polygon, box, shape
 from shapely.geometry.polygon import orient
 from shapely.ops import polygonize, unary_union
 
@@ -66,9 +66,11 @@ SHORE_PROBE = 2.0  # m: land-side probe distance for the quay height
 WALL_TOP = 0.08
 MIN_FREEBOARD = 0.3
 QUAY_NEAR_M = 9.0  # developed shore: a building / pavement / road this close
-FAR_TOL_M = 3.0  # far-ring water pieces: Douglas-Peucker tolerance
+FAR_TOL_M = 2.0  # far-ring water pieces: Douglas-Peucker tolerance
 GREEN_TOL_M = 1.0
 MIN_GREEN_M2 = 40.0
+MIN_CUT_M2 = 2.0  # overlaps smaller than this are ignored (lakes.py MIN_CUT_M2)
+DECK_ABOVE_M = 1.0  # a surface whose terrain over the water stands this far above it is a bridge deck
 SOERNE_NAMES = ("Søerne", "Peblinge", "Sortedam", "Sankt Jørgens", "Sankt Jorgens")
 SOERNE_REGISTER_PREFIX = "kk:parkregister:parkregister.161"
 GDK_TYPES = ("soe", "bassin", "rekreativtomraade", "begravelsesomraade", "skov")
@@ -205,8 +207,6 @@ def gdk_geoms(path: Path, props=("soetype", "bassintype", "anvendelse")):
     out = []
     if not doc:
         return out
-    from pyproj import Transformer
-
     for f in doc.get("features", []):
         try:
             g = shape(f["geometry"])
@@ -226,16 +226,6 @@ def polys(g):
     if g.geom_type == "Polygon":
         return [g]
     return [p for x in getattr(g, "geoms", []) for p in polys(x)]
-
-
-def lines_of(g):
-    if g is None or g.is_empty:
-        return []
-    if g.geom_type == "LineString":
-        return [g]
-    return [p for x in getattr(g, "geoms", []) for p in lines_of(x)]
-
-
 
 
 # ---------------------------------------------------------------------------------------------------------------- DTM
@@ -674,7 +664,7 @@ def build(args) -> int:
     quad = Polygon([(x, -y) for x, y in osm_bbox_quad()])
     edge_zone = unary_union([window.boundary, quad.boundary]).buffer(1.0)
     shapely.prepare(edge_zone)
-    V, LV, SEG = [], [], []  # vertices (x, z), level per vertex, ring bookkeeping
+    V, LV = [], []  # shore vertices (x, z) and the water level at each
     rings = []  # (body, start, end)
     for b in lakes_b:
         pp = orient(b["poly"], 1.0)  # exterior counter-clockwise in (x, z): the water is on the LEFT of travel on every ring
@@ -767,6 +757,46 @@ def build(args) -> int:
         layers[tid]["cut"] = c
     log(f"ground cuts: {sum(len(c['skip']) for c in cuts.values())} cells out, {sum(len(c['pieces']) for c in cuts.values())} pieces in {len(cuts)} tiles")
 
+    # ---- ground-surface polygons (the register: paving, gravel, cobbles ...) the water covers are trimmed; a polygon over a bridge deck is not
+    body_tree = STRtree([b["poly"] for b in lakes_b])
+    cut_prep = cut_water
+    shapely.prepare(cut_prep)
+    ncut = ndeck = 0
+    for tid in ids:
+        d = read_json(tiles_dir / tid / "surfaces.json")
+        out = []
+        for srf in (d or {}).get("surfaces", []):
+            r = srf.get("ring") or []
+            if len(r) < 6:
+                continue
+            try:
+                sp = Polygon([(r[i], r[i + 1]) for i in range(0, len(r) - 1, 2)], [[(h[i], h[i + 1]) for i in range(0, len(h) - 1, 2)] for h in srf.get("holes", []) if len(h) >= 6]).buffer(0)
+            except Exception:  # noqa: BLE001
+                continue
+            if sp.is_empty or not sp.intersects(cut_prep):
+                continue
+            over = sp.intersection(cut_water)
+            if over.area < MIN_CUT_M2:
+                continue
+            hit = [lakes_b[j] for j in body_tree.query(over, predicate="intersects")]
+            lvl = hit[0]["level"] if hit else SEA
+            m = dtm.median_in(max(polys(over), key=lambda g: g.area))
+            hand_made = over.intersection(ovr_union).area > 0.5 * over.area  # the Soerne: the district cuts everything the lakes cover
+            if not hand_made and m is not None and m - lvl > DECK_ABOVE_M:
+                ndeck += 1
+                continue  # a bridge or pier deck: it stands over the water on purpose
+            replace = []
+            for k, q in enumerate(sorted(polys(sp.difference(cut_water)), key=lambda g: -g.area)):
+                if q.area < 1.0:
+                    continue
+                rec = {"id": srf["id"] if k == 0 else f"{srf['id']}~lake{k}", **poly_rec(q)}
+                replace.append(rec)
+            out.append({"id": srf["id"], "replace": replace})
+        if out:
+            layers[tid]["surfaceCuts"] = out
+            ncut += len(out)
+    log(f"surface cuts: {ncut} polygons trimmed, {ndeck} left over bridge decks")
+
     # ---- green ground
     gs = green_geoms(tiles_dir, ids)
     green = unary_union([g.buffer(0) for g in gs]).difference(all_water) if gs else Polygon()
@@ -790,7 +820,7 @@ def build(args) -> int:
     sizes = {}
     for tid, lay in layers.items():
         path = tiles_dir / tid / "water.json"
-        if lay["bodies"] or lay.get("cut") or lay.get("green"):
+        if lay["bodies"] or lay.get("cut") or lay.get("green") or lay.get("surfaceCuts"):
             text = json.dumps(lay, separators=(",", ":"), ensure_ascii=False)
             tmp = path.with_name(path.name + f".tmp{os.getpid()}")
             tmp.write_text(text)

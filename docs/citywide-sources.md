@@ -70,6 +70,7 @@ KK = covers all of Københavns Kommune (counts are citywide feature totals). FRB
 |---|---|---|---|
 | `parkregister` (361), `park_groent_omr_oversigtskort` (1,453) | Yes | GC2 `komplan25.kp25_groenne_parker_og_anlaeg` (179 planning polygons), OSM `leisure=park|garden`, GeoDanmark `rekreativtomraade_current` | Verified. Park-floor inference needs the polygons; OSM suffices |
 | OSM water/parks | n/a | Same | Verified citywide: 2.8 MB, 31 s |
+| GeoDanmark `soe_current` (314 in the city bbox), `bassin_current` (152), `rekreativtomraade_current` (19), `begravelsesomraade_current` (26), `skov_current` (346) | Datafordeler GEODKV WFS with the service user: verified and downloaded 2026-10-26 by `tools/cph-geodata/city_water.py --fetch` into `data/raw/city/water/` | national | Verified. `kyst` (coast lines) and `vandloebskant` (stream edges) exist too and are not used: the OSM coastline gives the sea with its orientation |
 | Søerne polygons `parkregister.161*` | District feature (KK) | n/a; generic lakes from GeoDanmark `soe_current`, `bassin_current`, `kyst_current`, `havn_current` (1 `soe` in the FRB test box) or OSM | Layer names verified; not downloaded |
 | DHM terrain WCS `api.dataforsyningen.dk/dhm_wcs_DAF` | National | Same (token) | Verified (GetCapabilities, 200) |
 | Ortho and CIR WMS `api.dataforsyningen.dk/orto_foraar_DAF` | National | Same (token) | Verified (GetMap, 200) |

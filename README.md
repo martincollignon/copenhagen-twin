@@ -32,6 +32,8 @@ Lighting uses 26 October 2026 in Europe/Copenhagen: Golden Hour at 16:10, Midday
 | `?wet=0.7` | Overrides ground wetness from 0 to 1; clear presets default to dry. |
 | `?ao=1` | Enables half-resolution GTAO at 0.6 strength. It remains opt-in pending a GPU cost measurement. |
 
+Citywide (the streamed tile index): every harbour basin, canal, lake and pond that is not one of the Soerne is generic water, a post-process like the far layer: `uv run tools/cph-geodata/city_water.py --fetch` (GeoDanmark soe / bassin / rekreativtomraade / begravelsesomraade / skov and OSM landuse into `data/raw/city/water/`, once) and `uv run tools/cph-geodata/city_water.py` write `data/city/water.json` and a `water` layer per tile (surface, quay walls or banks, the ground cut under the water, parks as grass). The Soerne stay the district's hand-made lakes. Details and limits: `docs/citywide-plan.md` (C4). `?water=simple` drops the planar reflection here too, `?debug=nowater` shows the ground without any water.
+
 Water levels come from the DTM over the lakes. `data/cph-lakes.json` stores basin polygons and their measured levels, allowing basins separated by bridges to keep distinct elevations while nearby levels snap together. Lake outlines cut through the terrain or ground mesh; developed shores use quay walls and coping, while natural shores use bank geometry. A shared ground-field shader shades fine gravel along the lake edge and grass over measured park areas.
 
 Capture and benchmark the atmospheric changes on a machine that permits a local browser/server:

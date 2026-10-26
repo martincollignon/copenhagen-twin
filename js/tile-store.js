@@ -197,6 +197,8 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
   // Post-process layers (data/city/post.json, written by tools/cph-geodata/far_lod.py and tile_streets.py after the tile compiler):
   //   far      { header, bin }               the far-ring block meshes (js/far-lod.js)
   //   streets  { graph, tiles: { id: bytes } }  the street layout bucketed per tile (a `streets` layer of those tiles) + the graph fix
+  //   water    { header, tiles: { id: bytes } }  the generic water, ground cut and green ground per tile (a `water` layer of those tiles,
+  //            tools/cph-geodata/city_water.py) + the city header (bodies, far-ring pieces, the Soerne override)
   let post = null;
   try {
     const doc = await json(`${baseUrl}/${cityDir}/post.json`);
@@ -208,13 +210,14 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
     cityPromise ||= (async () => {
       // with a per-tile street layout the whole-city streets.json is not read at all (it is only meaningful for the tiles it covers)
       const tiled = !!post?.streets;
-      const [meta, roadGraph, streets, streetsGraph, lakes] = await Promise.all([
+      const [meta, roadGraph, streets, streetsGraph, lakes, water] = await Promise.all([
         json(cityUrl(index.city.meta)), json(cityUrl(index.city.roadgraph)),
         !tiled && index.city.streets ? json(cityUrl(index.city.streets)).catch(() => null) : null,
         tiled && post.streets.graph ? json(`${baseUrl}/${cityDir}/${post.streets.graph}`).catch(() => null) : null,
-        index.city.lakes ? json(cityUrl(index.city.lakes)).catch(() => null) : null
+        index.city.lakes ? json(cityUrl(index.city.lakes)).catch(() => null) : null,
+        post?.water?.header ? json(`${baseUrl}/${cityDir}/${post.water.header}`).catch(() => null) : null
       ]);
-      return { meta, roadGraph, streets, streetsGraph, lakes };
+      return { meta, roadGraph, streets, streetsGraph, lakes, water: water?.version?.startsWith('cph-water/') ? water : null };
     })();
     return cityPromise;
   };
@@ -225,7 +228,7 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
   const cache = new Map(); // tile id -> Promise<{ [layer]: payload }>
   const loadTile = (tid) => {
     if (!cache.has(tid)) {
-      const names = [...Object.keys(index.tiles[tid]?.layers || {}), ...(post?.streets?.tiles?.[tid] ? ['streets'] : [])].filter((n) => !n.endsWith('.bin'));
+      const names = [...Object.keys(index.tiles[tid]?.layers || {}), ...(post?.streets?.tiles?.[tid] ? ['streets'] : []), ...(post?.water?.tiles?.[tid] ? ['water'] : [])].filter((n) => !n.endsWith('.bin'));
       cache.set(tid, Promise.all(names.map(async (n) => [n, await json(`${baseUrl}/${tid}/${n}.json`)])).then(Object.fromEntries));
     }
     return cache.get(tid);
@@ -236,7 +239,7 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
     return r.ok ? r.arrayBuffer() : null;
   };
   // The streamer (js/tile-streamer.js) keeps the payloads itself: one layer per request, abortable, never cached here.
-  const layerSize = (tid, name) => index.tiles[tid]?.layers?.[name] || (name === 'streets' ? post?.streets?.tiles?.[tid] : 0) || 0;
+  const layerSize = (tid, name) => index.tiles[tid]?.layers?.[name] || (name === 'streets' ? post?.streets?.tiles?.[tid] : name === 'water' ? post?.water?.tiles?.[tid] : 0) || 0;
   const hasLayer = (tid, name) => !!index.tiles[tid] && layerSize(tid, name) > 0;
   const fetchLayer = (tid, name, signal) => (hasLayer(tid, name) ? json(`${baseUrl}/${tid}/${name}.json`, signal) : Promise.resolve(null));
   const layerBytes = layerSize;

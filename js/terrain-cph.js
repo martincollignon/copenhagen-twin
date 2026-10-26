@@ -356,15 +356,24 @@ export function cutTouchesRegion(cut, region, { half = cut?.half ?? getDataBbox(
  * outside it every cell is plain ground. `step` 2, 4 ...: coarser quads (only valid where no cut cell lies).
  * @returns {{ position: Float32Array, normal: Float32Array, uv: Float32Array, index: Uint32Array, stats: object }}
  */
-export function buildTileGroundArrays(terrain, { cut = terrain.doc?.cut, region, step = 1, drop = TERRAIN_MESH_DROP, uvSize = 8000 } = {}) {
-  const half = cut?.half ?? getDataBbox()[2];
-  const cell = cut?.cell ?? 4;
+export function buildTileGroundArrays(terrain, { cut = terrain.doc?.cut, tileCut = null, region, step = 1, drop = TERRAIN_MESH_DROP, uvSize = 8000 } = {}) {
+  const half = cut?.half ?? tileCut?.half ?? getDataBbox()[2];
+  const cell = cut?.cell ?? tileCut?.cell ?? 4;
   const n = Math.round((2 * half) / cell);
   const skip = new Set(cut?.skip || []);
   const pieceCells = new Set((cut?.pieces || []).map((p) => p[1] * n + p[0]));
   const pos = [];
   const idx = [];
   const OFF = 1 << 14;
+  // a tile's own water cut (tools/cph-geodata/city_water.py): lattice cells by (i, j) anywhere in the city, not only inside the district
+  // area. `skip` is run-length coded rows [j, i0, count]; a `piece` is a cell's part outside the water.
+  const tileSkip = new Set();
+  const tilePieceCells = new Set();
+  const cellKey = (i, j) => (j + OFF) * (2 * OFF) + (i + OFF);
+  if (tileCut) {
+    for (const [j, i0, count] of tileCut.skip || []) for (let k = 0; k < count; k++) tileSkip.add(cellKey(i0 + k, j));
+    for (const [i, j] of tileCut.pieces || []) tilePieceCells.add(cellKey(i, j));
+  }
   const node = new Map();
   const vert = (x, z) => { pos.push(x, terrain.heightAt(x, z) - drop, z); return pos.length / 3 - 1; };
   const nodeAt = (i, j) => {
@@ -392,6 +401,10 @@ export function buildTileGroundArrays(terrain, { cut = terrain.doc?.cut, region,
         const k = j * n + i;
         if (skip.has(k) || pieceCells.has(k)) continue;
       }
+      if (tileCut) {
+        const k = cellKey(i, j);
+        if (tileSkip.has(k) || tilePieceCells.has(k)) continue;
+      }
       const a = nodeAt(i, j);
       const b = nodeAt(i + step, j);
       const c = nodeAt(i + step, j + step);
@@ -400,7 +413,7 @@ export function buildTileGroundArrays(terrain, { cut = terrain.doc?.cut, region,
       cells++;
     }
   }
-  for (const [pi, pj, ring] of cut?.pieces || []) {
+  for (const [pi, pj, ring] of [...(cut?.pieces || []), ...(tileCut?.pieces || [])]) {
     const mx = -half + (pi + 0.5) * cell;
     const mz = -half + (pj + 0.5) * cell;
     if (mx < region[0] || mx >= region[2] || mz < region[1] || mz >= region[3]) continue;

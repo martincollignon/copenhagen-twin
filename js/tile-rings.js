@@ -15,8 +15,8 @@ export const DEFAULT_STREAM = Object.freeze({ near: 750, mid: 2500, hysteresis: 
 
 /** Layers (data/tiles/<id>/<layer>.json) a tile needs for what it is asked to be. `roads` and `streets` stream with the tile. */
 export const RING_LAYERS = Object.freeze({
-  near: ['buildings', 'terrain', 'lod2', 'surfaces', 'vegetation', 'furniture', 'entrances', 'groundfloor', 'roads', 'streets'],
-  mid: ['buildings', 'terrain', 'lod2', 'roads', 'streets']
+  near: ['buildings', 'terrain', 'lod2', 'surfaces', 'vegetation', 'furniture', 'entrances', 'groundfloor', 'roads', 'streets', 'water'],
+  mid: ['buildings', 'terrain', 'lod2', 'roads', 'streets', 'water']
 });
 /** What a neighbour contributes to the context (footprints, ground, surfaces) of a built tile. */
 export const CONTEXT_LAYERS = Object.freeze({

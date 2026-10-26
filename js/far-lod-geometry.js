@@ -169,7 +169,7 @@ export function farGroundArrays(buf, off, bounds, sea = -6.84, colors = FAR_COLO
   return { position, color, index };
 }
 
-/** Flat polygons (earcut) at their levels: lakes, ponds, harbour basins. Positions are absolute (local frame). */
+/** Flat polygons (earcut, holes allowed) at their levels: lakes, ponds, harbour basins. Positions are absolute (local frame). */
 export function farWaterArrays(polygons, { lift = 0.08 } = {}) {
   const pos = [];
   const idx = [];
@@ -178,10 +178,17 @@ export function farWaterArrays(polygons, { lift = 0.08 } = {}) {
     const n = ring.length / 2;
     if (n < 3) continue;
     const flat = [];
-    for (let i = 0; i < n; i++) flat.push(ring[2 * i], -ring[2 * i + 1]);
-    const t = earcut(flat, undefined, 2);
+    const holeIdx = [];
+    const verts = [];
+    for (let i = 0; i < n; i++) { flat.push(ring[2 * i], -ring[2 * i + 1]); verts.push(ring[2 * i], ring[2 * i + 1]); }
+    for (const h of p.holes || []) {
+      if (h.length < 6) continue;
+      holeIdx.push(flat.length / 2);
+      for (let i = 0; i < h.length; i += 2) { flat.push(h[i], -h[i + 1]); verts.push(h[i], h[i + 1]); }
+    }
+    const t = earcut(flat, holeIdx.length ? holeIdx : undefined, 2);
     const base = pos.length / 3;
-    for (let i = 0; i < n; i++) pos.push(ring[2 * i], p.level + lift, ring[2 * i + 1]);
+    for (let i = 0; i < verts.length; i += 2) pos.push(verts[i], p.level + lift, verts[i + 1]);
     for (let k = 0; k + 2 < t.length; k += 3) {
       const a = t[k]; const b = t[k + 1]; const c = t[k + 2];
       const area = (flat[2 * b] - flat[2 * a]) * (flat[2 * c + 1] - flat[2 * a + 1]) - (flat[2 * c] - flat[2 * a]) * (flat[2 * b + 1] - flat[2 * a + 1]);
@@ -190,4 +197,3 @@ export function farWaterArrays(polygons, { lift = 0.08 } = {}) {
   }
   return { position: new Float32Array(pos), index: new Uint32Array(idx) };
 }
-

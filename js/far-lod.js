@@ -41,9 +41,13 @@ function farMaterial(name, { roughness = 0.94 } = {}) {
  *   bounds   Map tileId -> local bounds [xmin, zmin, xmax, zmax]
  *   isResident  (id) => the streamer has the tile built (near or mid): its far mesh is hidden
  *   skipWater   Set of lake ids another layer draws (the lake machinery of the district)
+ *   waterTiles  { tileId: [{ l: level, p: [{ ring, holes }] }] } the water pieces per tile (data/city/water.json `far`): built with the tile
+ *               and hidden with it, so the generic water of the resident tiles (js/water-stream.js) is never drawn twice; replaces the
+ *               far header's global polygons
+ *   waterMaterial / seaMaterial  the material of those pieces and of the sea plane (default: a flat blue standard material)
  *   range    metres around the camera to keep far tiles for
  */
-export function createFarLayer(scene, { header, buffer, bounds, isResident = () => false, skipWater = new Set(), range = FAR_RANGE, water = true } = {}) {
+export function createFarLayer(scene, { header, buffer, bounds, isResident = () => false, skipWater = new Set(), range = FAR_RANGE, water = true, waterTiles = null, waterMaterial: waterMaterialIn = null, seaMaterial = null } = {}) {
   const group = new THREE.Group();
   group.name = 'CopenhagenFar';
   scene.add(group);
@@ -74,10 +78,10 @@ export function createFarLayer(scene, { header, buffer, bounds, isResident = () 
   // water: the polygons of the city's lakes and the harbour, and the sea out to the horizon
   let waterMesh = null;
   let seaMesh = null;
-  const waterMaterial = new THREE.MeshStandardNodeMaterial({ color: new THREE.Color(FAR_COLORS.water[0] / 255, FAR_COLORS.water[1] / 255, FAR_COLORS.water[2] / 255).convertSRGBToLinear(), roughness: 0.16, metalness: 0 });
-  waterMaterial.name = 'far-water';
+  const waterMaterial = waterMaterialIn || new THREE.MeshStandardNodeMaterial({ color: new THREE.Color(FAR_COLORS.water[0] / 255, FAR_COLORS.water[1] / 255, FAR_COLORS.water[2] / 255).convertSRGBToLinear(), roughness: 0.16, metalness: 0 });
+  if (!waterMaterialIn) waterMaterial.name = 'far-water';
   if (water) {
-    const polys = (header.water || []).filter((w) => !skipWater.has(w.id));
+    const polys = waterTiles ? [] : (header.water || []).filter((w) => !skipWater.has(w.id));
     const wa = farWaterArrays(polys);
     if (wa.index.length) {
       const g = new THREE.BufferGeometry();
@@ -95,7 +99,8 @@ export function createFarLayer(scene, { header, buffer, bounds, isResident = () 
       stats.water = polys.length;
     }
     const sg = new THREE.PlaneGeometry(SEA_SIZE, SEA_SIZE).rotateX(-Math.PI / 2);
-    seaMesh = new THREE.Mesh(sg, waterMaterial);
+    sg.setAttribute('waterTint', new THREE.BufferAttribute(new Float32Array(sg.attributes.position.count).fill(1), 1)); // read by the generic water material, ignored by the flat one
+    seaMesh = new THREE.Mesh(sg, seaMaterial || waterMaterial);
     seaMesh.position.y = sea - 0.1;
     seaMesh.name = 'far-sea';
     seaMesh.frustumCulled = false;
@@ -127,12 +132,31 @@ export function createFarLayer(scene, { header, buffer, bounds, isResident = () 
       }
     }
     group.add(holder);
+    // the tile's water pieces (absolute coordinates, so a mesh of their own); shown and hidden with the tile
+    let waterTile = null;
+    const pieces = water && waterTiles ? waterTiles[id] : null;
+    if (pieces?.length) {
+      const wa = farWaterArrays(pieces.flatMap((pc) => pc.p.map((q) => ({ ring: q.ring, holes: q.holes, level: pc.l }))));
+      if (wa.index.length) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.BufferAttribute(wa.position, 3));
+        g.setAttribute('waterTint', new THREE.BufferAttribute(Float32Array.from({ length: wa.position.length / 3 }, (_, i) => (Math.abs(wa.position[3 * i + 1] - 0.08 - sea) < 0.05 ? 1 : 0)), 1));
+        g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(wa.position.length / 3 * 3).map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+        g.setIndex(new THREE.BufferAttribute(wa.index, 1));
+        g.computeBoundingSphere();
+        waterTile = new THREE.Mesh(g, waterMaterial);
+        waterTile.name = `far-water-${id}`;
+        waterTile.raycast = () => {};
+        group.add(waterTile);
+        tri += wa.index.length / 3;
+      }
+    }
     const ms = performance.now() - t0;
     stats.buildMs += ms;
     stats.maxBuildMs = Math.max(stats.maxBuildMs, ms);
     stats.builds++;
     stats.triangles += tri;
-    return { holder, triangles: tri };
+    return { holder, waterTile, triangles: tri };
   }
 
   function removeTile(id) {
@@ -140,6 +164,7 @@ export function createFarLayer(scene, { header, buffer, bounds, isResident = () 
     if (!t) return;
     stats.triangles -= t.triangles;
     disposeTree(t.holder);
+    if (t.waterTile) disposeTree(t.waterTile);
     tiles.delete(id);
   }
 
@@ -178,6 +203,7 @@ export function createFarLayer(scene, { header, buffer, bounds, isResident = () 
       for (const [id, t] of tiles) {
         const resident = isResident(id);
         t.holder.visible = !resident;
+        if (t.waterTile) t.waterTile.visible = !resident;
         if (!resident) visible++;
       }
       stats.tiles = tiles.size;

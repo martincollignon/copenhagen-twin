@@ -214,7 +214,7 @@ export function createTileData({ index, meta, streets = null, lakes = null, geo,
         const veg = e.layers.get('vegetation');
         const own = [...(p?.surfaces || []), ...(veg?.surfaces || [])];
         const ids = new Set(own.map((s) => s.id));
-        const layerCuts = e.layers.get('streets')?.surfaceCuts;
+        const layerCuts = mergeSurfaceCuts(e.layers.get('streets')?.surfaceCuts, e.layers.get('water')?.surfaceCuts);
         const tileCuts = mergeSurfaceCuts(cuts.length ? cuts.filter((c) => ids.has(c.id)) : [], layerCuts);
         return { surfaces: applySurfaceCuts({ surfaces: own }, tileCuts).surfaces, markings: p?.markings || [] };
       })());
@@ -263,6 +263,8 @@ export function createTileData({ index, meta, streets = null, lakes = null, geo,
           return (surfaces = doc);
         },
         get lawns() { return cat((t) => api.lawns(t)); },
+        /** The tile's `water` layer (generic water, ground cut, green ground), or null. */
+        get water() { return entries.get(id)?.layers.get('water') || null; },
         get furniture() {
           const asm = createFurnitureAssembler(meta);
           asm.addTile(entries.get(id)?.layers.get('furniture'));

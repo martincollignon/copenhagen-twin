@@ -83,6 +83,25 @@ registered in `data/city/post.json` (`cph-post/1`), which the tile store reads a
 | Mid ring | `building-geometry.js` `lite` | tone-only walls (one colour per building, plain vertex-colour material), flat deck roofs (LoD2 roofs stay), one wall and one roof mesh per tile; carriageways, kerbs and cycle tracks only |
 | Teleports | `tools/cph-geodata/city_teleports.py` -> `js/city-teleports.js` | eight citywide presets on vehicular links of the citywide graph, offered where the index has a tile |
 
-Water: only lakes with a level in the terrain header get the district's treatment (walls, coping, shore field, reflections, DLB bridge); every other lake, pond and the harbour is the far layer's flat water. The citywide terrain header carries no lake levels yet, so for now that is all of them (C4).
+Water: see "C4 engine status" below (the far layer's water now rides with its tiles and uses the generic water material).
 
-Re-run after the compiler has changed the tiles: `uv run tools/cph-geodata/far_lod.py`, `uv run tools/cph-geodata/tile_streets.py`.
+Re-run after the compiler has changed the tiles: `uv run tools/cph-geodata/far_lod.py`, `uv run tools/cph-geodata/tile_streets.py`, `uv run tools/cph-geodata/city_water.py`.
+
+## C4 engine status (2026-10-26)
+
+Generic citywide water and ground. Post-process of the tile compiler like `far_lod.py` and `tile_streets.py`; registered in `data/city/post.json` under `water`; the compiler's own files are never edited.
+
+| Piece | Tool / module | Output |
+|---|---|---|
+| Sources and bodies | `tools/cph-geodata/city_water.py` (`--fetch` once for the raw files) | GeoDanmark `soe` + `bassin` polygons, OSM `natural=water`, the sea from the OSM coastline (polygonised against the request bbox; land is on the left of a way). Overlapping sources are unioned (GeoDanmark first), small islands under 30 m2 dropped. Per body: level, kind, name |
+| Levels | same | the median of the compiled terrain (DTM chunks of the tiles) over the body; a body within 0.6 m of 0 m DVR90 (-6.84 local) or joined to the sea is at the sea. Ponds (under 1500 m2, not at the sea) are flat water 2 cm over their level, no walls, no ground cut |
+| Shores | same | every boundary of the water is a shore. Densified at 8 m; wall top = median terrain 2 m inland + 0.08 m coping, at least 0.3 m over the water (as `shoreTop` in `js/lakes-cph.js`); `q` quay (granite wall + coping) where a building, pavement or road lies within 9 m, `b` natural bank (grass, 1:1.6 batter) elsewhere. 142 km of quay, 119 km of bank |
+| Tile layer | `data/tiles/<id>/water.json` (`water` layer, near and mid ring) | bodies clipped to the tile (surface rings, level, wall runs with a top height per vertex), ground cut (4 m lattice anchored at -750 as `lake_cut` in `terrain.py`, skip cells run-length coded + partial-cell pieces), green ground (park / grass / cemetery / forest polygons), trimmed surface-register polygons (bridge decks stay) |
+| City header | `data/city/water.json` | body table, `far`: simplified water pieces per tile (the far ring), `override`: the Soerne |
+| Engine | `js/water-stream.js`, `js/water-tiles-cph.js` | one water mesh and one wall mesh per tile, ONE water material and ONE wall material; the ground layer cuts its mesh by the tile's cut (`buildTileGroundArrays` `tileCut`); the far layer builds the tile's water pieces with the tile and hides them with it, with the same water material, so the harbour reads as one water out to the horizon (the sea plane at 0 m DVR90 reaches 45 km) |
+| Window rasters | `js/water-stream.js` | the water shader's shore distance (from the far pieces) and the ground shader's grass / lake-path field (from the resident tiles' green polygons) are 1536 m windows at 1.5 m that follow the camera (rebuilt after 384 m or when tiles change, about 25 ms) |
+| Reflections | `js/water-stream.js`, `js/world.js` | ONE planar reflector for all generic water, at the level of the water nearest the camera (water at any other level reflects the sky), on only within 260 m of water and below 220 m; `?water=simple` never. The Soerne keep their own reflector; the world runs the nearer of the two |
+
+Generic vs override. Everything is generic except the Soerne: they are the district's hand-made lakes (`lakes.py` closing over the Dronning Louises Bro strip, two basins at -0.94 m and -0.10 m, the hero bridge, swans, lake furniture, the gravel lake path), computed by `city_water.py` from the same sources without the district clip (`override` in `water.json`, the format of `data/cph-lakes.json`, ids `soerne:N`; the levels and deck heights go into the terrain header at load) and drawn by the district's global `buildLakes`. The generic layer leaves them out of its surfaces, walls and far pieces; they still cut the ground. Without `data/city/water.json` (the `?tiles=` district set, `?debug=notiles`) nothing changes.
+
+Not done: boats, waterway lines (streams as ribbons; Harrestrup Aa is partly a polygon), bridge soffits over generic water (the deck is the road surface, the ground under it is cut), a sand beach material (natural coast uses the bank), GeoDanmark `kyst` / `havn` lines (the OSM coastline is the sea), waves for open sea, the water and walls in the mid ring are the same meshes as in the near ring.
