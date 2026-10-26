@@ -260,18 +260,36 @@ def fetch_bbr(kommune: str, force: bool = False) -> dict:
 
 def gc2(sql: str, srs: int = 25832) -> list[dict]:
     """GC2 SQL API (public, no key): rows as GeoJSON features in the requested srs. Pages are the caller's business (LIMIT/OFFSET)."""
-    r = request("GET", GC2, what="gc2", params={"q": sql, "srs": srs, "format": "geojson"}, timeout=180)
+    r = request("GET", GC2, what="gc2", tries=4, params={"q": sql, "srs": srs, "format": "geojson"}, timeout=180)
     r.raise_for_status()
     return r.json().get("features", [])
 
 
-def gc2_table(table: str, where: str = "", cols: str = "*", page: int = 5000) -> list[dict]:
+def gc2_columns(table: str) -> list[str]:
+    r = request("GET", GC2, what="gc2", tries=3, params={"q": f"SELECT * FROM {table} LIMIT 1", "srs": 25832, "format": "geojson"}, timeout=120)
+    r.raise_for_status()
+    return [c["name"] for c in r.json().get("forStore", [])]
+
+
+def gc2_table(table: str, where: str = "", page: int = 5000) -> list[dict]:
+    """A whole GC2 table without its photo / image columns (a SELECT * of a table with photos exhausts the server's memory).
+    One unordered query first (ORDER BY on a geometry column answers HTTP 500 on some tables); only when the table is larger
+    than a page is it paged, ordered by its gid/id column."""
+    import re
+
+    cols = [c for c in gc2_columns(table) if not re.search(r"foto|image|billede|photo", c, re.I)]
+    sel = ", ".join(f'"{c}"' for c in cols)
+    w = f"WHERE {where}" if where else ""
+    got = gc2(f"SELECT {sel} FROM {table} {w} LIMIT {page}")
+    if len(got) < page:
+        return got
+    key = next((k for k in ("gid", "id") if k in cols), None)
+    if key is None:
+        raise RuntimeError(f"{table} has more than {page} rows and no gid/id column to page by")
     feats, off = [], 0
     while True:
-        sql = f"SELECT {cols} FROM {table} {('WHERE ' + where) if where else ''} ORDER BY 1 LIMIT {page} OFFSET {off}"
-        got = gc2(sql)
+        got = gc2(f"SELECT {sel} FROM {table} {w} ORDER BY {key} LIMIT {page} OFFSET {off}")
         feats += got
         if len(got) < page:
-            break
+            return feats
         off += page
-    return feats

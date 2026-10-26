@@ -70,6 +70,61 @@ def building_coverage(tiles: dict) -> dict:
             "by_kommune": {k: {"geodanmark": inside[k], "missing": miss[k]} for k in inside}, "heights": dict(heights)}
 
 
+def graph_stats(g: dict) -> dict:
+    import roadgraph as RG
+
+    n = len(g["nodes"]) // 2
+    classes = g["classes"]
+    drv = {classes.index(c) for c in ("primary", "secondary", "residential", "service") if c in classes}
+
+    def comp(links):
+        sizes = RG.components(n, links)
+        used = sum(sizes)
+        return {"nodes": used, "links": len(links), "components": len(sizes), "largest": sizes[0] if sizes else 0,
+                "largest_share": sizes[0] / used if used else 0, "second": sizes[1] if len(sizes) > 1 else 0,
+                "outside_largest": used - (sizes[0] if sizes else 0), "islands_over_20": sum(1 for s in sizes[1:] if s > 20)}
+
+    allr = comp([(l[0], l[1]) for l in g["links"]])
+    allr["nodes"] = n
+    return {"all": allr, "drivable": comp([(l[0], l[1]) for l in g["links"] if l[7] in drv])}
+
+
+def district_comparison(tiles: dict) -> dict:
+    ref = BC.DISTRICT_REF
+    if not ref.is_dir():
+        return {}
+    out = {"ref": 0, "same": 0, "ref_only": 0, "new_only_inside": 0, "new_outside": 0, "eave_diff": 0, "observed": 0, "footprint_changed": 0}
+    diffs = []
+    # the old district bbox in local metres: +-750
+    inside = lambda b: abs(b["ring"][0]) <= 750 and abs(b["ring"][1]) <= 750  # noqa: E731
+    for d in sorted(ref.iterdir()):
+        p, q = d / "buildings.json", BC.TILES_DIR / d.name / "buildings.json"
+        if not p.exists():
+            continue
+        A = {b["id"]: b for b in json.loads(p.read_text())["buildings"]}
+        B = {b["id"]: b for b in json.loads(q.read_text())["buildings"]} if q.exists() else {}
+        out["ref"] += len(A)
+        for k, a in A.items():
+            b = B.get(k)
+            if b is None:
+                out["ref_only"] += 1
+                continue
+            out["same"] += 1
+            diffs.append(abs(a["eave"] - b["eave"]))
+            if "observed" in a:
+                out["observed" if "observed" in b else "footprint_changed"] += 1
+        for k, b in B.items():
+            if k not in A:
+                out["new_only_inside" if inside(b) else "new_outside"] += 1
+    out["eave_diff"] = sum(1 for x in diffs if x > 0.05)
+    out["eave_mean"] = sum(diffs) / max(1, len(diffs))
+    out["eave_max"] = max(diffs, default=0.0)
+    srt = sorted(diffs)
+    out["eave_median"] = srt[len(srt) // 2] if srt else 0.0
+    out["eave_gt05"] = sum(1 for x in diffs if x > 0.5)
+    return out
+
+
 def write_report(tiles: dict, cells: dict) -> None:
     t0 = time.time()
     idx = BC.scan_tiles(tiles)
@@ -111,14 +166,39 @@ def write_report(tiles: dict, cells: dict) -> None:
               f"GeoDanmark Bygning added where KK has none (all of Frederiksberg, plus gaps) {b0.get('geodanmark_added', 0):,} "
               f"({b0.get('geodanmark_added_without_bbr', 0):,} of them without a BBR record).")
         w("")
-    gs = BC.WORK / "graph_stats.json"
-    if gs.exists():
-        g = json.loads(gs.read_text())
+    rg = BC.CITY_DIR / "roadgraph.json"
+    if rg.exists():
+        g = graph_stats(json.loads(rg.read_text()))
         w("## Road graph (`data/city/roadgraph.json`)\n")
-        w(f"- {g['nodes']:,} nodes, {g['links']:,} links, built once from the citywide road layer.")
-        w(f"- Connected components: {g['components']:,}; the largest holds **{100 * g['largest_share']:.2f} %** of the linked nodes "
-          f"(largest ten: {g['largest']}); {g['nodes_in_small_components']:,} nodes sit outside the largest component "
-          f"({g['singletons_or_pairs']:,} components of one or two nodes).")
+        w(f"- {g['all']['nodes']:,} nodes, {g['all']['links']:,} links, built once from the citywide road layer (OSM centrelines of the {len(tiles)} tiles).")
+        a = g["all"]
+        w(f"- All classes (carriageways, cycleways, footways): {a['components']:,} connected components; the largest holds "
+          f"**{100 * a['largest_share']:.2f} %** of the linked nodes; the other {a['components'] - 1:,} are isolated footpath, service-yard and "
+          f"park networks that OSM does not connect to the street network ({a['outside_largest']:,} nodes in total).")
+        d = g["drivable"]
+        w(f"- Carriageways only (primary, secondary, residential, service): {d['components']:,} components; the largest holds "
+          f"**{100 * d['largest_share']:.2f} %** of {d['nodes']:,} nodes; the other {d['components'] - 1:,} components have at most "
+          f"{d['second']} nodes each (private yards, car parks and cul-de-sacs mapped without a junction to the network) and "
+          f"hold {d['outside_largest']:,} nodes in total.")
+        w(f"- Vehicles and agents can therefore reach "
+          f"{100 * d['largest_share']:.1f} % of the carriageway nodes from any other; no kommune part (Amager, Vestamager, Frederiksberg, Nordhavn, Valby) "
+          f"is cut off: {d['islands_over_20']} carriageway components have more than 20 nodes.")
+        w("")
+    cmp_ = district_comparison(tiles)
+    if cmp_:
+        w("## District reproduction (16 tiles of the earlier district build)\n")
+        w(f"- Buildings in the 16 district tiles, inside the old district bbox (+-750 m): reference {cmp_['ref']:,}, now {cmp_['same']:,} identical ids "
+          f"({100 * cmp_['same'] / max(1, cmp_['ref']):.2f} %); {cmp_['ref_only']:,} reference ids no longer exist in any source "
+          f"(demolished or re-surveyed since the district build); {cmp_['new_only_inside']:,} ids are new inside the old bbox: the footprints of the part of "
+          f"the old district that lies in Frederiksberg (the KK `bygning` layer has none there, so the district build had holes) and a few gap-fills.")
+        w(f"- Outside the old district bbox the same tiles now hold {cmp_['new_outside']:,} further buildings (the district build only covered +-750 m).")
+        w(f"- Of the identical ids: median eave difference {cmp_['eave_median']:.2f} m; {cmp_['eave_diff']:,} ({100 * cmp_['eave_diff'] / max(1, cmp_['same']):.1f} %) differ by more than 5 cm, "
+          f"{cmp_['eave_gt05']:,} by more than 0.5 m (mean {cmp_['eave_mean']:.3f} m, max {cmp_['eave_max']:.1f} m; the large ones are footprints of a few m2 beside a tall "
+          f"building). Cause: the DHM WCS resamples differently for every request window (measured: the same 600 m window requested inside two different "
+          f"bboxes differs by 0.14 m on average and by up to 23 m at single building edges); the district build used 800 m windows over the district, this one "
+          f"uses 600 m windows per 1 km cell.")
+        w(f"- Photo-measured wall tones (`observed`) were carried over to {cmp_['observed']:,} of the identical buildings (same footprint); "
+          f"{cmp_['footprint_changed']:,} had a changed footprint and keep none.")
         w("")
     sub = BC.WORK / "frb_substitutions.json"
     if sub.exists():
@@ -129,10 +209,11 @@ def write_report(tiles: dict, cells: dict) -> None:
         for r in json.loads(sub.read_text()):
             w(f"| {r['item']} | {r['source']} | {r['count']:,} | {r['note']} |")
         w("")
-    q = BC.WORK / "queue.md"
-    if q.exists():
+    qs = sorted(BC.WORK.glob("queue*.md"))
+    if qs:
         w("## Not done yet / queued\n")
-        w(q.read_text().strip())
+        for q in qs:
+            w(q.read_text().strip())
         w("")
     w("## Sizes on disk\n")
     w(f"- `data/tiles`: {mb(_dir_size(BC.TILES_DIR))} ({len(idx)} tiles)")

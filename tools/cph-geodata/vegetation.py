@@ -66,6 +66,8 @@ def mosaic_classes(tids, e0, n1, shape):
     """Per-class count rasters of every tile -> one grid (1 m cells, top-left corner at e0 / n1)."""
     out = {k: np.zeros(shape, "float32") for k in (2, 3, 4, 5, 6, 9, 17)}
     for tid in tids:
+        if not (RAW / f"c2_{tid}.tif").exists():
+            continue  # a LiDAR cell outside the area that was built (the margin of an edge cell)
         for k in out:
             a, t = read(f"c{k}", tid)
             r0, c0 = int(round(n1 - t.f)), int(round(t.c - e0))
@@ -116,8 +118,17 @@ def main():
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=None)
+    ap.add_argument("--geodata", default=str(ROOT / "data" / "cph-geodata.json"))
+    ap.add_argument("--surfaces", default=str(ROOT / "data" / "cph-surfaces.json"))
+    ap.add_argument("--lakes", default=str(ROOT / "data" / "cph-lakes.json"))
+    ap.add_argument("--streets", default=str(ROOT / "data" / "cph-streets.json"))
+    ap.add_argument("--ndvi", default="ndvi.tif", help="NDVI raster (name under the raster folder, covering the area + 20 m)")
+    ap.add_argument("--veg-dir", default=None, help="folder of the class / NDVI rasters (default data/raw/veg)")
     frame.add_area_args(ap)
     args = ap.parse_args()
+    global RAW
+    if args.veg_dir:
+        RAW = Path(args.veg_dir)
     frame.apply_area_args(args)
     out_path = frame.resolve_out(args, OUT)
     import rasterio  # noqa: PLC0415
@@ -129,9 +140,9 @@ def main():
     sys.path.insert(0, str(ROOT / "tools" / "lod2"))
     import common  # noqa: PLC0415
 
-    geo = json.loads((ROOT / "data" / "cph-geodata.json").read_text())
-    surf = json.loads((ROOT / "data" / "cph-surfaces.json").read_text())
-    lakes = json.loads((ROOT / "data" / "cph-lakes.json").read_text())
+    geo = json.loads(Path(args.geodata).read_text())
+    surf = json.loads(Path(args.surfaces).read_text())
+    lakes = json.loads(Path(args.lakes).read_text())
 
     def utm_poly(ring, holes=()):
         pts = lambda r: [(ORIGIN[0] + r[i], ORIGIN[1] - r[i + 1]) for i in range(0, len(r), 2)]  # noqa: E731
@@ -145,7 +156,7 @@ def main():
     parks = unary_union([utm_poly(p["ring"], p.get("holes", [])) for p in geo["parks"] if ".161" not in p["id"]])
     # carriageways and their raised cycle strips, as the viewer lays them out (measured half width of cph-streets.json): no grass
     # on a road, not even under tree crowns. Where the street document has no entry the OSM width stands in.
-    streets = json.loads((ROOT / "data" / "cph-streets.json").read_text())
+    streets = json.loads(Path(args.streets).read_text())
     road_polys = []
     for r in geo["roads"]:
         if r["class"] not in ROAD_CLASSES:
@@ -173,7 +184,7 @@ def main():
     shape = (n1 - n0, e1 - e0)
     T = from_origin(e0, n1, 1.0, 1.0)
     c = mosaic_classes(common.tiles_for_bbox(frame.area_utm(), 20.0), e0, n1, shape)
-    with rasterio.open(RAW / "ndvi.tif") as s:
+    with rasterio.open(RAW / args.ndvi) as s:
         ndvi = np.full(shape, np.nan, "float32")
         a, t = s.read(1), s.transform
         r0, c0 = int(round(n1 - t.f)), int(round(t.c - e0))

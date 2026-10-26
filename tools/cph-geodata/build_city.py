@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["requests", "shapely>=2", "pyproj", "numpy", "rasterio"]
+# dependencies = ["requests", "shapely>=2", "pyproj", "numpy", "rasterio", "scipy", "pillow", "laspy[lazrs]", "pyshp"]
 # ///
 """Citywide compiler (milestone C1/C5 of docs/citywide-plan.md): Koebenhavns + Frederiksberg Kommune -> 500 m tiles.
 
@@ -74,6 +74,16 @@ CITY_BBOX_MARGIN = 100.0
 KK_BASE = ["bygning", "bygning_kk", "Kommunevej", "trafikhastigheder", "ensrettede_gader", "cykelsti", "trafiksignal_oversigt",
            "fortovsmatrikel", "parkregister", "park_groent_omr_oversigtskort", "vejkant"]
 KK_POINTS = ["cykelstativ", "baenke_borde_puma", "dp_byinventar_l", "trae_basis", "automatisk_detekterede_traeer_kk_beta"]
+KK_LAYERS2 = ["dp_belaegninger", "afmaerkning_total", "blaa_cykelfelt", "automatisk_detekterede_kroner_kk_beta", "parkering_areal",
+              "p_pladser", "parkomat", "affaldskurve_puma", "ask_glascontainer", "ask_standpladser_nokey", "pullert", "monumenter",
+              "dp_byinventar_p", "dp_byinventar_f", "bevillinger"]
+OSM_QUERIES2 = {  # keys and bodies are the ones the compiler modules use (surfaces.py, groundfloor.py) plus the FRB fallbacks
+    "squares": '(way["place"="square"];way["highway"="pedestrian"]["area"="yes"];way["area:highway"~"pedestrian|footway|living_street"];'
+               'relation["place"="square"];relation["highway"="pedestrian"];way["landuse"="pedestrian"];);out geom;',
+    "groundfloor": None,  # groundfloor.QUERY, filled in below
+    "street_nodes": '(node["amenity"="bench"];node["leisure"="picnic_table"];node["barrier"="bollard"];node["amenity"="waste_basket"];'
+                    'node["amenity"="recycling"];node["amenity"="bicycle_parking"];node["highway"="bus_stop"];node["amenity"="shelter"]["shelter_type"="public_transport"];);out;',
+}
 OSM_QUERIES = {
     "roads": 'way["highway"];out geom tags;',
     "water_parks": '(way["natural"="water"];relation["natural"="water"];way["leisure"~"^(park|garden)$"];'
@@ -187,6 +197,47 @@ class Layers:
 
 
 # ----------------------------------------------------------------------------------------------------------- fetch
+
+def stage_fetch2(a, tiles) -> None:
+    """Sources of stage 2 (surfaces, furniture, groundfloor) and the Frederiksberg GC2 tables, fetched citywide once."""
+    if is_done("fetch2") and not a.force_stage("fetch2"):
+        return
+    ensure_secrets("DATAFORDELER_USERNAME", "DATAFORDELER_PASSWORD", "DATAFORDELER_GRAPHQL_API_KEY")
+    from concurrent.futures import ThreadPoolExecutor
+
+    import groundfloor as GF
+    import frb
+
+    bbox = city_bbox_utm(tiles)
+    q2 = dict(OSM_QUERIES2)
+    q2["groundfloor"] = GF.QUERY
+    errors = {}
+
+    def run(label, fn):
+        try:
+            fn()
+        except Exception as e:  # noqa: BLE001
+            errors[label] = str(e)[:200]
+            log(f"[fetch2] {label} FAILED: {e}")
+
+    def kk_all():
+        for layer in KK_LAYERS2:
+            run(f"kk:{layer}", lambda layer=layer: S.fetch_kk(layer, bbox, force=a.force_fetch))
+
+    def osm_all():
+        for key, body in q2.items():
+            run(f"osm:{key}", lambda key=key, body=body: S.fetch_overpass(key, body, force=a.force_fetch))
+
+    with ThreadPoolExecutor(3) as ex:
+        fs = [ex.submit(kk_all), ex.submit(osm_all), ex.submit(run, "frb:gc2", lambda: frb.fetch_all(force=a.force_fetch))]
+        for f in fs:
+            f.result()
+    if errors:
+        log(f"[fetch2] incomplete: {errors}")
+        mark_done("fetch2-partial", errors=errors)
+        raise SystemExit(f"fetch2 incomplete: {errors}")
+    mark_done("fetch2")
+
 
 def stage_fetch(a, tiles, groups=("base", "points")) -> None:
     ensure_secrets("DATAFORDELER_USERNAME", "DATAFORDELER_PASSWORD", "DATAFORDELER_GRAPHQL_API_KEY")
@@ -392,7 +443,17 @@ def stage_geo(a, tiles, cells) -> None:
            "bikeRacks": P.bike_racks(kk["cykelstativ"], kk["dp_byinventar_l"]), "benches": P.benches(kk["baenke_borde_puma"]),
            "lights": P.lights(osm["nodes"])}
     lap("points " + str({k: len(v) for k, v in pts.items()}))
-    pts = apply_frb_points(pts, a)
+    if (RAW_CITY / "frb" / "_status.json").exists():
+        import frb
+
+        pts, rows = frb.apply_points(pts, _osm_cached("street_nodes"))
+        sw = frb.sidewalk_rings(geo["sidewalks"])
+        geo["sidewalks"] += sw
+        rows.append({"item": "pavements (sidewalks)", "source": "GC2 stab.fortovsareal (staff schema, provenance unclear)", "count": len(sw),
+                     "note": "polygons as published; KK fortovsmatrikel is KK-only"})
+        add_substitutions(rows)
+    else:
+        log("[geo] no Frederiksberg GC2 tables yet (run --stage fetch2): Frederiksberg trees/racks/benches/pavements are missing")
 
     for key in T.GEO_LINES:
         for i, it in enumerate(geo[key]):
@@ -437,9 +498,12 @@ def graph_components(graph: dict) -> dict:
             "singletons_or_pairs": sum(1 for s in sizes if s <= 2)}
 
 
-def apply_frb_points(pts: dict, a) -> dict:
-    """Hook for the Frederiksberg GC2 substitutions (stage 2); the KK layers are empty there."""
-    return pts
+def add_substitutions(rows: list) -> None:
+    """Rows of the 'Frederiksberg substitutions' table in coverage.md (keyed by `item`; a re-run replaces its rows)."""
+    p = WORK / "frb_substitutions.json"
+    cur = json.loads(p.read_text()) if p.exists() else []
+    have = {r["item"] for r in rows}
+    S.atomic_write(p, dump([r for r in cur if r["item"] not in have] + rows))
 
 
 def build_lakes_citywide(geo: dict, tiles: dict) -> None:
@@ -726,6 +790,8 @@ def stage_index(a, tiles, cells) -> None:
              "min": round(lo, 2), "max": round(hi, 2), "lakes": [], "ponds": [], "bridges": [],
              "cut": {"cell": 4.0, "half": 750.0, "skip": [], "pieces": []}}
         meta["terrain"] = t
+    for part in sorted((WORK / "meta_parts").glob("*.json")) if (WORK / "meta_parts").exists() else []:
+        meta[part.stem] = _load_json(part)  # surfaces, furniture, vegetation, entrances, groundfloor: citywide headers
     S.atomic_write(CITY_DIR / "meta.json", dump(meta))
     total = sum(e["bytes"] for e in idx_tiles.values())
     index = {"version": T.VERSION, "generated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "tileSize": frame.TILE_SIZE,
@@ -738,7 +804,7 @@ def stage_index(a, tiles, cells) -> None:
     log(f"[index] {len(idx_tiles)} tiles, {total / 1e6:.1f} MB; meta.json {(CITY_DIR / 'meta.json').stat().st_size / 1e6:.2f} MB")
 
 
-STAGES = ["fetch", "buildings0", "geo", "cells", "index", "report"]
+STAGES = ["fetch", "fetch2", "buildings0", "geo", "cells", "surfaces", "furniture", "groundfloor", "entrances", "vegetation", "index", "report"]
 
 
 def main(argv=None):
@@ -747,9 +813,13 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=4, help="parallel cell workers (<= 6)")
     ap.add_argument("--cells", nargs="*", default=None, help="only these 1 km cells, e.g. 6176_723")
     ap.add_argument("--force", action="append", default=[], metavar="STAGE", help="redo a stage (or 'cells') even if done")
+    ap.add_argument("--veg-workers", type=int, default=3, help="parallel LiDAR cell downloads / derivations (the server gives about 1 MB/s per connection)")
+    ap.add_argument("--veg-limit", type=int, default=0, help="at most this many vegetation raster cells per run (0 = all)")
+    ap.add_argument("--veg-rasters-only", action="store_true", help="vegetation: derive the rasters (LiDAR classes, NDVI) but do not compile yet")
     ap.add_argument("--force-fetch", action="store_true", help="refetch raw source layers")
     a = ap.parse_args(argv)
     a.workers = max(1, min(6, a.workers))
+    a.veg_workers = max(1, min(6, a.veg_workers))
     a.force_stage = lambda s: s in a.force or "all" in a.force  # noqa: E731
     stages = STAGES if not a.stage or "all" in a.stage else [s for s in STAGES if s in a.stage]
     tiles = load_tiles()
@@ -766,12 +836,22 @@ def main(argv=None):
         if s == "fetch":
             if not (is_done("fetch-base-points") and not a.force_stage("fetch")):
                 stage_fetch(a, tiles)
+        elif s == "fetch2":
+            stage_fetch2(a, tiles)
         elif s == "buildings0":
             stage_buildings0(a, tiles, cells)
         elif s == "geo":
             stage_geo(a, tiles, cells)
         elif s == "cells":
             stage_cells(a, tiles, cells)
+        elif s in ("surfaces", "furniture", "groundfloor"):
+            import city_layers
+
+            getattr(city_layers, f"stage_{s}")(a, tiles, cells)
+        elif s in ("entrances", "vegetation"):
+            import city_layers2
+
+            getattr(city_layers2, f"stage_{s}")(a, tiles, cells)
         elif s == "index":
             stage_index(a, tiles, cells)
         elif s == "report":
