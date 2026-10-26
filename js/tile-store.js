@@ -232,7 +232,9 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
     async loadArea(bbox, margin = 25) {
       const tileIds = this.tilesForLocalBbox(bbox, margin);
       const [city, loaded] = await Promise.all([loadCity(), Promise.all(tileIds.map(async (id) => [id, await loadTile(id)]))]);
-      return assembleArea(city, loaded, fetchBin);
+      const set = assembleArea(city, loaded, fetchBin);
+      for (const id of tileIds) cache.delete(id); // the assembled documents own the data now; C2 will manage tile lifetimes
+      return set;
     }
   };
 }
