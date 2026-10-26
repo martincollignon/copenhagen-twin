@@ -84,6 +84,16 @@ The twin loads per-tile layers when `data/tiles/index.json` exists (generated, g
 uv run tools/cph-geodata/tile_split.py   # data/cph-*.json + data/lod2 -> data/tiles/<e500>_<n500>/, data/city/ (format: docs/cph-geodata-schema.md)
 ```
 
+The whole of Københavns + Frederiksberg Kommune (496 tiles, `data/city/tiles.json`) is compiled by one resumable script that writes the same tile format directly:
+
+```sh
+uv run tools/cph-geodata/build_city.py --workers 4            # all stages; secrets come from tools/adc-secret.sh (never printed)
+uv run tools/cph-geodata/build_city.py --stage cells --cells 6176_723   # one 1 km cell; every stage and cell has a done-marker under data/city/work/state/
+uv run tools/cph-geodata/build_city.py --stage vegetation --veg-limit 20 --veg-workers 6   # LiDAR + CIR streamed per cell, then deleted
+```
+
+Stages: `fetch fetch2` (citywide sources, cached in `data/raw/city/`), `buildings0`, `geo` (roads, one connected road graph, points), `cells` (DHM heights and terrain per 1 km cell), `surfaces furniture groundfloor streets entrances vegetation`, `index`, `report` (`data/city/coverage.md`: coverage, sources, Frederiksberg substitutions, what is still queued). Raw data stays under `data/raw/` and is never committed; keep an eye on `df -h`: the script stops below 5 GB free.
+
 With tiles the engine **streams** (`js/tile-streamer.js`, milestone C2): it keeps the tiles around the camera resident in rings,
 **near** (750 m: buildings with facades, LoD2 roofs and doors, road surfaces, furniture, trees, grass, ground floor) and **mid**
 (2.5 km: buildings and roads), loads nearest first under a concurrency cap, aborts stale requests, and unloads a tile beyond its
