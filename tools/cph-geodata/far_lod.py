@@ -54,11 +54,12 @@ SEA = -6.84  # DVR90 0 m in the local frame (origin height 6.84)
 
 ROOF_COLOURS = {  # js/building-geometry.js ROOF_COLOURS (sRGB)
     "tagpap": (0.2, 0.2, 0.22), "tagpap med lille hældning": (0.2, 0.2, 0.22), "tagpap med stor hældning": (0.24, 0.23, 0.24),
-    "tegl": (0.46, 0.19, 0.13), "betontagsten": (0.33, 0.27, 0.24), "fibercement herunder asbest": (0.23, 0.25, 0.27),
-    "fibercement uden asbest": (0.23, 0.25, 0.27), "metal": (0.42, 0.46, 0.48), "glas": (0.35, 0.45, 0.5),
+    "tegl": (0.42, 0.24, 0.19), "stråtag": (0.45, 0.4, 0.28), "betontagsten": (0.33, 0.27, 0.24), "fibercement herunder asbest": (0.23, 0.25, 0.27),
+    "fibercement uden asbest": (0.23, 0.25, 0.27), "metal": (0.40, 0.48, 0.45), "glas": (0.35, 0.45, 0.5),
     "levende tage": (0.2, 0.32, 0.17), "plastmaterialer": (0.4, 0.4, 0.42), "andet materiale": (0.32, 0.31, 0.3),
 }
-ROOF_DEFAULT = (0.34, 0.33, 0.32)
+ROOF_DEFAULT = (0.33, 0.33, 0.33)  # muted: most roofs of the city are grey / slate / felt, only the BBR material or an observed tone says otherwise
+WALL_DESAT = 0.3  # far walls are the facade presets (brick red almost everywhere): pulled towards grey so the preset does not paint the city orange
 WALL_DEFAULT = (0.7, 0.65, 0.58)
 
 
@@ -81,7 +82,9 @@ def wall_tone(b: dict):
     tones = [t for t in tones if t and len(t) == 3]
     if tones:
         return tuple(float(np.median([t[i] for t in tones])) for i in range(3))
-    return tuple((b.get("facade") or {}).get("tone") or WALL_DEFAULT)
+    t = tuple((b.get("facade") or {}).get("tone") or WALL_DEFAULT)
+    y = 0.3 * t[0] + 0.59 * t[1] + 0.11 * t[2]
+    return tuple(c + (y - c) * WALL_DESAT for c in t)
 
 
 def roof_tone(b: dict):

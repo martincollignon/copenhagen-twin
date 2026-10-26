@@ -16,7 +16,7 @@ import { disposeTree } from './dispose-tree.js';
 const FAR_RANGE = 9000; // tiles beyond this are not built (the city is 18 km across: the horizon is fogged anyway)
 const SEA_SIZE = 90000;
 
-function toGeometry(a, { normal = null, color = null, index32 = true } = {}) {
+function toGeometry(a) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(a.position, 3));
   if (a.normal) g.setAttribute('normal', new THREE.BufferAttribute(a.normal, 4, true));
@@ -26,11 +26,10 @@ function toGeometry(a, { normal = null, color = null, index32 = true } = {}) {
   return g;
 }
 
-function farMaterial(name, { roughness = 0.94, flat = false } = {}) {
+function farMaterial(name, { roughness = 0.94 } = {}) {
   const m = new THREE.MeshStandardNodeMaterial({ roughness, metalness: 0 });
   m.name = name;
   m.colorNode = attribute('color', 'vec4').xyz.pow(2.2); // sRGB bytes
-  if (flat) m.normalNode = null;
   return m;
 }
 
@@ -52,7 +51,7 @@ export function createFarLayer(scene, { header, buffer, bounds, isResident = () 
   const buildingMaterial = farMaterial('far-buildings');
   const groundMaterial = farMaterial('far-ground', { roughness: 1 });
   const tiles = new Map(); // id -> { ground, buildings, distance }
-  const stats = { tiles: 0, built: 0, visible: 0, triangles: 0, buildMs: 0, maxBuildMs: 0, builds: 0, bytes: buffer.byteLength, water: 0 };
+  const stats = { tiles: 0, visible: 0, triangles: 0, buildMs: 0, maxBuildMs: 0, builds: 0, bytes: buffer.byteLength, water: 0 };
   let lastRun = -Infinity;
   const ids = Object.keys(header.tiles).filter((id) => bounds.has(id));
 

@@ -15,6 +15,10 @@ import { createEntranceIndex } from './entrances.js';
 import { setCalibration, texturedWalls } from './appearance.js';
 
 export const LEAF_CAPACITY = 48;
+// Photo atlases (data/tex) are rectified from the district's Skraafoto views; their coverage thins out at the district edge, where the
+// walls come out smeared. Photo walls only inside the district frame, inset by this margin.
+export const PHOTO_INSET = 100;
+const inPhotoArea = (cx, cz) => Math.abs(cx) <= 750 - PHOTO_INSET && Math.abs(cz) <= 750 - PHOTO_INSET;
 export const LEAF_DEPTH = 5;
 const SLICE_BUILDINGS = 6; // a generator step after this many buildings, so a caller can time-slice inside a cell
 
@@ -113,7 +117,7 @@ export function* buildingSteps(job) {
     const leafDoors = [];
     for (const { b } of leaf.items) {
       const glassy = !lite && b.wall_material === 'glas';
-      const quads = !lite && wantQuads && observed && !glassy && b.observed?.atlas?.walls?.length ? [] : null;
+      const quads = !lite && wantQuads && observed && !glassy && b.observed?.atlas?.walls?.length && inPhotoArea(...ringCentre(b.ring)) ? [] : null;
       const low = lows ? lows.get?.(b.id) ?? lows[b.id] : undefined;
       const added = addBuilding(acc, b, {
         ...(lite ? { lite: true } : { ground }), ...(glassy ? { wallAcc: glassAcc } : {}),

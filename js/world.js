@@ -680,7 +680,10 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
       }
     };
     const tileIdsAround = (x, z, r) => store.tilesForLocalBbox([x - r, z - r, x + r, z + r]).filter((id) => distanceToRect(x, z, index.tiles[id].local) <= r);
+    // the region must lie inside the rings that keep the roads layers: its tiles (radius + 60 m) are within the mid radius
+    const radius = Math.max(250, Math.min(560, cfg.mid - 100));
     const region = createAgentRegion({
+      radius, drift: Math.round(radius * 0.34),
       roadGraph: geo.roadGraph,
       tilesAround: tileIdsAround,
       roadsOf: (id) => data.roadsOf(id),

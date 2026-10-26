@@ -12,10 +12,6 @@ import earcut from './earcut.js';
 export const FAR_GRID = 16;
 const HEAD = 4 + (FAR_GRID + 1) * (FAR_GRID + 1) * 2 + (FAR_GRID * FAR_GRID) / 8;
 
-const SRGB = new Float32Array(256);
-for (let i = 0; i < 256; i++) { const c = i / 255; SRGB[i] = c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }
-const toByte = (linear) => Math.round(255 * (linear <= 0.0031308 ? linear * 12.92 : 1.055 * linear ** (1 / 2.4) - 0.055));
-
 /** Reads the header of a tile block. */
 export function readFarHeader(buf, off) {
   const v = new DataView(buf, off);
@@ -195,4 +191,3 @@ export function farWaterArrays(polygons, { lift = 0.08 } = {}) {
   return { position: new Float32Array(pos), index: new Uint32Array(idx) };
 }
 
-export { SRGB, toByte };

@@ -307,3 +307,31 @@ test('street layout: the per-tile layers and the whole-city document give every 
     assert.equal(data.buildings(id).length, other.buildings(id).length, `${id} buildings after the footprint fixes`);
   }
 });
+
+test('agent region on the district: the lanes of a 560 m region match the whole-district lane graph near its centre; signals are found', { skip: !isDistrict && 'run tile_split.py first' }, async () => {
+  const { buildCyclistNetwork } = await import('../js/cyclist-network.js');
+  const { createAgentRegion } = await import('../js/agent-region.js');
+  const { tilesForLocalBbox } = await import('../js/tile-grid.js');
+  const { store, city, data, geo } = await district();
+  const legacy = city.streets || await store.loadStreets();
+  const whole = createCityGeo(city.meta, city.roadGraph, await Promise.all(store.ids.map(async (id) => [id, await store.fetchLayer(id, 'roads')])), legacy).geo;
+  const wholeNet = buildCyclistNetwork(whole, []);
+  let regionNet = null;
+  let regionSignals = 0;
+  const region = createAgentRegion({
+    roadGraph: geo.roadGraph, radius: 560, tilesAround: (x, z, r) => tilesForLocalBbox([x - r, z - r, x + r, z + r]).filter((id) => store.index.tiles[id]),
+    roadsOf: (id) => data.roadsOf(id), ready: () => true,
+    stages: {
+      network: (sub, signals) => { regionSignals = signals.length; return { sub }; },
+      cyclists: (g) => (regionNet = buildCyclistNetwork(g, [])),
+      apply: () => {}
+    }
+  });
+  region.buildNow(0, 0);
+  const mid = (l) => { const n = l.pts.length / 2 >> 1; return [l.pts[2 * n], l.pts[2 * n + 1]]; };
+  const inner = (net) => net.lanes.filter((l) => Math.hypot(...mid(l)) < 300).map((l) => `${l.src}|${l.kind}|${l.side}|${l.along}`).sort();
+  assert.ok(inner(wholeNet).length > 30);
+  assert.deepEqual(inner(regionNet), inner(wholeNet), 'the same lanes inside the region');
+  assert.ok(regionSignals > 20, `${regionSignals} signals in the region`);
+  assert.ok(regionNet.lanes.length < wholeNet.lanes.length, 'a region is smaller than the district');
+});
