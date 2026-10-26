@@ -7,19 +7,20 @@
   <link rel="icon" href="data:," />
   <meta name="description" content="Copenhagen Twin: a walkable, drivable and bikeable real-time 3D twin of Søerne and inner Nørrebro, built with three.js WebGPURenderer and TSL. Real building footprints and heights, streets, signals, traffic and cyclists." />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
-  <!-- three.js dev branch (builds committed to mrdoob/three.js@dev, served by jsDelivr) -->
+  <!-- three.js pinned to a dev-branch build commit (jsDelivr serves @<sha> immutably; @dev re-resolves every 12 h). Bump on purpose, in a PR the perf check measures -->
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/build/three.webgpu.js",
-        "three/webgpu": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/build/three.webgpu.js",
-        "three/tsl": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/build/three.tsl.js",
-        "three/addons/": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/examples/jsm/"
+        "three": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@6828c9b2559167925fa90c6c84dfc1a657b38d2c/build/three.webgpu.js",
+        "three/webgpu": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@6828c9b2559167925fa90c6c84dfc1a657b38d2c/build/three.webgpu.js",
+        "three/tsl": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@6828c9b2559167925fa90c6c84dfc1a657b38d2c/build/three.tsl.js",
+        "three/addons/": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@6828c9b2559167925fa90c6c84dfc1a657b38d2c/examples/jsm/"
       }
     }
   </script>
   <!-- Fetch the engine modules in parallel before stylesheets; the module graph controls evaluation order. -->
   <link rel="modulepreload" href="./js/actor-models.js" />
+  <link rel="modulepreload" href="./js/bench.js" />
   <link rel="modulepreload" href="./js/audio-acoustics.js" />
   <link rel="modulepreload" href="./js/audio-events.js" />
   <link rel="modulepreload" href="./js/audio-sources.js" />
