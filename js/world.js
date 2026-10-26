@@ -12,7 +12,7 @@ import { setCalibration } from './appearance.js';
 import { applySurfaceCuts } from './lakes-cph.js';
 import { loadCphFurniture } from './street-furniture-data.js';
 import { loadCphTerrain, createTerrain, buildTerrainMeshArrays } from './terrain-cph.js';
-import { applyTerrainGround } from './layout-cph.js';
+import { applyTerrainGround, applyStreets, loadCphStreets } from './layout-cph.js';
 import { createStreetFurniture } from './street-furniture-cph.js';
 
 // js/world.js
@@ -306,6 +306,10 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   const terrain = createTerrain(geo && !debug.split(',').includes('flat') ? await loadCphTerrain() : null);
   if (geo && !terrain.flat) applyTerrainGround(geo, terrain);
   globalThis.CPH_TERRAIN = terrain;
+  // ONE street cross-section (data/cph-streets.json): measured carriageways, cycle strips, pavements. `?debug=nostreets` keeps
+  // the OSM centrelines with their capped widths.
+  const streetsStats = geo && !debug.split(',').includes('nostreets') ? applyStreets(geo, await loadCphStreets()) : null;
+  if (streetsStats) markInit(`streets(${streetsStats.roads} roads, ${streetsStats.dropped} dropped, ${streetsStats.sidewalks} pavements)`);
   markInit(terrain.flat ? 'terrain(flat)' : `terrain(${terrain.doc.min}..${terrain.doc.max} m)`);
 
   // Lakes (the Soerne): the ground plane is cut open over the water, so the plain plane is only built without them

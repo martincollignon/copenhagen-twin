@@ -6,8 +6,10 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { carriagewayWidth } from '../../js/road-width-cph.js';
-import { vehicularRoads, buildGroundHeightField, cycleTrackIndex } from '../../js/road-surfaces-cph.js';
+import * as widthMod from '../../js/road-width-cph.js';
+import { vehicularRoads, buildGroundHeightField, cycleTrackIndex, buildRoadSurfaceArrays } from '../../js/road-surfaces-cph.js';
+
+const { carriagewayWidth } = widthMod;
 import { buildFurniturePlan } from '../../js/street-furniture-data.js';
 
 // The terrain / layout modules are optional so this dump can also measure an older engine (the "before" numbers).
@@ -25,6 +27,13 @@ const furniture = read('data/cph-furniture.json');
 const VEH = new Set(['primary', 'secondary', 'residential', 'service']);
 const cycleSides = (r) => ({ left: r.cycleTrack === 'left' || r.cycleTrack === 'both', right: r.cycleTrack === 'right' || r.cycleTrack === 'both' });
 
+let streetsDoc = null;
+try { streetsDoc = layoutMod?.applyStreets ? read('data/cph-streets.json') : null; } catch { streetsDoc = null; }
+if (streetsDoc) layoutMod.applyStreets(geo, streetsDoc);
+// the raised cycle strips as the engine reads them: [{ side, w, ranges }] (or the OSM tag in an older engine)
+const stripsOf = (r) => (widthMod.cycleStrips ? widthMod.cycleStrips(r) : [
+  ...(cycleSides(r).left ? [{ side: -1, w: 2.2, ranges: null }] : []), ...(cycleSides(r).right ? [{ side: 1, w: 2.2, ranges: null }] : [])]);
+
 const terrainDoc = terrainMod ? (() => { try { return read('data/cph-terrain.json'); } catch { return null; } })() : null;
 const terrain = terrainMod && terrainDoc ? terrainMod.createTerrain(terrainDoc) : null;
 if (terrain && layoutMod) layoutMod.applyTerrainGround(geo, terrain);
@@ -38,7 +47,8 @@ for (const r of geo.roads) {
   const veh = VEH.has(r.class);
   roads.push({
     id: r.id, name: r.name, cls: r.class, pts: r.pts, veh, width: r.width, lanesFwd: r.lanesFwd, lanesBack: r.lanesBack,
-    oneway: !!r.oneway, cycleTrack: r.cycleTrack, half: veh ? carriagewayWidth(r) / 2 : 0, cycle: cycleSides(r)
+    oneway: !!r.oneway, cycleTrack: r.cycleTrack, half: veh ? carriagewayWidth(r) / 2 : 0, cycle: cycleSides(r),
+    strips: veh ? stripsOf(r) : [], drop: !!r.drop, prov: r.cs?.prov ?? null
   });
 }
 
@@ -81,7 +91,21 @@ const buildingsOut = geo.buildings.map((b) => {
   return { id: b.id, ground: b.ground, eave: b.eave, street: medianOf(street), terrain: medianOf(terr) };
 });
 
+// what the engine actually draws: the asphalt and cycle-strip triangles (x, z in centimetres), the cleaned pavement and cycle polygons
+const layers = buildRoadSurfaceArrays(geo, { surfaces, pavement: true, terrain });
+const tris = (layer) => {
+  const a = layer.arrays();
+  const o = [];
+  for (let t = 0; t < a.index.length; t += 3) for (let k = 0; k < 3; k++) { const v = a.index[t + k] * 3; o.push(Math.round(a.position[v] * 100), Math.round(a.position[v + 2] * 100)); }
+  return o;
+};
+
 const layout = {
+  layers: { asphalt: tris(layers.asphalt), cycle: tris(layers.cycle), blue: layers.blue ? tris(layers.blue) : [] },
+  sidewalks: geo.sidewalks.map((s) => ({ id: s.id, ring: s.ring, holes: s.holes || [] })),
+  cycleTracks: (geo.cycleTracks || []).map((c) => ({ id: c.id, pts: c.pts, width: c.width || null })),
+  roadGraph: { nodes: geo.roadGraph.nodes, links: geo.roadGraph.links },
+  streets: streetsDoc ? { version: streetsDoc.version, stats: streetsDoc.stats } : null,
   terrain: terrain && !terrain.flat ? { min: terrainDoc.min, max: terrainDoc.max, lakes: terrainDoc.lakes } : null,
   buildings: buildingsOut,
   lakeWalls,

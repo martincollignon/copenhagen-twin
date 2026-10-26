@@ -15,7 +15,7 @@
 // stop at red at signalised junctions and use the early green of signal-plan.js.
 
 import { bikePhase } from './signal-plan.js';
-import { carriagewayWidth } from './road-width-cph.js';
+import { carriagewayWidth, cycleStrips, slicePts } from './road-width-cph.js';
 
 export const CYCLE_STRIP = { kerb: 0.18, width: 2.2 };
 export const BIKE_DRIVER = { a: 1.0, b: 2.0, T: 1.0, s0: 1.5 };
@@ -125,13 +125,17 @@ export function buildCyclistNetwork(geo, signalNodes = []) {
   const grid = roadGrid(vehicular);
   const raw = []; // { pts, kind, name, width, src }
 
-  // 1. tracks beside carriageways
+  // 1. tracks beside carriageways: the strips of the street layout (measured width, where they stand) or the OSM tag
   for (const r of vehicular) {
-    const ct = r.cycleTrack;
-    if (!ct || ct === 'none') continue;
-    const c = carriagewayWidth(r) / 2 + CYCLE_STRIP.kerb + CYCLE_STRIP.width / 2;
-    if (ct === 'right' || ct === 'both') raw.push({ pts: offsetLine(r.pts, c), kind: 'track', name: r.name, width: CYCLE_STRIP.width, src: r.id });
-    if (ct === 'left' || ct === 'both') raw.push({ pts: reversed(offsetLine(r.pts, -c)), kind: 'track', name: r.name, width: CYCLE_STRIP.width, src: r.id });
+    if (r.drop) continue;
+    for (const sp of cycleStrips(r)) {
+      const c = carriagewayWidth(r) / 2 + CYCLE_STRIP.kerb + sp.w / 2;
+      const pieces = sp.ranges ? sp.ranges.map(([a, b]) => slicePts(r.pts, a, b)).filter((q) => q.length >= 4) : [r.pts];
+      for (const q of pieces) {
+        if (sp.side > 0) raw.push({ pts: offsetLine(q, c), kind: 'track', name: r.name, width: sp.w, src: r.id });
+        else raw.push({ pts: reversed(offsetLine(q, -c)), kind: 'track', name: r.name, width: sp.w, src: r.id });
+      }
+    }
   }
   // 2. KK cycle tracks: ridden the way their side of the nearest road dictates
   for (const t of geo.cycleTracks || []) {

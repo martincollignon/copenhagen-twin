@@ -6,7 +6,7 @@
 // Frame: x east, z south, y up. `buildRoadSurfaceArrays` is pure (no three.js) so it can be tested headless;
 // `buildCphRoadSurfaces` turns the arrays into merged meshes.
 
-import { carriagewayWidth } from './road-width-cph.js';
+import { carriagewayWidth, cycleStrips, intersectIntervals, subtractIntervalLists, slicePts, KERB_W, CYCLE_W } from './road-width-cph.js';
 import { triangulatePolygon } from './polygon-cph.js';
 import { buildPavementBuckets, createSurfaceIndex } from './pavement-cph.js';
 import { createHeightGrid, composeHeightField } from './ground-height-cph.js';
@@ -16,8 +16,6 @@ import { computeMouthLayouts, subtractIntervals } from './junction-mouths-cph.js
 // Heights (m): carriageway -> (10 cm kerb) -> cycle track -> (8 cm kerb) -> pavement
 export const SURFACE_Y = { asphalt: 0.02, paint: 0.035, cycle: 0.12, cyclePaint: 0.128, kerbTop: 0.002, sidewalk: 0.2, ground: 0.014 };
 const VEHICULAR = new Set(['primary', 'secondary', 'residential', 'service']);
-const KERB_W = 0.15;
-const CYCLE_W = 2.2;
 const LANE_W = 3.0;
 const LINE_W = 0.12;
 const JUNCTION_TRIM = 7; // m of cycle track before a junction that is painted blue (the crossing)
@@ -80,26 +78,7 @@ function polyLength(pts) {
   return s;
 }
 
-// The part of a polyline between arc lengths s0 and s1
-export function slicePts(pts, s0, s1) {
-  const out = [];
-  let s = 0;
-  for (let i = 0; i + 3 < pts.length; i += 2) {
-    const ax = pts[i];
-    const az = pts[i + 1];
-    const bx = pts[i + 2];
-    const bz = pts[i + 3];
-    const L = Math.hypot(bx - ax, bz - az);
-    if (L > 1e-9 && s + L > s0 && s < s1) {
-      const t0 = Math.max(0, (s0 - s) / L);
-      const t1 = Math.min(1, (s1 - s) / L);
-      if (!out.length) out.push(ax + (bx - ax) * t0, az + (bz - az) * t0);
-      out.push(ax + (bx - ax) * t1, az + (bz - az) * t1);
-    }
-    s += L;
-  }
-  return out;
-}
+export { slicePts };
 
 // Strip between lateral offsets o0..o1 (right positive) along the polyline; uv = (arc length + u0, offset + vShift)
 function ribbon(layer, pts, o0, o1, y, { u0 = 0, vShift = 0 } = {}) {
@@ -214,14 +193,31 @@ export function createSegmentIndex(cell = 16) {
   };
 }
 
-const cycleSides = (r) => ({ left: r.cycleTrack === 'left' || r.cycleTrack === 'both', right: r.cycleTrack === 'right' || r.cycleTrack === 'both' });
+const cycleSides = (r) => {
+  const c = cycleStrips(r);
+  return { left: c.some((x) => x.side < 0), right: c.some((x) => x.side > 0) };
+};
 
-/** Carriageway list for the kerb frame (pavement-cph.js): centreline, half width and cycle-track sides. */
+/** The pieces of the cycle strips of a road: [{ pts (the slice of the centreline), side, w }]. */
+function stripPieces(r) {
+  const out = [];
+  for (const c of cycleStrips(r)) {
+    if (!c.ranges) { out.push({ pts: r.pts, side: c.side, w: c.w }); continue; }
+    for (const [a, b] of c.ranges) {
+      const q = slicePts(r.pts, a, b);
+      if (q.length >= 4) out.push({ pts: q, side: c.side, w: c.w });
+    }
+  }
+  return out;
+}
+
+/** Carriageway list for the kerb frame (pavement-cph.js): centreline, half width and cycle strips. */
 export function vehicularRoads(geo) {
   const out = [];
   for (const r of geo.roads || []) {
-    if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4) continue;
-    out.push({ pts: r.pts, half: carriagewayWidth(r) / 2, cycle: cycleSides(r) });
+    if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4 || r.drop) continue;
+    const strips = cycleStrips(r);
+    out.push({ pts: r.pts, half: carriagewayWidth(r) / 2, cycle: cycleSides(r), strips });
   }
   return out;
 }
@@ -230,16 +226,14 @@ export function vehicularRoads(geo) {
 export function cycleTrackIndex(geo) {
   const idx = createSegmentIndex();
   for (const r of geo.roads || []) {
-    if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4) continue;
+    if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4 || r.drop) continue;
     const h = carriagewayWidth(r) / 2;
-    const cs = cycleSides(r);
-    const rn = rightNormals(r.pts);
-    for (const [side, on] of [[1, cs.right], [-1, cs.left]]) {
-      if (!on) continue;
-      const c = h + KERB_W + CYCLE_W / 2;
+    for (const piece of stripPieces(r)) {
+      const rn = rightNormals(piece.pts);
+      const c = h + KERB_W + piece.w / 2;
       const off = [];
-      for (let i = 0; i < rn.length; i++) off.push(r.pts[2 * i] + side * c * rn[i][0], r.pts[2 * i + 1] + side * c * rn[i][1]);
-      idx.addPolyline(off, CYCLE_W / 2 + KERB_W);
+      for (let i = 0; i < rn.length; i++) off.push(piece.pts[2 * i] + piece.side * c * rn[i][0], piece.pts[2 * i + 1] + piece.side * c * rn[i][1]);
+      idx.addPolyline(off, piece.w / 2 + KERB_W);
     }
   }
   for (const c of geo.cycleTracks || []) if (c.pts && c.pts.length >= 4) idx.addPolyline(c.pts, (c.width || CYCLE_W) / 2);
@@ -302,14 +296,15 @@ export function buildGroundHeightField(geo, surfaces = null, terrain = null) {
   if (!Number.isFinite(x0)) return composeHeightField(terrain, { heightAt: () => 0 });
   const grid = createHeightGrid({ bbox: [x0 - 20, z0 - 20, x1 + 20, z1 + 20], cell: 0.5 });
   for (const s of surfaces?.surfaces || []) if (s.ring && s.cls !== 'grass') grid.polygon(s.ring, SURFACE_Y.ground, s.holes || []);
-  for (const r of geo.roads || []) if (VEHICULAR.has(r.class) && r.pts?.length >= 4) grid.ribbon(r.pts, -carriagewayWidth(r) / 2, carriagewayWidth(r) / 2, SURFACE_Y.asphalt);
+  for (const r of geo.roads || []) if (VEHICULAR.has(r.class) && r.pts?.length >= 4 && !r.drop) grid.ribbon(r.pts, -carriagewayWidth(r) / 2, carriagewayWidth(r) / 2, SURFACE_Y.asphalt);
   for (const s of geo.sidewalks || []) grid.polygon(s.ring, SURFACE_Y.sidewalk);
   for (const r of geo.roads || []) {
-    if (!VEHICULAR.has(r.class) || !(r.pts?.length >= 4)) continue;
+    if (!VEHICULAR.has(r.class) || !(r.pts?.length >= 4) || r.drop) continue;
     const h = carriagewayWidth(r) / 2;
-    const cs = cycleSides(r);
-    if (cs.right) grid.ribbon(r.pts, h + KERB_W, h + KERB_W + CYCLE_W, SURFACE_Y.cycle);
-    if (cs.left) grid.ribbon(r.pts, -h - KERB_W - CYCLE_W, -h - KERB_W, SURFACE_Y.cycle);
+    for (const piece of stripPieces(r)) {
+      if (piece.side > 0) grid.ribbon(piece.pts, h + KERB_W, h + KERB_W + piece.w, SURFACE_Y.cycle);
+      else grid.ribbon(piece.pts, -h - KERB_W - piece.w, -h - KERB_W, SURFACE_Y.cycle);
+    }
   }
   for (const c of geo.cycleTracks || []) if (c.pts?.length >= 4) grid.ribbon(c.pts, -(c.width || CYCLE_W) / 2, (c.width || CYCLE_W) / 2, SURFACE_Y.cycle);
   for (const list of mouthLayouts(geo).values()) {
@@ -349,14 +344,14 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
   const endCount = new Map();
   const endKey = (x, z) => `${Math.round(x * 2)}:${Math.round(z * 2)}`;
   for (const r of geo.roads || []) {
-    if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4) continue;
+    if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4 || r.drop) continue;
     for (const [x, z] of [[r.pts[0], r.pts[1]], [r.pts[r.pts.length - 2], r.pts[r.pts.length - 1]]]) endCount.set(endKey(x, z), (endCount.get(endKey(x, z)) || 0) + 1);
   }
   const isJunction = (x, z) => (endCount.get(endKey(x, z)) || 0) >= 3;
   // widest carriageway meeting at each road end: a side street's kerb stops at the edge of the road it joins
   const endHalf = new Map();
   for (const r of geo.roads || []) {
-    if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4) continue;
+    if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4 || r.drop) continue;
     for (const [x, z] of [[r.pts[0], r.pts[1]], [r.pts[r.pts.length - 2], r.pts[r.pts.length - 1]]]) {
       endHalf.set(endKey(x, z), Math.max(endHalf.get(endKey(x, z)) || 0, carriagewayWidth(r) / 2));
     }
@@ -370,7 +365,7 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
     .map(([a, b]) => [a + from, b + from]);
   const piecesOf = (pts, list, fn) => { for (const [a, b] of list) { const q = slicePts(pts, a, b); if (q.length >= 4) fn(q, a); } };
   for (const r of geo.roads || []) {
-    if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4) continue;
+    if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4 || r.drop) continue;
     const w = carriagewayWidth(r);
     const h = w / 2;
     const L = polyLength(r.pts);
@@ -379,7 +374,7 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
     // lateral shift so that lane centres land on v = 1.5 + 3k (the asphalt shader paints wheel tracks there)
     const vShift = r.oneway && fwd % 2 === 1 ? 1.5 : 0;
     ribbon(asphalt, r.pts, -h, h, SURFACE_Y.asphalt, { vShift });
-    const cs = cycleSides(r);
+    const strips = cycleStrips(r);
     const ri = roadIndex.get(r);
     const lay = layouts.get(ri) || [];
     const x0 = r.pts[0];
@@ -388,24 +383,24 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
     const z1 = r.pts[r.pts.length - 1];
     const trim0 = isJunction(x0, z0) ? Math.min(JUNCTION_TRIM, L * 0.4) : 0;
     const trim1 = isJunction(x1, z1) ? Math.min(JUNCTION_TRIM, L * 0.4) : 0;
-    const mid = trim0 || trim1 ? slicePts(r.pts, trim0, L - trim1) : r.pts;
     // plain kerbs stop at the edge of the road this one joins
     const kt0 = isJunction(x0, z0) ? Math.min((endHalf.get(endKey(x0, z0)) || 0) + 0.3, L * 0.4) : 0;
     const kt1 = isJunction(x1, z1) ? Math.min((endHalf.get(endKey(x1, z1)) || 0) + 0.3, L * 0.4) : 0;
-    const kerbPts = kt0 || kt1 ? slicePts(r.pts, kt0, L - kt1) : r.pts;
-    for (const [side, on] of [[1, cs.right], [-1, cs.left]]) {
-      if (!on) {
-        // kerb straight from the carriageway up to the pavement
-        const a = side * h;
-        piecesOf(r.pts, standing(lay, side, 'inner', kt0, L - kt1), (q, a0) => kerbRun(kerb, q, Math.min(a, a + side * KERB_W), Math.max(a, a + side * KERB_W), pavementY + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.asphalt : null, side > 0 ? null : SURFACE_Y.asphalt, a0));
-        continue;
-      }
+    for (const side of [1, -1]) {
+      const sp = strips.find((c) => c.side === side) || null;
+      const ranges = sp ? (sp.ranges || [[0, L]]) : [];
+      // kerb straight from the carriageway up to the pavement: everywhere there is no cycle strip (and, beside a strip,
+      // not in the junction ends, where the blue crossing runs)
+      const a = side * h;
+      const plain = subtractIntervalLists(standing(lay, side, 'inner', kt0, L - kt1), sp ? [...ranges, [0, trim0], [L - trim1, L]] : []);
+      piecesOf(r.pts, plain, (q, a0) => kerbRun(kerb, q, Math.min(a, a + side * KERB_W), Math.max(a, a + side * KERB_W), pavementY + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.asphalt : null, side > 0 ? null : SURFACE_Y.asphalt, a0));
+      if (!sp) continue;
       // road kerb (cycle-track height), the cycle track, the outer kerb (pavement height)
       const o1 = h + KERB_W;
-      const o2 = o1 + CYCLE_W;
-      const sd = (a, b) => (side > 0 ? [a, b] : [-b, -a]);
-      const inner = standing(lay, side, 'inner', trim0, L - trim1);
-      const outer = standing(lay, side, 'outer', trim0, L - trim1);
+      const o2 = o1 + sp.w;
+      const sd = (p, q) => (side > 0 ? [p, q] : [-q, -p]);
+      const inner = intersectIntervals(standing(lay, side, 'inner', trim0, L - trim1), ranges);
+      const outer = intersectIntervals(standing(lay, side, 'outer', trim0, L - trim1), ranges);
       piecesOf(r.pts, inner, (q, a0) => kerbRun(kerb, q, ...sd(h, o1), SURFACE_Y.cycle + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.asphalt : null, side > 0 ? null : SURFACE_Y.asphalt, a0));
       piecesOf(r.pts, outer, (q, a0) => {
         ribbon(cycle, q, ...sd(o1, o2), SURFACE_Y.cycle, { u0: a0 });
@@ -415,7 +410,7 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
       piecesOf(r.pts, inner, (q) => ribbon(paint, q, ...sd(o1 + 0.12, o1 + 0.12 + 0.1), SURFACE_Y.cyclePaint));
       // blue through the junction crossing, where KK has no blue polygon there
       for (const [ts, te, jx, jz] of [[0, trim0, x0, z0], [L - trim1, L, x1, z1]]) {
-        if (te - ts < 1 || blueNear(jx, jz, 25)) continue;
+        if (te - ts < 1 || blueNear(jx, jz, 25) || !ranges.length) continue;
         ribbon(blue, slicePts(r.pts, ts, te), ...sd(h, o2), SURFACE_Y.asphalt + 0.012, { u0: ts });
       }
     }

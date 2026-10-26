@@ -142,7 +142,7 @@ bunion = unary_union(bgeoms)
 print(f"buildings {len(B)} ({len(bgeoms)} valid polygons)")
 
 # carriageways (the engine's capped width) and moving-traffic corridors
-roads = [r for r in lay["roads"] if r["veh"]]
+roads = [r for r in lay["roads"] if r["veh"] and not r.get("drop")]
 road_lines = [LineString(np.array(r["pts"]).reshape(-1, 2)) for r in roads]
 carriage = [ln.buffer(r["half"], cap_style="flat", join_style="mitre", mitre_limit=3.0) for ln, r in zip(road_lines, roads)]
 carriage_union = unary_union(carriage)
@@ -154,29 +154,51 @@ for ln, r in zip(road_lines, roads):
 corr_union = unary_union(corr)
 rtree = STRtree(road_lines)
 
-# cycle tracks: road-side strips + KK cykelsti lines
+# cycle tracks: the road-side strips as the engine reads them (width + the arc-length ranges where they stand) + KK cykelsti lines
+def strip_polygon(ln, hw, w, side, a=None, b=None):
+    from shapely.ops import substring
+    piece = ln if a is None else substring(ln, a, b)
+    if piece.length < 0.3:
+        return None
+    kw = 2 * KERB_W + w
+    outer = piece.buffer(side * (hw + kw), single_sided=True, cap_style="flat", join_style="mitre", mitre_limit=3.0)
+    inner = piece.buffer(side * hw, single_sided=True, cap_style="flat", join_style="mitre", mitre_limit=3.0)
+    p = outer.difference(inner)
+    return None if p.is_empty else p
+
+
 cyc, cyc_id = [], []
 for ln, r in zip(road_lines, roads):
-    for side, on in (("right", r["cycle"]["right"]), ("left", r["cycle"]["left"])):
-        if not on:
-            continue
-        sgn = 1 if side == "right" else -1  # engine right (z south) == shapely single-sided positive
-        outer = ln.buffer(sgn * (r["half"] + KERB_W + CYCLE_W), single_sided=True, cap_style="flat", join_style="mitre", mitre_limit=3.0)
-        inner = ln.buffer(sgn * (r["half"] + KERB_W), single_sided=True, cap_style="flat", join_style="mitre", mitre_limit=3.0)
-        p = outer.difference(inner)
-        if not p.is_empty:
-            cyc.append(p)
-            cyc_id.append(f"{r['id']}:{side}")
-for c in geo["cycleTracks"]:
+    for sp in r.get("strips", []):
+        for rng in (sp["ranges"] if sp["ranges"] is not None else [None]):
+            poly = strip_polygon(ln, r["half"], sp["w"], sp["side"], *(rng or (None, None)))
+            if poly is not None:
+                cyc.append(poly)
+                cyc_id.append(f"{r['id']}:{'right' if sp['side'] > 0 else 'left'}")
+for c in lay["cycleTracks"]:
     if len(c["pts"]) >= 4:
         cyc.append(LineString(np.array(c["pts"]).reshape(-1, 2)).buffer((c.get("width") or CYCLE_W) / 2, cap_style="flat"))
         cyc_id.append(c["id"])
 cyc_union = unary_union(cyc)
 cyctree = STRtree(cyc)
 
+# what the engine really draws (asphalt / cycle-strip triangles dumped by dump_layout.mjs): used for props
+def tri_union(flat):
+    if not flat:
+        return Polygon()
+    a = np.array(flat, dtype=float).reshape(-1, 3, 2) / 100.0
+    polys = shapely.polygons(a[:, [0, 1, 2, 0], :])
+    polys = polys[shapely.area(polys) > 1e-6]
+    return unary_union(polys)
+
+eng_asphalt = tri_union(lay["layers"]["asphalt"])
+eng_cycle = tri_union(lay["layers"]["cycle"])
+carriage_union = unary_union([carriage_union, eng_asphalt])
+cyc_union = unary_union([cyc_union, eng_cycle])
+
 # pavement
-sw = [ring_poly(s["ring"]) for s in geo["sidewalks"]]
-sw_ids = [s["id"] for s, p in zip(geo["sidewalks"], sw) if p is not None]
+sw = [ring_poly(s["ring"], s.get("holes")) for s in lay["sidewalks"]]
+sw_ids = [s["id"] for s, p in zip(lay["sidewalks"], sw) if p is not None]
 sw = [p for p in sw if p is not None]
 sw_union = unary_union(sw)
 
@@ -458,7 +480,7 @@ check("surf-under-road", "surfaces", "Pavement-class ground polygon overlaps a c
 # ---------------------------------------------------------------------------------------------------------- 4. road/cycle/pavement mutual
 print("\n== roads / cycle / pavement ==")
 # graph nodes of degree >= 3
-rg = geo["roadGraph"]
+rg = lay["roadGraph"]
 nodes = np.array(rg["nodes"]).reshape(-1, 2)
 deg = Counter()
 for l in rg["links"]:

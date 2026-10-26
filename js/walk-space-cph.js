@@ -94,7 +94,13 @@ export function createKerbFrame(roads, { kerb = 0.18, cycleInner = 2.2 + 0.36 } 
     if (!pts || pts.length < 4) continue;
     const cum = [0];
     for (let i = 0; i + 3 < pts.length; i += 2) cum.push(cum[cum.length - 1] + Math.hypot(pts[i + 2] - pts[i], pts[i + 3] - pts[i + 1]));
-    const rec = { pts, half: r.half, cum, cycle: { left: !!r.cycle?.left, right: !!r.cycle?.right } };
+    // cycle strips beside the carriageway: { w, ranges } per side (arc-length ranges where they stand; null = everywhere)
+    const strip = (side, flag) => {
+      const sp = (r.strips || []).find((c) => c.side === side);
+      if (sp) return { w: sp.w, ranges: sp.ranges };
+      return flag ? { w: cycleInner - 0.36, ranges: null } : null;
+    };
+    const rec = { pts, half: r.half, cum, cycle: { left: strip(-1, r.cycle?.left), right: strip(1, r.cycle?.right) } };
     const ri = list.push(rec) - 1;
     for (let i = 0; i + 3 < pts.length; i += 2) add(pts[i], pts[i + 1], pts[i + 2], pts[i + 3], [ri, i / 2]);
   }
@@ -113,7 +119,10 @@ export function createKerbFrame(roads, { kerb = 0.18, cycleInner = 2.2 + 0.36 } 
     const s = (x - ax) * ux + (z - az) * uz;
     const lat = (x - ax) * -uz + (z - az) * ux; // right of travel positive (matches road-surfaces ribbons)
     const side = lat >= 0 ? 'right' : 'left';
-    const inner = rec.cycle[side] ? kerb + cycleInner : kerb;
+    const sp = rec.cycle[side];
+    const sAt = rec.cum[seg] + s;
+    const hasStrip = sp && (!sp.ranges || sp.ranges.some(([a, b]) => sAt >= a - 0.5 && sAt <= b + 0.5));
+    const inner = hasStrip ? kerb + sp.w + 0.36 : kerb;
     return { u: rec.cum[seg] + s, v: Math.abs(lat) - rec.half - inner, side, road: ri, seg, dirX: ux, dirZ: uz };
   }
 

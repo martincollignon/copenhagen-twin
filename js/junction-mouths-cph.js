@@ -5,7 +5,7 @@
 // the continuing main road keeps one way). Along M, on the side S opens to, the kerb / cycle track / pavement must be
 // interrupted across S's carriageway. Frame: x east, z south; side +1 is the right of travel along M.
 
-import { carriagewayWidth } from './road-width-cph.js';
+import { carriagewayWidth, cycleStripAt, cycleStrips } from './road-width-cph.js';
 
 export const VEHICULAR_CLASSES = new Set(['primary', 'secondary', 'residential', 'service']);
 const KEY = (x, z) => `${Math.round(x * 2)}:${Math.round(z * 2)}`;
@@ -22,7 +22,7 @@ export function findMouths(roads) {
   const nodes = new Map(); // key -> [{road, vi, interior}]
   const cum = [];
   roads.forEach((r, ri) => {
-    if (!VEHICULAR_CLASSES.has(r.class) || !r.pts || r.pts.length < 4) return;
+    if (!VEHICULAR_CLASSES.has(r.class) || !r.pts || r.pts.length < 4 || r.drop) return;
     const c = [0];
     for (let i = 0; i + 3 < r.pts.length; i += 2) c.push(c[c.length - 1] + Math.hypot(r.pts[i + 2] - r.pts[i], r.pts[i + 3] - r.pts[i + 1]));
     cum[ri] = c;
@@ -110,7 +110,7 @@ const TAU = CORNER_RADIUS;
  *   interval where the cycle track and the pavement-edge kerb are cut too (null: they continue); arcs = kerb return
  *   polylines (flat x, z); ramps = sloped quads with a height per corner; plateaus = pavement-level quads (flat rings)
  */
-export function mouthLayout(mouth, { half: hM, cycle, depth }) {
+export function mouthLayout(mouth, { half: hM, cycle, cycleW = CYCLE_W, depth }) {
   const u = [mouth.right[0] * mouth.side, mouth.right[1] * mouth.side];
   const d = mouth.dir;
   const nS = [-d[1], d[0]];
@@ -128,7 +128,7 @@ export function mouthLayout(mouth, { half: hM, cycle, depth }) {
     return [Math.min(s0, s1), Math.max(s0, s1)];
   };
   const o1 = hM + KERB_W;
-  const o2 = o1 + CYCLE_W;
+  const o2 = o1 + cycleW;
   const outerEdge = cycle ? o2 + KERB_W : hM + KERB_W; // M's band ends here (pavement starts)
   const quad = (a0, a1) => [...at(a0, -hS), ...at(a0, hS), ...at(a1, hS), ...at(a1, -hS)];
   const res = { raised: mouth.raised, inner: null, outer: null, arcs: [], ramps: [], plateaus: [], mouth };
@@ -176,8 +176,9 @@ export function computeMouthLayouts(roads, { depth } = {}) {
     const M = roads[ri];
     const half = carriagewayWidth(M) / 2;
     const arr = list.map((mouth) => {
-      const cyc = M.cycleTrack === 'both' || M.cycleTrack === (mouth.side > 0 ? 'right' : 'left');
-      return mouthLayout(mouth, { half, cycle: cyc, depth });
+      // the cycle strip M has on the mouth's side at the mouth (the layout's strips, or the legacy tag)
+      const strip = M.cs ? cycleStripAt(M, mouth.side, mouth.s) : cycleStrips(M).find((c) => c.side === mouth.side) || null;
+      return mouthLayout(mouth, { half, cycle: !!strip, cycleW: strip ? strip.w : CYCLE_W, depth });
     });
     out.set(ri, arr);
   }

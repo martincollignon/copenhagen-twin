@@ -802,7 +802,7 @@ function cphCentrelines(rg) {
     }
     const w = first.l[4];
     const cls = rg.classes[first.l[7]];
-    out.push({ a: first.from, b: cur.to, ni: first.l[6], w, along: first.along, against: first.against, inner, cls, chain: { id: chainId++, links: members.length } });
+    out.push({ a: first.from, b: cur.to, ni: first.l[6], w, along: first.along, against: first.against, inner, cls, chain: { id: chainId++, links: members.length, measured: rg.layout === 'cph-streets/1' } });
   }
   // start every chain at a vertex that is not a through vertex, then close up whatever rings remain
   for (const [n, recs] of at) {
@@ -844,7 +844,9 @@ function cphLanes(l) {
   const twoWay = (n) => Array.from({ length: n }, (_, i) => CPH_LANE / 2 + i * CPH_LANE);
   const nf = Math.min(4, info.along);
   const nb = Math.min(4, info.against);
-  const width = carriagewayFromLanes(l.w, info.along + (l.dir === 0 ? info.against : 0), info.cls);
+  // a measured link width (street layout: the survey's kerb-to-kerb carriageway) is used as it is; the legacy data width is
+  // a clamped spacing and is capped by what the lanes need
+  const width = info.measured ? Math.max(3, Math.min(l.w, 30)) : carriagewayFromLanes(l.w, info.along + (l.dir === 0 ? info.against : 0), info.cls);
   if (l.dir !== 0) {
     const lanes = oneWay(l.dir > 0 ? nf : nb);
     return { half: Math.max(width / 2, lanes.length * CPH_LANE / 2), axis: major ? 'ave' : 'st', fwd: l.dir > 0 ? lanes : [], back: l.dir < 0 ? lanes : [] };
