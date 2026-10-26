@@ -45,7 +45,7 @@ Atlas descriptors (`observed.atlas`, written by the `attach` mode) exist for 2,3
 ## Where the atlases live and how the engine gets them
 
 - Produced by the Cloud Run job `cph-skraafoto` (`tools/cloud/skraafoto/`, mode `atlas`) into `gs://lun-integrations-dev-cph-twin/skraafoto/tex-look/<gdk_id>.webp`; tile layers (`skraafoto/tiles/<tile>/appearance.json`) next to them.
-- `python3 tools/cloud/skraafoto/cloudctl.py sync [--atlas-cap-gb 1.5]` copies the tile layers into `data/tiles/<tile>/appearance.json` and the inner-city atlases (nearest to the centre first, up to the cap) into `data/tex-look/`. The rest stay in the bucket.
+- `python3 tools/cloud/skraafoto/cloudctl.py sync [--atlas-cap-gb 1.5]` copies the tile layers into `data/tiles/<tile>/appearance.json` and the inner-city atlases (nearest to the centre first, up to the cap) into `data/tex-look/`. The rest stay in the bucket if the atlas job produced them (not verified from this session: gcloud auth expired).
 - The engine does NOT read the bucket. `js/buildings-real.js` requests `./data/tex-look/<id>.webp` relative to the page; a 404 leaves that building on its tone facade (no retry, no console spam once any atlas has loaded). Serving the remaining atlases needs a static host or CDN for `data/tex-look/` (not set up yet); `data/tiles/` and `data/tex-look/` are git-ignored, so a deployment has to publish them separately.
 
 
