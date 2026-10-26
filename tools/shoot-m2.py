@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Headless WebGPU captures for M2: uv run --with playwright python tools/shoot-m2.py [--port N] [--out docs/m2]"""
 import argparse, json, subprocess, sys, time, socket, os
+from urllib.parse import parse_qsl, urlencode
 from playwright.sync_api import sync_playwright
 
 ap = argparse.ArgumentParser()
@@ -16,9 +17,18 @@ ap.add_argument('--water', action='store_true', help='M4 lakes + calibrated faca
 ap.add_argument('--furniture', action='store_true', help='M4 street furniture: Nørre Søgade day+night (wire lamps), parked cars, lake-path trees, a bus stop; fps and draw calls (default out docs/m4-furniture)')
 ap.add_argument('--audit-sweep', action='store_true', help='QA audit: ~30 eye-level and 6 aerial shots at the points in docs/qa/sweep-points.json (tools/audit/audit.py) into docs/qa/sweep + contact sheets')
 ap.add_argument('--oneway', action='store_true', help='traffic direction: 10 simulated minutes of live cars checked against the one-way roads (docs/oneway/sim-cars.json), contraflow / track / overview-with-arrows shots into --out (default docs/oneway)')
+ap.add_argument('--kerbs', default=None, metavar='VIEWS.json', help='kerb check: eye-level and top-down shots of the views in VIEWS.json (node tools/audit/kerbs.mjs --views) into --out')
 ap.add_argument('--perf', action='store_true', help='unthrottled frame timing instead of captures')
 args = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+def page_query(base='', include_hooks=False):
+    params = dict(parse_qsl(base.lstrip('?&'), keep_blank_values=True))
+    if include_hooks:
+        params.setdefault('hooks', '')
+    params.update(dict(parse_qsl(args.query.lstrip('?&'), keep_blank_values=True)))
+    return urlencode(params)
+
 s = socket.socket(); s.bind(('127.0.0.1', 0)); port = s.getsockname()[1]; s.close()
 server = subprocess.Popen([sys.executable, '-m', 'http.server', str(port), '--bind', '127.0.0.1'], cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1)
@@ -210,15 +220,61 @@ def lod2_views():
         out[f'pitched-{key}-low'] = ([cx + dx / dl * 34, 1.7, cz + dz / dl * 34], [cx, b['eave'] + 4, cz], 66)
     return out
 def water_views():
-    """Camera setups for the lakes / calibrated-colour shots (positions from the data: DLB teleport, Peblinge path)."""
+    """Camera setups for lake shots, with path views projected onto Peblinge's land-side shoreline."""
     import math
     out = {}
     # Dronning Louises Bro (97, -476.7): on the south parapet looking south-west down Peblinge Soe
     out['peblinge-from-dlb'] = ([97 - 6, 3.2, -476.7 + 10], [-20, -0.5, -250], 62)
     out['peblinge-from-dlb-high'] = ([60, 22, -440], [-60, -1, -250], 58)
-    # lake path at eye level along Peblinge Dossering (Norre Sogade side): path at x~-60, z~-300
-    out['lake-path-eye'] = ([-70.5, 1.7, -300], [-110, 0, -240], 68)
-    out['lake-path-wall'] = ([-70.5, 1.5, -300], [-84, -0.5, -300], 70)
+    lake_doc = json.load(open(os.path.join(root, 'data/cph-lakes.json')))
+    hint = (-70.5, -300)
+
+    def contains(ring, x, z):
+        inside = False
+        for i in range(0, len(ring), 2):
+            j = (i - 2) % len(ring)
+            xi, zi = ring[i], ring[i + 1]
+            xj, zj = ring[j], ring[j + 1]
+            if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi:
+                inside = not inside
+        return inside
+
+    lakes = [lake for lake in lake_doc['lakes'] if contains(lake.get('ring', []), *hint)]
+    if not lakes:
+        raise RuntimeError('Peblinge path camera hint is outside the lake rings')
+    lake = min(lakes, key=lambda item: len(item.get('ring', [])))
+    ring = lake['ring']
+    closest = None
+    for i in range(0, len(ring), 2):
+        j = (i + 2) % len(ring)
+        ax, az = ring[i], ring[i + 1]
+        bx, bz = ring[j], ring[j + 1]
+        dx, dz = bx - ax, bz - az
+        length = math.hypot(dx, dz) or 1
+        t = max(0, min(1, ((hint[0] - ax) * dx + (hint[1] - az) * dz) / (length * length)))
+        x, z = ax + dx * t, az + dz * t
+        distance = math.hypot(hint[0] - x, hint[1] - z)
+        if closest is None or distance < closest[0]:
+            left = (-dz / length, dx / length)
+            water_on_left = contains(ring, x + left[0] * 0.5, z + left[1] * 0.5)
+            water_on_right = contains(ring, x - left[0] * 0.5, z - left[1] * 0.5)
+            if water_on_left != water_on_right:
+                land_normal = (-left[0], -left[1]) if water_on_left else left
+            else:
+                area = sum(ring[k] * ring[(k + 3) % len(ring)] - ring[(k + 2) % len(ring)] * ring[k + 1]
+                           for k in range(0, len(ring), 2)) / 2
+                land_normal = left if area < 0 else (-left[0], -left[1])
+            closest = (distance, x, z, land_normal[0], land_normal[1])
+
+    _, shore_x, shore_z, land_x, land_z = closest
+    eye_x, eye_z = shore_x + land_x * 2.5, shore_z + land_z * 2.5
+    assert not contains(ring, eye_x, eye_z), 'lake path camera must be on land'
+    eye_look = [shore_x - land_x * 42, -0.45, shore_z - land_z * 42]
+    wall_x, wall_z = shore_x + land_x * 3.4, shore_z + land_z * 3.4
+    assert not contains(ring, wall_x, wall_z), 'lake wall camera must be on land'
+    wall_look = [shore_x - land_x * 0.2, -0.3, shore_z - land_z * 0.2]
+    out['lake-path-eye'] = ([eye_x, 1.7, eye_z], eye_look, 68)
+    out['lake-path-wall'] = ([wall_x, 1.45, wall_z], wall_look, 70)
     out['under-bridge'] = ([30, 1.2, -470], [97, -0.4, -480], 70)
     return out
 def facade_views():
@@ -295,13 +351,40 @@ try:
         logs = []
         page.on('console', lambda m: logs.append(f'{m.type}: {m.text}'))
         page.on('pageerror', lambda e: logs.append(f'pageerror: {e}'))
-        page.goto(f'http://127.0.0.1:{port}/index.html?{("hooks&" + args.query.lstrip("&")) if (args.furniture or args.audit_sweep or args.oneway) else args.query.lstrip("&")}')
+        needs_hooks = args.furniture or args.audit_sweep or args.oneway or args.water or args.kerbs
+        page.goto(f'http://127.0.0.1:{port}/index.html?{page_query(include_hooks=needs_hooks)}')
         page.wait_for_function('globalThis.__twin && globalThis.__twin.world', timeout=120000)
         page.wait_for_timeout(4000)
-        view = lambda pos, look, fov=60: page.evaluate('([p,l,f]) => { globalThis.__twin.cameraSystem.debugView = {pos:p, look:l, fov:f}; }', [pos, look, fov])
+        view = lambda pos, look, fov=60: page.evaluate('''([p,l,f,useTerrain]) => {
+          const twin = globalThis.__twin;
+          if (useTerrain) {
+            const t = twin.world.terrain;
+            const g = (x, z) => (t && !t.flat && p[1] < 80) ? t.heightAt(x, z) : 0;
+            twin.freeCam = {pos:[p[0], p[1] + g(p[0], p[2]), p[2]], target:[l[0], l[1] + g(l[0], l[2]), l[2]], fov:f};
+          } else {
+            twin.cameraSystem.debugView = {pos:p, look:l, fov:f};
+          }
+        }''', [pos, look, fov, args.water])
         def shot(name):
             page.wait_for_timeout(2500)
             page.screenshot(path=f'{args.out}/{name}.png')
+        if args.kerbs:
+            os.makedirs(args.out, exist_ok=True)
+            views = json.load(open(args.kerbs))
+            # eye-level points are heights above the ground (the terrain is added in the page); y >= 80 is absolute
+            free = lambda pos, look, fov=60: page.evaluate('''([p,l,f]) => { const t = globalThis.__twin.world.terrain; const g = (x, z) => (t && !t.flat && p[1] < 80) ? t.heightAt(x, z) : 0;
+              globalThis.__twin.freeCam = {pos:[p[0], p[1] + g(p[0], p[2]), p[2]], target:[l[0], l[1] + g(l[0], l[2]), l[2]], fov:f}; }''', [pos, look, fov])
+            page.evaluate("(id) => document.querySelector(`[data-time=\"${id}\"]`).click()", 'midday')
+            page.wait_for_timeout(2500)
+            for v in views:
+                free(v['pos'], v['look'], v.get('fov', 60))
+                page.wait_for_timeout(3500)
+                page.screenshot(path=f"{args.out}/{v['name']}.png")
+                print('shot', v['name'], v['at'])
+            errs = [l for l in logs if l.startswith(('error', 'pageerror'))]
+            print('\n'.join(errs[:20]))
+            browser.close()
+            raise SystemExit(0)
         if args.audit_sweep:
             out_dir = args.out if args.out != 'docs/m2' else 'docs/qa/sweep'
             os.makedirs(out_dir, exist_ok=True)
@@ -351,11 +434,11 @@ try:
             out_dir = args.out if args.out != 'docs/m2' else 'docs/m4-water-colour'
             os.makedirs(out_dir, exist_ok=True)
             def load(q):
-                page.goto(f'http://127.0.0.1:{port}/index.html?{q}')
+                page.goto(f'http://127.0.0.1:{port}/index.html?{page_query(q, include_hooks=True)}')
                 page.wait_for_function('globalThis.__twin && globalThis.__twin.world', timeout=120000)
                 page.wait_for_timeout(4000)
             def time_of_day(tid):
-                page.evaluate("(t) => { const l = globalThis.__twin.lightingSystem; l.applyPreset(t); }", tid)
+                page.locator(f'[data-time="{tid}"]').click()
                 page.wait_for_timeout(1500)
             load('hooks')
             print('lakes', json.dumps(page.evaluate('() => globalThis.__twin.world.lakes && globalThis.__twin.world.lakes.stats')))
@@ -366,10 +449,8 @@ try:
                     page.screenshot(path=f'{out_dir}/{name}-{tag}.png')
                     print('shot', name, tag)
             fps = {}
-            for variant, q in (('before', 'debug=nowater,nocal'), ('after', 'hooks')):
-                load(q if 'hooks' in q else 'hooks')
-                if variant == 'before':
-                    load('hooks&debug=nowater,nocal')
+            for variant, extra_query in (('before', 'debug=nowater,nocal'), ('after', '')):
+                load(f'hooks&{extra_query}' if extra_query else 'hooks')
                 time_of_day('midday')
                 for name, v in facade_views().items():
                     view(*v); page.wait_for_timeout(2500)

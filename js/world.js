@@ -9,6 +9,7 @@ import { buildDirectionOverlay } from './direction-overlay.js';
 import { buildSignalHeads } from './signal-heads-cph.js';
 import { createWalkSpace } from './walk-space-cph.js';
 import { buildLakes } from './water-cph.js';
+import { buildBridgeDLB, filterDLBFurniture } from './bridge-dlb.js';
 import { setCalibration } from './appearance.js';
 import { applySurfaceCuts } from './lakes-cph.js';
 import { loadCphFurniture } from './street-furniture-data.js';
@@ -321,7 +322,7 @@ function createLocator(geo) {
   };
 }
 
-async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH_GEODATA_URL, water = '' } = {}) {
+async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH_GEODATA_URL, water = '', treeDate } = {}) {
   setCalibration(!debug.split(',').includes('nocal'));
   const geo = await loadCphGeodata(geoUrl);
   globalThis.CPH_GEO = geo;
@@ -340,10 +341,17 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
 
   // Lakes (the Soerne): the ground plane is cut open over the water, so the plain plane is only built without them
   const lakesDoc = geo && !debug.split(',').includes('nowater') ? await loadCphLakes() : null;
+  const furnitureDoc = geo ? await loadCphFurniture() : null;
+  let bridgeDLB = null;
+  if (lakesDoc?.lakes?.length && !debug.split(',').includes('nobridge')) {
+    bridgeDLB = buildBridgeDLB(scene, geo, lakesDoc, { terrain, furnitureDoc });
+    if (bridgeDLB) markInit(`dlb(${bridgeDLB.lamps.count} lamps, ${bridgeDLB.layout.arches.length} arches)`);
+  }
   let lakes = null;
   let ground;
   if (lakesDoc?.lakes?.length) {
-    lakes = buildLakes(scene, lakesDoc, { groundMaterial: groundMaterial(), size: GROUND_SIZE, bbox: geo.frame?.bbox || CPH_FRAME.bbox, planar: water !== 'simple', terrain });
+    lakes = buildLakes(scene, lakesDoc, { groundMaterial: groundMaterial(), size: GROUND_SIZE, bbox: geo.frame?.bbox || CPH_FRAME.bbox, planar: water !== 'simple', terrain,
+      parks: geo.parks || [], modelBridge: (bridge) => bridgeDLB?.layout.bridgeId === bridge.id });
     scene.add(lakes.ground);
     ground = lakes.ground;
     markInit(`lakes(${lakes.stats.lakes})`);
@@ -360,7 +368,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   if (geo?.buildings?.length && !debug.split(',').includes('nobuildings')) {
     // Optional LoD2 roofs (tools/lod2 -> data/lod2); `?debug=nolod2` keeps the flat extrusions for before/after shots
     const lod2 = debug.split(',').includes('nolod2') ? null : await loadLod2();
-    buildings = await buildRealBuildings(scene, geo, { lod2, observed: !debug.split(',').includes('noobserved'), terrain: terrain.flat ? null : terrain });
+    buildings = await buildRealBuildings(scene, geo, { lod2, ...(debug.split(',').includes('nodoors') ? { entrances: null } : {}), observed: !debug.split(',').includes('noobserved'), terrain: terrain.flat ? null : terrain });
     markInit(`buildings(${buildings.stats.buildings})`);
   }
 
@@ -383,11 +391,11 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   // M4: street furniture (data/cph-furniture.json): trees, lamps, parked cars, bins, bollards, benches, racks, bus stops
   let furniture = null;
   if (geo && !debug.split(',').includes('nofurniture')) {
-    const doc = await loadCphFurniture();
+    const doc = furnitureDoc && bridgeDLB ? filterDLBFurniture(furnitureDoc, bridgeDLB.layout) : furnitureDoc;
     if (doc) {
       // ONE spatial constraint map (footprints, water, the measured carriageway, cycle strips, pavements) places every item
       const zones = streetsStats && !debug.split(',').includes('noplace') ? createZoneMap({ geo, lakes: lakesDoc, surfaces: surfacesCut }) : null;
-      furniture = createStreetFurniture(scene, doc, { groundHeight: traffic?.surfaces?.groundHeight || null, place: zones ? (d) => placeFurniture(d, { zones, geo }) : null });
+      furniture = createStreetFurniture(scene, doc, { treeDate, groundHeight: traffic?.surfaces?.groundHeight || null, place: zones ? (d) => placeFurniture(d, { zones, geo }) : null, lakeDistance: lakes?.lakeDistance || null });
       markInit(`furniture(${furniture.plan.trees.length} trees, ${furniture.plan.lamps.length} lamps, ${furniture.plan.cars.length} cars${furniture.plan.report ? `, ${furniture.plan.report.dropped.length} dropped` : ''})`);
     }
   }
@@ -401,7 +409,9 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
       lakes?.update(x, z);
       grass?.update(x, z);
       furniture?.update(x, z, night);
+      bridgeDLB?.update(night);
     },
+    bridgeDLB,
     furniture,
     audioSignals: [],
     locationLabel: createLocator(geo),

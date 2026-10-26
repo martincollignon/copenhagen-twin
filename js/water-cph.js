@@ -1,11 +1,13 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, float, vec2, vec3, uniform, attribute, positionWorld, cameraPosition, normalize, length, dot, pow, mix, clamp,
-  smoothstep, sin, cos, time, texture, max, fract, floor, transformNormalToView, reflector, reflect, step, NodeUpdateType
+  smoothstep, sin, cos, time, texture, max, fract, floor, transformNormalToView, reflector, reflect, step, exp, NodeUpdateType
 } from 'three/tsl';
 import { cityUniforms } from './tsl-materials.js';
 import { buildLakeArrays, groundWithHoles, shoreDistanceField, WATER } from './lakes-cph.js';
 import { buildTerrainMeshArrays } from './terrain-cph.js';
+import { applyGroundField } from './ground-shader-cph.js';
+import { lakeDistanceFrom } from './ground-field-cph.js';
 
 // js/water-cph.js
 // The Soerne as water: sunken lake surface with TSL ripples, fresnel sky/planar reflection and a soft shoreline, held by
@@ -13,14 +15,28 @@ import { buildTerrainMeshArrays } from './terrain-cph.js';
 // cut open over the lakes so no ground shows through; bridges over water get a soffit and fascia.
 //   ?water=simple   sky reflection only (no planar reflection pass)      ?debug=nowater   the old grey ground, no lakes
 
-const DEEP = [0.010, 0.040, 0.040]; // linear: dark green-blue Soerne water
-const SHALLOW = [0.045, 0.085, 0.060]; // algae-green rim
-const ALGAE = [0.020, 0.045, 0.022];
+const BED = [0.038, 0.050, 0.042]; // linear equivalent of the observed sRGB (55, 63, 58) lake bed
+const DEEP = [0.012, 0.020, 0.013]; // darker olive water after depth absorption
+const WEED = [0.055, 0.066, 0.025]; // subdued yellow-green Elodea and algae mats
+const ALGAE = [0.014, 0.020, 0.009];
 
-// [direction (rad), wavelength (m), amplitude (m), speed (rad/s)]: a gentle wind chop with long swell
+const hash2D = Fn(([p]) => fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453)));
+const noise2D = Fn(([p]) => {
+  const pv = vec2(p).toVar();
+  const i = floor(pv).toVar();
+  const f = fract(pv).toVar();
+  const u = f.mul(f).mul(float(3).sub(f.mul(2))).toVar();
+  const a = hash2D(i);
+  const b = hash2D(i.add(vec2(1, 0)));
+  const c = hash2D(i.add(vec2(0, 1)));
+  const d = hash2D(i.add(vec2(1, 1)));
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+});
+
+// [direction (rad), wavelength (m), amplitude (m), speed (rad/s)]: short, sheltered Søerne ripples only
 const WAVES = [
-  [0.35, 9.0, 0.022, 0.85], [1.90, 3.7, 0.013, 1.15], [2.85, 1.7, 0.0075, 1.5],
-  [4.40, 0.9, 0.0042, 1.9], [5.55, 0.48, 0.0026, 2.3], [0.95, 0.26, 0.0014, 2.8]
+  [0.35, 1.35, 0.0048, 0.75], [1.90, 0.82, 0.0035, 1.05], [2.85, 0.54, 0.0022, 1.35],
+  [4.40, 0.35, 0.0013, 1.8], [5.55, 0.24, 0.00075, 2.1]
 ];
 
 function toGeometry(a, { uv = false, kind = false } = {}) {
@@ -53,20 +69,27 @@ function createLakeWallMaterial() {
     const bv = fract(v.div(COURSE));
     const edge = smoothstep(0.0, 0.035, bu).mul(smoothstep(0.0, 0.035, float(1).sub(bu)))
       .mul(smoothstep(0.0, 0.06, bv)).mul(smoothstep(0.0, 0.06, float(1).sub(bv)));
-    const stone = mix(vec3(0.15, 0.15, 0.155), vec3(0.34, 0.325, 0.31), id.mul(id));
+    const stone = mix(vec3(0.305, 0.242, 0.171), vec3(0.429, 0.305, 0.205), id.mul(id));
     const grain = hash1(vec2(floor(wuv.x.mul(14.0)), floor(v.mul(14.0)))).mul(0.18).add(0.91);
     const wall = mix(vec3(0.05, 0.05, 0.05), stone.mul(grain), edge.mul(0.7).add(0.3));
-    // wet, dark and green in the splash zone at the water line (-0.8 m); the wall below it is under water
-    const wet = smoothstep(-0.2, -0.78, wuv.y);
-    const slime = smoothstep(-0.55, -0.82, wuv.y).mul(0.75);
-    const wallWet = mix(mix(wall, wall.mul(0.45), wet), vec3(...ALGAE), slime);
+    // A dark wet/algal band hugs the waterline and fades out within 0.25 m above it.
+    const wet = float(1).sub(smoothstep(WATER.surfaceY, WATER.surfaceY + 0.25, wuv.y));
+    const algae = smoothstep(WATER.surfaceY - 0.12, WATER.surfaceY, wuv.y)
+      .mul(float(1).sub(smoothstep(WATER.surfaceY, WATER.surfaceY + 0.25, wuv.y))).mul(0.78);
+    const wallWet = mix(mix(wall, wall.mul(0.48), wet), vec3(...ALGAE), algae);
     // coping: a lighter, smoother granite slab; its pattern runs along the edge
     const copeId = hash1(vec2(floor(wuv.x.div(1.4)), 7.7));
-    const cope = mix(vec3(0.30, 0.29, 0.28), vec3(0.42, 0.40, 0.38), copeId).mul(grain);
+    const cope = mix(vec3(0.35, 0.28, 0.185), vec3(0.429, 0.305, 0.205), copeId).mul(grain);
     const concrete = vec3(0.16, 0.16, 0.165).mul(grain);
     const isCope = step(0.5, kind).mul(step(kind, 1.5));
-    const isConcrete = step(1.5, kind);
-    return mix(mix(wallWet, cope, isCope), concrete, isConcrete);
+    const isBank = step(2.5, kind);
+    const isConcrete = step(1.5, kind).mul(float(1).sub(isBank));
+    // natural lake bank (kind 3): grass above the splash zone, wet mud and reed stubble at the water line
+    const n1 = fract(sin(dot(vec2(floor(wuv.x.mul(1.7)), floor(v.mul(2.3))), vec2(12.9, 78.2))).mul(43758.5));
+    const grassC = mix(vec3(0.07, 0.12, 0.035), vec3(0.14, 0.2, 0.06), n1);
+    const mud = mix(vec3(0.05, 0.04, 0.03), vec3(0.09, 0.075, 0.05), n1);
+    const bank = mix(mud, grassC, smoothstep(-0.95, -0.35, v));
+    return mix(mix(mix(wallWet, cope, isCope), concrete, isConcrete), bank, isBank);
   })();
   return m;
 }
@@ -80,7 +103,7 @@ const skyColourAt = (r) => {
 };
 
 function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
-  const material = new THREE.MeshStandardNodeMaterial({ roughness: 0.045, metalness: 0, envMapIntensity: 1.0 });
+  const material = new THREE.MeshStandardNodeMaterial({ roughness: 0.045, metalness: 0, envMapIntensity: 0 });
   material.name = 'cph-water';
   const wp = positionWorld;
   const toCam = cameraPosition.sub(wp);
@@ -106,7 +129,7 @@ function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
     sx = sx.add(slope.mul(dx));
     sz = sz.add(slope.mul(dz));
   }
-  // a slow second-scale cross swell so the pattern never lines up
+  // Soften the short ripples where the water meets the wall.
   sx = sx.mul(calm);
   sz = sz.mul(calm);
   const N = normalize(vec3(sx.negate(), 1.0, sz.negate()));
@@ -115,9 +138,19 @@ function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
   const NdotV = max(dot(N, V), 0.0);
   const fresnel = clamp(float(0.02).add(float(0.98).mul(pow(float(1).sub(NdotV), 5.0))), 0.0, 1.0);
 
-  // body colour: murky green-blue, lighter and greener towards the wall (shallow rim)
-  const rim = float(1).sub(smoothstep(0.0, 3.5, shore));
-  material.colorNode = mix(vec3(...DEEP), vec3(...SHALLOW), rim);
+  // The shallow bed is visible near the wall; depth absorption moves the body towards dark olive water farther out.
+  // This body is emissive so a bright directional sun cannot wash it into grey diffuse colour.
+  const depth = mix(float(0.25), float(2.4), smoothstep(1.0, 10.0, shore));
+  const attenuation = float(1).sub(exp(depth.div(-1.2)));
+  let body = mix(vec3(...BED), vec3(...DEEP), attenuation);
+  const weedField = noise2D(wp.xz.mul(0.035)).mul(0.7).add(noise2D(wp.xz.mul(0.11)).mul(0.3));
+  const nearBank = float(1).sub(smoothstep(6.0, 18.0, shore));
+  const weedMask = smoothstep(0.60, 0.76, weedField).mul(nearBank).mul(0.5);
+  body = mix(body, vec3(...WEED), weedMask);
+  const nightDim = smoothstep(0.35, 1.55, cityUniforms.uInteriorGlow);
+  const bodyLight = mix(float(1), float(0.22), nightDim);
+  material.colorNode = vec3(0.0);
+  material.roughnessNode = mix(float(0.045), float(0.58), weedMask);
 
   // reflection: planar (buildings, trees, bridge) or sky only; contact-darkened right at the wall
   const contact = smoothstep(0.0, 1.2, shore).mul(0.45).add(0.55);
@@ -135,7 +168,10 @@ function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
   }
   // foam-free but alive shoreline: a thin lighter band where the ripples lap the wall
   const lap = smoothstep(0.55, 0.0, shore).mul(sin(wp.x.mul(2.1).add(wp.z.mul(1.7)).sub(time.mul(1.6))).mul(0.5).add(0.5)).mul(0.035);
-  material.emissiveNode = (globalThis.__waterDebug === 'refl' ? reflection : reflection.mul(fresnel).mul(contact)).add(vec3(0.05, 0.075, 0.06).mul(lap));
+  const bodyContribution = body.mul(bodyLight).mul(float(1).sub(fresnel));
+  const reflectionContribution = reflection.mul(fresnel).mul(contact).mul(0.87);
+  material.emissiveNode = (globalThis.__waterDebug === 'refl' ? reflection.mul(0.87) : bodyContribution.add(reflectionContribution))
+    .add(vec3(0.012, 0.016, 0.012).mul(lap));
   return { material, reflectorNode };
 }
 
@@ -143,8 +179,8 @@ function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
  * Builds the lakes into `scene`. Returns { group, ground, water, material, stats, update, attach, setPlanar }.
  * `ground` is the cut ground mesh (replaces the plain plane); `update(x, z)` gates the planar reflection pass.
  */
-function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -750, 750, 750], planar = true, terrain = null } = {}) {
-  const arrays = buildLakeArrays(doc, { bbox, terrain });
+function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -750, 750, 750], planar = true, terrain = null, parks = null, modelBridge = () => false } = {}) {
+  const arrays = buildLakeArrays(doc, { bbox, terrain, modelBridge });
   const group = new THREE.Group();
   group.name = 'CopenhagenLakes';
 
@@ -156,6 +192,8 @@ function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -75
   groundGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
   groundGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(g.normal || Array.from(g.position, (_, i) => (i % 3 === 1 ? 1 : 0)), 3));
   groundGeometry.setIndex(new THREE.Uint32BufferAttribute(g.index, 1));
+  // fine-gravel lake path + grass (js/ground-shader-cph.js); the same raster answers `lakeDistance` (tree species context)
+  const groundFieldInfo = parks ? applyGroundField(groundMaterial, doc, parks, { bbox }) : null;
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.name = 'CopenhagenGround';
   ground.receiveShadow = true;
@@ -194,7 +232,7 @@ function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -75
         scene.traverse((o) => {
           if (o.isLight && o.shadow) shadows.push(o.shadow);
           const m = o.isMesh || o.isSprite ? o.material : null;
-          if (m && (Array.isArray(m) ? m.some((x) => x.mrtNode) : m.mrtNode)) mrtOnly.push(o);
+          if (m && (Array.isArray(m) ? m.some((material) => material.mrtNode) : m.mrtNode)) mrtOnly.push(o);
         });
       }
       const saved = shadows.map((sh) => sh.autoUpdate);
@@ -243,6 +281,7 @@ function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -75
   };
   return {
     group, ground, water, material, walls, field, state, setPlanar,
+    lakeDistance: groundFieldInfo ? lakeDistanceFrom(groundFieldInfo.field) : null,
     stats: { ...arrays.stats, surfaceTriangles: arrays.surface.index.length / 3, groundTriangles: g.index.length / 3 },
     level: arrays.level,
     attach: ({ camera: cam }) => { camera = cam; },

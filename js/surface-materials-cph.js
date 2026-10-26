@@ -12,17 +12,21 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, float, vec2, vec3, vec4, attribute, positionWorld, normalWorldGeometry, fwidth, floor, fract, mod, min, max,
-  mix, step, smoothstep, sin, dot, abs, length, pow, exp, clamp
+  mix, step, smoothstep, sin, dot, abs, length, pow, exp, clamp, context, metalness
 } from 'three/tsl';
+import { cityUniforms } from './tsl-materials.js';
+import { poolLightAt } from './pool-light-cph.js';
 
-const srgb = (r, g, b) => {
+export const ssrReflectionWeight = Fn((builder) => builder.context.wetSurfaceReflection ?? metalness);
+
+export const srgb = (r, g, b) => {
   const c = new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
   return vec3(c.r, c.g, c.b);
 };
 
 const hash2D = Fn(([p]) => fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453)));
 const hash1D = Fn(([n]) => fract(sin(float(n).mul(127.1).add(311.7)).mul(43758.5453)));
-const noise2D = Fn(([p]) => {
+export const noise2D = Fn(([p]) => {
   const pv = vec2(p).toVar();
   const i = floor(pv).toVar();
   const f = fract(pv).toVar();
@@ -58,6 +62,23 @@ const grime = Fn(([wp, fpWorld]) => {
   const speck = noise2D(wp.mul(48.0)).sub(0.5).mul(0.1).mul(fine);
   return float(0.86).add(large.mul(0.22)).add(speck);
 });
+
+const roadWetness = () => clamp(cityUniforms.uRoadWetness, 0.0, 1.0);
+const puddleField = (wp) => noise2D(wp.mul(0.12)).mul(0.65).add(noise2D(wp.mul(0.42)).mul(0.35));
+const puddleMask = (wp) => {
+  const wet = roadWetness();
+  const onset = smoothstep(0.0, 0.2, wet);
+  return smoothstep(float(0.84).sub(wet.mul(0.18)), float(0.90).sub(wet.mul(0.18)), puddleField(wp)).mul(onset);
+};
+
+export function wetFinish(colour, roughness, wp) {
+  const wet = roadWetness();
+  const puddle = puddleMask(wp);
+  const dampRoughness = mix(roughness, float(0.15), wet);
+  return vec4(colour.mul(float(1.0).sub(wet.mul(0.4))), mix(dampRoughness, float(0.02), puddle));
+}
+
+export const wetReflectionWeightAt = (wp) => roadWetness().mul(0.06).add(puddleMask(wp).mul(0.28));
 
 // stone cell inside a sett/cobble field. `edgeM` = distance to the stone edge in metres
 function stoneShade(edgeM, fp, gap) {
@@ -114,7 +135,7 @@ const fortov = Fn(([u, v, seed, wp]) => {
 
   const colour = mix(slab, sett, settMask).mul(grime(wp, fpw));
   const rough = mix(float(0.88), float(0.74), settMask);
-  return vec4(colour, rough);
+  return wetFinish(colour, rough, wp);
 });
 
 // ---- Rådhusbelægning ---------------------------------------------------------------------------------------------
@@ -146,7 +167,7 @@ const raadhus = Fn(([u, v, seed, wp]) => {
   const sEdge = min(min(lx, float(1.0).sub(lx)), min(ly, float(1.0).sub(ly))).mul(0.1);
   let sett = mix(srgb(44, 40, 34), stoneColour(hash2D(sc.add(vec2(1.9, 7.7))), hash2D(sc.mul(2.1))), stoneShade(sEdge, fp, float(0.005)));
   sett = mix(sett, srgb(98, 96, 98), smoothstep(0.03, 0.1, fp));
-  return vec4(mix(slab, sett, isFrame).mul(grime(wp, fpw)), mix(float(0.88), float(0.74), isFrame));
+  return wetFinish(mix(slab, sett, isFrame).mul(grime(wp, fpw)), mix(float(0.88), float(0.74), isFrame), wp);
 });
 
 // ---- cobbles and setts -------------------------------------------------------------------------------------------
@@ -170,19 +191,21 @@ function stoneField(size, gapFrac, tint) {
     let col3 = stoneColour(h, h2).mul(tint).mul(shade);
     col3 = mix(srgb(38, 34, 28), col3, stone);
     col3 = mix(col3, srgb(96, 93, 92).mul(tint), smoothstep(float(size).mul(0.35), float(size).mul(0.9), fp));
-    return vec4(col3.mul(grime(wp, fpw)), mix(float(0.95), float(0.7), stone));
+    return wetFinish(col3.mul(grime(wp, fpw)), mix(float(0.95), float(0.7), stone), wp);
   });
 }
 
 // ---- gravel and plain concrete -----------------------------------------------------------------------------------
-const gravel = Fn(([u, v, seed, wp]) => {
+/** Dry fine gravel by world position, shared by register polygons and the lake-path ground band. */
+export const gravelRGB = Fn(([wp]) => {
   const fpw = length(vec2(fwidth(wp.x), fwidth(wp.y)));
   const fine = float(1.0).sub(smoothstep(0.01, 0.08, fpw));
   const g = noise2D(wp.mul(70.0)).mul(0.5).add(noise2D(wp.mul(16.0)).mul(0.5));
   const big = noise2D(wp.mul(0.7));
-  const c = mix(srgb(150, 138, 118), srgb(176, 165, 146), big).mul(float(0.88).add(g.mul(0.24).mul(fine)));
-  return vec4(c, 0.98);
+  return mix(srgb(142, 130, 110), srgb(168, 156, 134), big).mul(float(0.88).add(g.mul(0.24).mul(fine)));
 });
+
+const gravel = Fn(([u, v, seed, wp]) => wetFinish(gravelRGB(wp), float(0.98), wp));
 
 const concrete = Fn(([u, v, seed, wp]) => {
   const fp = max(fwidth(u), fwidth(v)).max(0.0004);
@@ -216,7 +239,7 @@ function asphaltFn({ base, tracks, patchRate, wear }) {
     const tone = mix(float(0.8), float(1.17), step(0.5, hash2D(pc.add(vec2(9.1, 4.7)))));
     let light = float(0.8).add(grain.mul(0.42)).add(speck).add(tr.mul(0.12)).add(blotch.sub(0.5).mul(0.08));
     light = light.mul(mix(float(1.0), tone, patchOn.mul(inside)));
-    return vec4(base.mul(light), mix(float(0.93), float(0.78), tr.mul(0.6)));
+    return wetFinish(base.mul(light), mix(float(0.93), float(0.78), tr.mul(0.6)), wp);
   });
 }
 
@@ -269,11 +292,19 @@ export function createRoadSurfaceMaterials() {
   const kuv = attribute('kuv', 'vec2');
   const seed = attribute('seed', 'float');
   const wp = positionWorld.xz;
-  const make = (fn, { withSeed = false, polygonOffset = 0, side = THREE.DoubleSide } = {}) => {
+  const make = (fn, { withSeed = false, polygonOffset = 0, side = THREE.DoubleSide, wet = false } = {}) => {
     const out = fn(kuv.x, kuv.y, withSeed ? seed : float(0.25), wp);
     const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0, side });
     mat.colorNode = out.xyz;
+    mat.emissiveNode = out.xyz.mul(poolLightAt(positionWorld)); // street-light pools (js/pool-light-cph.js)
     mat.roughnessNode = out.w;
+    if (wet) {
+      // Keep wet SSR eligibility in material context so reflection passes can use an unnamed color target.
+      // The main scene MRT reads this scalar; the material remains dielectric for lighting and reflection optics.
+      mat.contextNode = context({
+        wetSurfaceReflection: wetReflectionWeightAt(wp)
+      });
+    }
     if (polygonOffset) {
       mat.polygonOffset = true;
       mat.polygonOffsetFactor = polygonOffset;
@@ -285,22 +316,26 @@ export function createRoadSurfaceMaterials() {
   const cyc = asphaltFn({ base: srgb(47, 48, 52), tracks: 0, patchRate: 0.04, wear: 0 });
   const white = paintFn(srgb(232, 232, 226), 0.62);
   const bluePaint = paintFn(srgb(14, 86, 164), 0.74);
-  const pavement = (fn) => make(fn, { withSeed: true, polygonOffset: -1 });
+  const redPaint = paintFn(srgb(139, 64, 47), 0.78);
+  const yellowPaint = paintFn(srgb(194, 164, 73), 0.76);
+  const pavement = (fn, options = {}) => make(fn, { withSeed: true, polygonOffset: -1, ...options });
   return {
-    asphalt: make(road),
-    cycle: make(cyc),
+    asphalt: make(road, { wet: true }),
+    cycle: make(cyc, { wet: true }),
     kerb: make(granite),
     paint: make(white, { polygonOffset: -2 }),
     blue: make(bluePaint, { polygonOffset: -3 }),
+    red: make(redPaint, { polygonOffset: -2 }),
+    yellow: make(yellowPaint, { polygonOffset: -2 }),
     ground: {
-      kbh_fortov: pavement(fortov),
-      raadhus: pavement(raadhus),
-      cobbles: pavement(stoneField(0.14, 0.07, vec3(1.0, 0.97, 0.92))),
-      setts: pavement(stoneField(0.1, 0.05, vec3(1.0))),
-      gravel: pavement(gravel),
+      kbh_fortov: pavement(fortov, { wet: true }),
+      raadhus: pavement(raadhus, { wet: true }),
+      cobbles: pavement(stoneField(0.14, 0.07, vec3(1.0, 0.97, 0.92)), { wet: true }),
+      setts: pavement(stoneField(0.1, 0.05, vec3(1.0)), { wet: true }),
+      gravel: pavement(gravel, { wet: true }),
       grass: make(grassGround, { withSeed: true, polygonOffset: -2 }),
       other: pavement(concrete),
-      asphalt_road: make(asphaltFn({ base: srgb(66, 67, 70), tracks: 0, patchRate: 0.05, wear: 0 }), { withSeed: true, polygonOffset: -1 })
+      asphalt_road: make(asphaltFn({ base: srgb(66, 67, 70), tracks: 0, patchRate: 0.05, wear: 0 }), { withSeed: true, polygonOffset: -1, wet: true })
     }
   };
 }

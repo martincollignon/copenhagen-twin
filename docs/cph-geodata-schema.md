@@ -160,3 +160,84 @@ Arrays: `trees` (`height`, `crown_radius`, `genus` family, `species`, `age`), `l
 ## `data/cph-vegetation.json` (`cph-vegetation/1`, `tools/cph-geodata/vegetation.py`)
 
 Separate file, same local frame. `surfaces` are polygons in the `cph-surfaces` record shape (`ring`, optional `holes`, `src`, `conf`) with `cls: "grass"` and `kind`: `lawn` (CIR NDVI above the hard-ground 97th percentile, no class 5 above, no class 3/4 returns, `measured`), `planting` (NDVI with class 3/4 returns, `measured`), `parkfloor` (the ground under crowns inside a KK park polygon, `inferred`). Cut by buildings, KK pavements and lakes. `canopy` is the class 5 footprint (audit only). `stats` carries the areas and the NDVI threshold. The engine appends `surfaces` to cph-surfaces' `surfaces`; `grass` draws as ground (`js/surface-materials-cph.js`) and carries the tufts of `js/grass-cph.js`.
+
+## Ground-floor venues (`data/cph-groundfloor.json`, `cph-groundfloor/1`, `tools/cph-geodata/groundfloor.py`)
+
+`venues[]`: `{x, z, kind, name, src, conf}` in the local frame; `kind` is `food | grocery | shop | service | craft | hotel | office`. Sources: OSM
+Overpass (`shop=*`, food/drink and service `amenity`, `craft`, public offices, hotels; ODbL) and the KK `bevillinger` layer (serveringsbevillinger,
+with `koncept` and `night`). `js/groundfloor.js` assigns each wall a ground-floor kind (`shop` where a venue stands in or in front of a
+street-facing wall, `entry` for a residential street front with a door, `rear` for courtyard walls, `lotLine` for party walls that abut a
+neighbouring footprint, `blank` for outbuildings) and the facade shader reads it as `facadeBldg.y`. BBR trade use (3xx) without venue data gives an
+inferred shop. The file is optional: without it only BBR trade use makes shopfronts.
+
+## Building entrances (`data/cph-entrances.json`, `cph-entrances/1`, `tools/cph-geodata/entrances.py`)
+
+DAR (Datafordeler) `husnummer.adgangspunkt` is the entrance point of an address; `vejpunkt` the road access point. The compiler lists the
+husnumre of every street (`vejmidte`) found next to a twin building, keeps the gaeldende ones (status 3) and links each to a building by
+`geoDanmarkBygning` (== the `gdk:<id>` of the geodata), else `adgangTilBygning` (== `bbr_id`), else the footprint containing the point
+(BBR `opgang` records add stairwell-only husnumre). Raw responses are cached in `data/raw/dar/`.
+
+`entrances[]`: `id` (husnummer UUID), `bid` (twin building id), `bbr`, `text` (37A), `street`, `x, z` (the adgangspunkt), `sx, sz` (snapped to the
+nearest wall of the building: `ring` 0 outline, 1.. courtyard holes; `edge` index in the raw ring, `t` and `along` position on it, `wall_len`),
+`d` (snap distance, m), `inside` (point lies inside the footprint), `link` (`geoDanmarkBygning|bbr|footprint|nearest`), `opgang` (also a BBR
+stairwell), `acc` (DAR position accuracy class), `road` (vejpunkt), `src`, `conf`: `measured` d <= 1.5 m, `observed` <= 3 m, else `inferred`.
+DAR places most adgangspunkter 2-5 m *inside* the footprint (typically at the stairwell), so `d` measures that offset, not an error; the wall is
+the nearest one and the position along it is the point's own. `stairwells` is the BBR gaeldende opgang count per bygning id.
+
+The engine (`js/entrances.js`) builds a door (opaque leaf, frame, step, small canopy) on the nearest wall at each entry with `d <= 6 m`
+(husnumre within 0.9 m share one door). A building with at least one such door has its heuristic shader street door switched off
+(`facadeBldg.y = kind + 0.25`); a building without entrance data keeps the heuristic door and the info panel labels it `heuristic / inferred`.
+`?debug=nodoors` loads without the file (before/after shots).
+
+## Photo facade look atlases (`data/tex-look/*.webp`, `tools/cph-geodata/facade_look.py`)
+
+Derived from `data/tex/` (gitignored like it): RGBA WebP, same layout as the JPEG atlas (`observed.atlas.walls[].px/uv` are unchanged). RGB is the
+de-lit, shadow-divided, sharpened strip normalised to the calibrated `tone_cal`; alpha is lossless: 0 unobserved texel (nearest-texel smear or flat
+median fill from `appearance.py`, detected by lack of texture; strips with more than half unobserved are dropped), about 128 observed wall, up to 255
+inside a detected window blob. `?tex=0` turns photo walls off, `?debug=notex` too.
+
+
+### Tree canopy enrichment (`tools/cph-geodata/tree_canopy.py`)
+
+Run after `furniture.py`. This is an additive, cached-only post-pass; it does not
+fetch imagery or change other furniture arrays. It uses the `ortho.py` CIR method
+at 1 m, the native DHM class-count resolution, with buildings and water excluded.
+
+- `crown_measurement`: `{radius, area, src, conf, method, isolated}`. Radius is
+  `sqrt(area/pi)` of the high-vegetation footprint assigned to the nearest existing
+  trunk, capped at 9 m. This is a measured **footprint share**, not a surveyed crown.
+  Isolated crowns use it directly. Crowns in rows/groups get a bounded 0.8–1.25
+  correction (with 0.9–9 m physical bounds); their `conf_fields.crown_radius` is
+  `scaled`. Prefer class 5; use CIR
+  only for an existing leafed tree if class 5 is unavailable; otherwise keep the
+  original radius. Never size a bare late-leafing crown from April NDVI.
+- `canopy_original`: original `height`, `crown_radius`, `genus`, `conf_fields` and
+  `src`. The stage restores these before recalculating, making reruns idempotent.
+- `canopy_added: "ortho-cir/1"`, `canopy_area`: a new observed tree per connected
+  CIR/class-5 canopy patch of at least 12 m², more than 9 m from existing trunks.
+  Its position is an interior mask pixel near the centroid, so concave patches do
+  not put a trunk in a building or in the exclusion disc. This is a conservative
+  patch count; it is not the research's approximate 1,000-stem estimate.
+- `height_method`: additions use the 95th percentile of class-5 cell maxima minus
+  nearby class-2 ground from cached LAZ returns (`height: measured`). Ground farther
+  than 12 m away is rejected. Without enough returns, use a crown-ratio estimate
+  (`height: inferred`). No WCS DSM/DTM rasters were cached for this run.
+- `leaf_apr`: observed fraction of the 2.5 m trunk neighbourhood in the April CIR
+  canopy mask, [0,1]. Provenance is in `src` and `conf_fields.leaf_apr`.
+- `lakeside`: inferred location within 24 m on the land side of a Søerne ring.
+  Only unspecified genera default to `chestnut`; registered species are preserved.
+  Only inferred lakeside heights are clamped to 16–20 m.
+- `litter_points`: flat `[dx,dz,…]` offsets from `litter_origin: [x,z]`, on mapped
+  pavement, setts, cobbles or gravel under chestnut/lime crowns. These placements
+  are inferred, exclude buildings/water, and stay fixed when the placement engine
+  moves a trunk. The renderer samples ground height at each point and applies
+  seasonal thinning; no litter is shown in summer.
+
+Top-level `tree_canopy` records counts, medians, threshold and limitations. Sources
+are `dhm:punktsky:class5` and `geodanmark:orto_foraar_cir:2025-04-27`; new trees have
+`conf: observed`, field-level confidence, and `licence: Klimadatastyrelsen frie data`.
+The document's attribution includes GeoDanmark orthophoto and DHM Punktsky.
+
+Regenerate with `uv run tools/cph-geodata/tree_canopy.py`. Raw inputs remain read-only.
+The derived height cache defaults to `.context/tree-heights.npz`; `--height-cache`
+can select another writable scratch path.

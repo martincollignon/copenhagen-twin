@@ -69,6 +69,12 @@ function buildingTone(b) {
   return toLinear(isRgb(b.facade?.tone) ? b.facade.tone : [0.7, 0.65, 0.58]);
 }
 
+/** Building-level observed wall tone in sRGB (median of the observed walls, calibrated when available), or null. */
+function observedToneSrgb(b) {
+  const seen = (b.observed?.walls || []).filter((w) => isRgb(w.tone) && w.conf !== 'inferred');
+  return seen.length ? [0, 1, 2].map((k) => median(seen.map((w) => wallRgb(w)[k]))) : null;
+}
+
 /**
  * Per cleaned edge (flat over `cleanedRings`, in build order, [[x, z], ...] each): the linear wall tone and where it came
  * from. Edges no observed wall maps onto keep the building tone (`wall: null`).
@@ -146,8 +152,8 @@ function roofSurface(b) {
 // ---------------------------------------------------------------------------------------------------------------
 // Textured walls (?tex=1)
 // ---------------------------------------------------------------------------------------------------------------
-const TEX_MAX_FILLED = 0.7; // beyond this the strip is mostly inpainted: tone + procedural windows look better
-const TEX_LIFT = 0.025; // metres the photo quad sits in front of the extruded wall
+const TEX_MAX_FILLED = 0.5; // beyond this the strip is mostly fill (nearest-texel smear / flat median): tone + procedural windows look better. The look atlas drops filled texels via alpha and whole strips above this.
+const TEX_LIFT = 0.01; // metres the photo quad sits in front of the extruded wall (the material adds a depth bias, so this is only a safety margin)
 
 /** Map `${ring}:${edge}` -> atlas wall entry of a building (empty without an atlas). */
 function atlasWalls(b) {
@@ -174,6 +180,7 @@ function texturedWalls(b, quads, mapping) {
   const position = [];
   const normal = [];
   const uv = [];
+  const wallUV = [];
   const index = [];
   let count = 0;
   for (const q of quads) {
@@ -202,13 +209,14 @@ function texturedWalls(b, quads, mapping) {
       position.push(q.p0[0] + dx * t + nx * TEX_LIFT, y, q.p0[1] + dz * t + nz * TEX_LIFT);
       normal.push(nx, 0, nz);
       uv.push(u, vAt(h));
+      wallUV.push(t * len, y - q.ground);
     }
     // quad corners run raw-start -> raw-end; the outward normal needs the CCW order seen from outside
     if (tb > ta) index.push(base, base + 1, base + 2, base, base + 2, base + 3);
     else index.push(base, base + 2, base + 1, base, base + 3, base + 2);
     count++;
   }
-  return count ? { position, normal, uv, index, count, file: b.observed.atlas.file } : null;
+  return count ? { position, normal, uv, wallUV, index, count, file: b.observed.atlas.file, size: b.observed.atlas.size } : null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -249,10 +257,11 @@ function nearestRawEdge(b, x, z) {
 }
 
 /**
- * Appearance rows for the info panel. `surface` is 'wall' (the nearest wall edge to `point` is described) or 'roof'.
+ * Appearance rows for the info panel. `surface` is 'wall' (nearest wall edge to `point`), 'roof', or an inferred architectural 'detail'.
  */
 function describeAppearance(b, surface, point, { textured = false } = {}) {
   const out = { roof: roofSource(b), wall: null };
+  if (surface === 'detail') return { roof: null, wall: null, detail: { kind: 'inferred', text: 'Architectural style detail' } };
   if (surface !== 'roof' && point) {
     const near = nearestRawEdge(b, point.x, point.z);
     const wall = near && (b.observed?.walls || []).find((w) => w.ring === near.ringKey && w.edge === near.edge);
@@ -266,6 +275,6 @@ function describeAppearance(b, surface, point, { textured = false } = {}) {
 }
 
 export {
-  srgbToLinear, setCalibration, wallRgb, albedoFromLinear, rawRingEdges, buildingTone, mapObservedEdges, roofSurface, atlasWalls, usableStrip, texturedWalls,
+  srgbToLinear, setCalibration, wallRgb, albedoFromLinear, rawRingEdges, buildingTone, observedToneSrgb, mapObservedEdges, roofSurface, atlasWalls, usableStrip, texturedWalls,
   wallSource, roofSource, describeAppearance, nearestRawEdge, ROOF_SURFACE, TEX_MAX_FILLED
 };

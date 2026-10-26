@@ -13,6 +13,7 @@
 // Frame: x east, z south; `yaw` is the direction an item faces: model +z -> (sin yaw, cos yaw).
 
 import { carriagewayWidth, movingHalfWidth } from './road-width-cph.js';
+import { hash2, treeDimensions } from './street-furniture-data.js';
 
 const VEHICULAR = new Set(['primary', 'secondary', 'residential', 'service']);
 const CAR = { w: 1.95, d: 4.7, slack: 0.3 }; // the parked-car box (a sedan is 1.9 x 4.6, an SUV 1.95 x 4.7; +0.3 m of slack along the row)
@@ -21,6 +22,9 @@ const KERB_GAP = 0.12; // m between a parked car's side and the carriageway edge
 const LANE_GAP = 0.05;
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+const SHOPPING_STREETS = new Set(['norrebrogade', 'blagardsgade', 'ravnsborggade', 'elmegade', 'faelledvej', 'sankt hans torv']);
+const streetKey = (name = '') => name.toLowerCase().replaceAll('ø', 'o').replaceAll('æ', 'ae')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 
 // ------------------------------------------------------------------------------------------------ oriented boxes
 export function obb(x, z, yaw, w, d, offZ = 0) {
@@ -144,6 +148,7 @@ export function createFacadeIndex(geo, cell = 16) {
     });
   }
   return {
+    segments: segs,
     nearest(x, z, maxR = 8, accept = null) {
       let best = null;
       const rr = Math.ceil(maxR / cell);
@@ -189,7 +194,7 @@ export function createFacadeIndex(geo, cell = 16) {
 
 // ------------------------------------------------------------------------------------------------ the placer
 const FOOT = {
-  bins: [0.52, 0.52], binStands: [1.9, 0.72], glassContainers: [3.8, 1.2], benches: [1.8, 0.55], parkMeters: [0.46, 0.32], bollards: [0.3, 0.3],
+  bins: [0.52, 0.52], binStands: [1.9, 0.72], glassContainers: [1.55, 1.55], benches: [1.8, 0.55], parkMeters: [0.46, 0.32], bollards: [0.3, 0.3],
   rescuePosts: [0.5, 0.2], monuments: [1.3, 1.3]
 };
 // how far (m) each kind may be moved to stand on walkable ground, and how much of its footprint may stay on solid ground
@@ -366,8 +371,7 @@ export function placeFurniture(doc, { zones, geo }) {
   // ---------------------------------------------------------------------------------------- 4. trees
   const trees = [];
   for (const t of doc.trees || []) {
-    const h = Math.max(2.5, Math.min(40, t.height || 8));
-    const rx = Math.max(0.9, Math.min(h * 0.75, t.crown_radius || h * 0.35));
+    const { height: h, crownRadius: rx } = treeDimensions(t);
     const base = Math.max(1.4, h * 0.3);
     const test = (x, z) => {
       if (zones.cover(x, z, 0, 0.4 + MARGIN, 0.4 + MARGIN).solid > 0) return false; // a trunk must clear the kerb and the quay
@@ -504,7 +508,9 @@ export function placeFurniture(doc, { zones, geo }) {
         const cap = b - a;
         const x = rows.ox + ux * mid;
         const z = rows.oz + uz * mid;
-        racks.push({ ...r, x: +x.toFixed(2), z: +z.toFixed(2), capacity: cap });
+        const nearbyRoad = roads.nearest(x, z, 20);
+        const streetName = nearbyRoad?.rec.r.name || '';
+        racks.push({ ...r, x: +x.toFixed(2), z: +z.toFixed(2), capacity: cap, streetName, shopping: SHOPPING_STREETS.has(streetKey(streetName)) });
         for (let i = a; i < b; i++) {
           const o = (i - (n - 1) / 2) * SLOT;
           obst.add(obb(rows.ox + ux * o, rows.oz + uz * o, r.yaw + Math.PI / 2, 0.5, 1.75), 'rack');
@@ -516,6 +522,85 @@ export function placeFurniture(doc, { zones, geo }) {
     if (rows.shift) note('bikeRacks', 'shifted', r, Math.abs(rows.shift));
   }
   out.bikeRacks = racks;
+
+  // ---------------------------------------------------------------------------------------- 8. facade-parked bicycles
+  // A bicycle stands nose-out from the facade. Its full measured envelope is tested on the pavement, then a clear
+  // 0.8 m walking strip is reserved between the front wheel and the cycle track/kerb.
+  const streetBikes = [];
+  const allFacades = facades.segments;
+  for (let si = 0; si < allFacades.length; si++) {
+    const s = allFacades[si];
+    if (s.hole) continue;
+    const dx = s.bx - s.ax;
+    const dz = s.bz - s.az;
+    const length = Math.hypot(dx, dz);
+    if (length < 3.2) continue;
+    const tx = dx / length;
+    const tz = dz / length;
+    const mx = (s.ax + s.bx) * 0.5;
+    const mz = (s.az + s.bz) * 0.5;
+    const midRoad = roads.nearest(mx, mz, 24);
+    const streetName = midRoad?.rec.r.name || '';
+    const shopping = SHOPPING_STREETS.has(streetKey(streetName));
+    // On non-shopping frontages only occasional short rows are represented.
+    if (!midRoad || (!shopping && hash2(mx, mz, si + 801) > 0.3)) continue;
+    const slots = Math.max(1, Math.floor(length / 0.82));
+    const phase = Math.floor(hash2(mx, mz, si + 811) * 5);
+    for (let i = 0; i < slots; i++) {
+      const active = shopping ? ((i + phase) % 5 < 3) : ((i + phase) % 5 < 2);
+      if (!active) continue;
+      const t = (i + 0.5) / slots;
+      const px = s.ax + dx * t;
+      const pz = s.az + dz * t;
+      const road = roads.nearest(px, pz, 24);
+      if (!road || streetKey(road.rec.r.name || '') !== streetKey(streetName)) continue;
+      const side = Math.sign(road.lat) || 1;
+      const nx = road.tz * side;
+      const nz = -road.tx * side;
+      const roll = hash2(px, pz, 821);
+      const cargoCandidate = (i + phase) % 20 === 0;
+      const cargoVariant = hash2(px, pz, 835) < 0.5 ? 'cargo-longjohn' : 'cargo-trike';
+      const variant = cargoCandidate ? cargoVariant
+          : roll < 0.16 ? 'mens'
+            : roll < 0.39 ? 'city-crate'
+              : roll < 0.52 ? 'city-childseat'
+                : 'city';
+      const size = 0.95 + hash2(px, pz, 823) * 0.1;
+      const yawJitter = (hash2(px, pz, 827) - 0.5) * (16 * Math.PI / 180);
+      const yaw = Math.atan2(nx, nz) + yawJitter;
+      const lean = hash2(px, pz, 829) < 0.3 ? (hash2(px, pz, 831) - 0.5) * 0.16 : 0;
+      const isLongjohn = variant === 'cargo-longjohn';
+      const isTrike = variant === 'cargo-trike';
+      const bikeHeight = variant === 'city-childseat' ? 1.26 : 1.158;
+      const width = (isTrike ? 0.86 : isLongjohn ? 0.58 : 0.54) * size + 2 * Math.abs(Math.sin(lean)) * bikeHeight * size;
+      const depth = (isLongjohn ? 2.74 : isTrike ? 2.12 : 1.84) * size;
+      const offset = (isLongjohn ? 0.445 : isTrike ? 0.135 : 0) * size;
+      const rootD = 1.02;
+      const bx = px + nx * rootD;
+      const bz = pz + nz * rootD;
+      const footprint = obb(bx, bz, yaw, width, depth, offset);
+      const coverage = zones.cover(bx, bz, yaw, width + 0.16, depth + 0.16, offset);
+      if (coverage.solid > 0 || coverage.pavement + coverage.plaza < 0.92) continue;
+      const clearance = obb(bx, bz, yaw, 1.2, 0.8, offset + depth / 2 + 0.46);
+      const walk = zones.cover(clearance.x, clearance.z, yaw, 1.2, 0.8);
+      if (walk.solid > 0 || walk.pavement + walk.plaza < 0.92) continue;
+      // A prior walking strip blocks parked bikes. Strips can join each other, but must not
+      // overlap furniture or another bike, so ignore only the walkway tags during this check.
+      if (obst.hit(footprint) || obst.hit(clearance, 0, (tag) => tag === 'bike-walkway')) continue;
+      obst.add(footprint, 'street-bike');
+      obst.add(clearance, 'bike-walkway');
+      const y = zones.heightAt ? zones.heightAt(bx, bz) : 0;
+      const bike = {
+        cx: bx, cz: bz, x: bx, y, z: bz, yaw,
+        variant, hue: Math.floor(hash2(px, pz, 833) * 10), size, lean,
+        shoppingStreet: shopping ? streetName : null,
+        footprintW: width, footprintD: depth, footprintOffset: offset,
+        walkingLine: { x: clearance.x, z: clearance.z, width: 1.2, depth: 0.8 }
+      };
+      streetBikes.push(bike);
+    }
+  }
+  out.streetBikes = streetBikes;
 
   return { doc: out, report: { counts, dropped, moved } };
 }

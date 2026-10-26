@@ -1426,7 +1426,7 @@ class PersonRig {
    * pedal crank angle. Seat, bars and bottom bracket in the frame's space (metres, +Z forward).
    * Optional pelvis/chest pitch and knee lift also support relaxed, low seated pedalling; bicycle defaults stay unchanged.
    */
-  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17, steerAngle = 0, steerPivot = null, upright = 0, pelvisPitch = 0.42, chestPitch = 0.2, kneeLift = 0 }) {
+  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17, steerAngle = 0, steerPivot = null, upright = 0, torsoLean = 0, pelvisPitch = 0.42, chestPitch = 0.2, kneeLift = 0 }) {
     const s = this.s;
     const j = this.bind;
     this.gait = 0;
@@ -1437,7 +1437,7 @@ class PersonRig {
 
     // Riders lift off the saddle and straighten under power; zero upright preserves the seated pose.
     upright = Math.max(0, Math.min(1, upright));
-    qX(_qPelvis, pelvisPitch - upright * 0.25).premultiply(_qRoot);
+    qX(_qPelvis, pelvisPitch - upright * 0.25 - torsoLean).premultiply(_qRoot);
     _pelvis.set(0, seat.y + 0.055 * s + 0.14 * upright * s, seat.z + 0.03 + 0.09 * upright);
     toWorld(_pelvis);
     this.writeBone(BONE.PELVIS, _qPelvis, _pelvis);

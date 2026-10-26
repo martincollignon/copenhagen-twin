@@ -7,6 +7,11 @@ import { createPreWarBuildingMaterial, createCurtainWallMaterial } from './tsl-m
 import { attribute } from 'three/tsl';
 import { createAccumulator, addBuilding } from './building-geometry.js';
 import { describeAppearance, texturedWalls } from './appearance.js';
+import { createPhotoMaterial } from './facade-photo-material.js';
+import { WINDOW, FACADE_CORNER_PIER } from './facade-style.js';
+import { PHOTO, selectPhotoSet, texRequested, lookFile } from './facade-lod.js';
+import { createContext as createGroundContext } from './groundfloor.js';
+import { createEntranceIndex, createDoorAccumulator, addDoors } from './entrances.js';
 import { CPH_FRAME, toLocal } from './city-config.js';
 
 // js/buildings-real.js
@@ -20,10 +25,9 @@ const STREAM_RADIUS = 2400; // cells further than this from the camera are hidde
 const LEAF_CAPACITY = 48;
 const LEAF_DEPTH = 5;
 const TEX_DIR = './data/tex';
-const TEX_RADIUS = 110; // buildings further than this from the camera keep tone + procedural windows
-const TEX_MAX_BUILDINGS = 28; // texture budget: photo atlases resident at once (nearest first, LRU eviction)
-const TEX_CONCURRENCY = 4;
-const TEX_MAX_FAILURES = 3; // consecutive failed loads before photo mode switches itself off (no 404 spam)
+const GROUNDFLOOR_URL = './data/cph-groundfloor.json';
+const ENTRANCES_URL = './data/cph-entrances.json';
+const PHOTO_MAX_FAILURES = 3; // consecutive failed loads before photo mode switches itself off (no 404 spam)
 
 function toBufferGeometry(wall) {
   const g = new THREE.BufferGeometry();
@@ -33,9 +37,25 @@ function toBufferGeometry(wall) {
   g.setAttribute('facadeWall', new THREE.Float32BufferAttribute(wall.facadeWall, 4));
   g.setAttribute('facadeBldg', new THREE.Float32BufferAttribute(wall.facadeBldg, 4));
   g.setAttribute('facadeTone', new THREE.Float32BufferAttribute(wall.facadeTone, 4));
+  g.setAttribute('facadeWindow', new THREE.Float32BufferAttribute(wall.facadeWindow, 4));
+  g.setAttribute('facadeTop', new THREE.Float32BufferAttribute(wall.facadeTop, 1));
   g.setIndex(new THREE.BufferAttribute(new Uint32Array(wall.index), 1));
   g.computeBoundingSphere();
   return g;
+}
+
+function makeDoorMesh(doorAcc, material) {
+  if (!doorAcc.index.length) return null;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(doorAcc.position, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(doorAcc.normal, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(doorAcc.color, 3));
+  g.setIndex(new THREE.BufferAttribute(new Uint32Array(doorAcc.index), 1));
+  g.computeBoundingSphere();
+  const mesh = new THREE.Mesh(g, material);
+  mesh.castShadow = mesh.receiveShadow = true;
+  mesh.name = 'entrance-doors';
+  return mesh;
 }
 
 function roofGeometry(roof) {
@@ -190,9 +210,11 @@ function createInfoPanel() {
         info.appearance?.wall ? row('Wall colour', `${swatch(info.appearance.wall.tone)}${e(info.appearance.wall.text)}${info.appearance.wall.photo ? ' + photo' : ''}`, info.appearance.wall.kind === 'observed' ? 'measured' : info.appearance.wall.kind === 'prior' ? 'scaled' : 'inferred') : '',
         ...(info.appearance?.wall?.flags || []).map((t) => `<div style="padding:1px 0;color:#e7c27a;font-size:11px">${e(t)}</div>`),
         info.appearance?.roof ? row('Roof colour', `${swatch(info.appearance.roof.tone)}${e(info.appearance.roof.text)}`, info.appearance.roof.kind === 'observed' ? 'measured' : 'inferred') : '',
+        info.appearance?.detail ? row('Detail', e(info.appearance.detail.text), 'inferred') : '',
         info.roofSource ? row('Roof geometry', e(info.roofSource), info.roofSource.startsWith('LoD2') ? 'measured' : 'inferred') : '',
         row('Wall', e(info.wallMaterial), c.wall_material),
         row('Facade', `floor ${e(f.floor_h)} m, bay ${e(f.bay_w)} m, ${e(f.ground_type)}`, c.facade ?? 'inferred'),
+        info.doors ? row('Entrances', info.doors.source === 'dar' ? `${info.doors.count} from DAR adgangspunkt` : info.doors.source === 'heuristic' ? `${info.doors.count} street door${info.doors.count === 1 ? '' : 's'}, placed by heuristic` : 'none', info.doors.conf) : '',
         row('Record', e(info.conf)),
         `<div style="margin-top:6px;opacity:.55;font-size:10px;word-break:break-all">${e((info.src || []).join(', '))}</div>`
       ].join('');
@@ -202,22 +224,18 @@ function createInfoPanel() {
   };
 }
 
-/** `?tex=1` (or `?debug=tex`): wall photos from data/tex for the buildings near the camera. */
-function texRequested() {
-  if (typeof location === 'undefined') return false;
-  const q = new URLSearchParams(location.search);
-  return q.get('tex') === '1' || (q.get('debug') || '').split(',').includes('tex');
-}
-
 /**
- * Lazy photo walls. Per building one small mesh (photo quads of the usable atlas strips, lifted 2.5 cm off the extruded
- * wall so they win the depth test) with its own atlas texture. Only the TEX_MAX_BUILDINGS nearest buildings within
- * TEX_RADIUS of the camera are resident (LRU); everything else keeps tone + procedural windows. The atlas folder is probed
- * once with the first atlas; if it is absent (data/tex is gitignored) photo mode turns itself off quietly.
+ * Lazy photo walls (default on, `?tex=0` disables). Per building one small mesh (photo quads of the usable atlas strips on
+ * the extruded wall, depth-biased instead of lifted) with its own atlas texture and photo material. Residency is the LOD
+ * policy of js/facade-lod.js: the nearest PHOTO.budget buildings within PHOTO.residency metres of the camera; the material
+ * fades each photo into the tone + procedural facade between PHOTO.near and PHOTO.far. The processed look atlas
+ * (data/tex-look, RGBA with window and unobserved masks) is read first, the raw JPEG atlas as fallback. If neither folder
+ * is present (both are gitignored) photo mode turns itself off quietly.
  */
 function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {}) {
-  const state = { enabled: true, probed: false, failures: 0, resident: new Map(), loading: new Set(), failed: new Set(), lastRun: 0, loaded: 0 };
+  const state = { enabled: true, probed: false, failures: 0, resident: new Map(), loading: new Set(), failed: new Set(), lastRun: 0, loaded: 0, look: 0, raw: 0 };
   const loader = typeof createImageBitmap === 'function';
+  const byId = new Map(candidates.map((c) => [c.id, c]));
 
   async function fetchBitmap(file) {
     const response = await fetchImpl(`./data/${file}`);
@@ -226,36 +244,47 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
     return createImageBitmap(blob, { imageOrientation: 'none', premultiplyAlpha: 'none' });
   }
 
+  async function atlasBitmap(c) {
+    try {
+      return { bitmap: await fetchBitmap(lookFile(c.walls.file)), hasMask: true };
+    } catch {
+      return { bitmap: await fetchBitmap(c.walls.file), hasMask: false };
+    }
+  }
+
   async function load(c) {
     state.loading.add(c.id);
     try {
-      const bitmap = await fetchBitmap(c.walls.file);
+      const { bitmap, hasMask } = await atlasBitmap(c);
       const texture = new THREE.Texture(bitmap);
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.generateMipmaps = true;
       texture.minFilter = THREE.LinearMipmapLinearFilter;
       texture.magFilter = THREE.LinearFilter;
-      texture.anisotropy = 4;
+      texture.anisotropy = 8;
       texture.flipY = false;
       texture.needsUpdate = true;
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(c.walls.position, 3));
       g.setAttribute('normal', new THREE.Float32BufferAttribute(c.walls.normal, 3));
       g.setAttribute('uv', new THREE.Float32BufferAttribute(c.walls.uv, 2));
+      g.setAttribute('wallUV', new THREE.Float32BufferAttribute(c.walls.wallUV, 2));
       g.setIndex(c.walls.index);
       g.computeBoundingSphere();
-      const material = new THREE.MeshStandardNodeMaterial({ map: texture, color: 0x8c8c8c, roughness: 0.9, metalness: 0.0 }) // photos already carry their sun: scaled down so the engine light does not double it;
+      const material = createPhotoMaterial(texture, { hasMask, tone: c.tone, brick: c.brick, layout: c.layout });
       const mesh = new THREE.Mesh(g, material);
       mesh.name = `wall-photos-${c.id}`;
       mesh.receiveShadow = true;
+      mesh.renderOrder = 2;
       mesh.raycast = () => {}; // picking uses the extruded walls underneath
       root.add(mesh);
       state.resident.set(c.id, { mesh, texture, material, bitmap, last: performance.now() });
       state.loaded++;
+      if (hasMask) state.look++; else state.raw++;
       state.failures = 0;
     } catch (error) {
       state.failed.add(c.id);
-      if (++state.failures >= TEX_MAX_FAILURES) {
+      if (++state.failures >= PHOTO_MAX_FAILURES) {
         state.enabled = false;
         console.info('[cph] wall photos unavailable (data/tex missing or unreadable); keeping tone + procedural facades:', error?.message || error);
       }
@@ -279,25 +308,19 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
   function update(x, z, now = performance.now()) {
     if (!state.enabled || !loader || now - state.lastRun < 350) return;
     state.lastRun = now;
-    const near = [];
-    for (const c of candidates) {
-      const d = Math.hypot(c.cx - x, c.cz - z);
-      if (d < TEX_RADIUS && !state.failed.has(c.id)) near.push([d, c]);
-    }
-    near.sort((a, b) => a[0] - b[0]);
-    const want = near.slice(0, TEX_MAX_BUILDINGS);
-    const wantIds = new Set(want.map(([, c]) => c.id));
-    for (const id of [...state.resident.keys()]) if (!wantIds.has(id) && !near.some(([, c]) => c.id === id)) evict(id);
-    // Over budget: drop the farthest residents that are no longer wanted
-    for (const id of [...state.resident.keys()]) if (!wantIds.has(id) && state.resident.size + state.loading.size > TEX_MAX_BUILDINGS) evict(id);
-    const todo = want.filter(([, c]) => !state.resident.has(c.id) && !state.loading.has(c.id));
+    const { want, inRange } = selectPhotoSet(candidates, x, z);
+    const wantSet = new Set(want);
+    for (const id of [...state.resident.keys()]) if (!inRange.has(id)) evict(id);
+    // Over budget: drop the residents that lost their slot to a nearer building
+    for (const id of [...state.resident.keys()]) if (!wantSet.has(id) && state.resident.size + state.loading.size > PHOTO.budget) evict(id);
+    const todo = want.filter((id) => !state.resident.has(id) && !state.loading.has(id) && !state.failed.has(id)).map((id) => byId.get(id));
     const run = async () => {
       if (!state.probed && todo.length) {
         state.probed = true;
-        await load(todo.shift()[1]); // the first atlas doubles as the presence probe
+        await load(todo.shift()); // the first atlas doubles as the presence probe
         if (!state.enabled) return;
       }
-      for (const [, c] of todo.slice(0, Math.max(0, TEX_CONCURRENCY - state.loading.size))) if (state.enabled) load(c);
+      for (const c of todo.slice(0, Math.max(0, PHOTO.concurrency - state.loading.size))) if (state.enabled) load(c);
     };
     run();
   }
@@ -305,7 +328,29 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
   return { state, update, evict, get active() { return state.resident.size; } };
 }
 
-async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoPanel = true, lod2 = null, tex = texRequested(), observed = true, terrain = null } = {}) {
+/** Venues (data/cph-groundfloor.json, tools/cph-geodata/groundfloor.py); the file is optional: without it only BBR trade use gives shops. */
+async function loadVenues(fetchImpl = globalThis.fetch) {
+  try {
+    const response = await fetchImpl(GROUNDFLOOR_URL);
+    if (!response.ok) return [];
+    return (await response.json()).venues || [];
+  } catch {
+    return [];
+  }
+}
+
+/** Real entrances (data/cph-entrances.json, tools/cph-geodata/entrances.py); optional: without it every door is the heuristic one. */
+async function loadEntrances(fetchImpl = globalThis.fetch) {
+  try {
+    const response = await fetchImpl(ENTRANCES_URL);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoPanel = true, lod2 = null, tex = texRequested(), observed = true, terrain = null, venues = null, entrances = undefined } = {}) {
   const buildings = geo.buildings || [];
   const heroIds = new Set((geo.heroes || []).map((h) => h.building_id));
   const byId = new Map(buildings.map((b) => [b.id, b]));
@@ -322,7 +367,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     tree.insert({ cx, cz, b });
   }
 
-  const masonry = createPreWarBuildingMaterial({ wallAttr: true, cornerPier: 0.9, windowRatioY: 0.55, seed: 7.0 });
+  const masonry = createPreWarBuildingMaterial({ wallAttr: true, cornerPier: FACADE_CORNER_PIER, windowRatioY: WINDOW.ratioY, seed: 7.0 });
   const glass = createCurtainWallMaterial({ wallAttr: true, seed: 3.0 });
   const roofMaterial = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.88, metalness: 0.02 });
   roofMaterial.name = 'cph-roof';
@@ -330,6 +375,13 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
   roofMaterial.roughnessNode = attribute('roofMat', 'vec2').x;
   roofMaterial.metalnessNode = attribute('roofMat', 'vec2').y;
 
+  // Ground-floor kinds per wall: street side from the road network, party walls from neighbouring footprints, shops from venue data
+  const entranceDoc = entrances === undefined ? await loadEntrances() : entrances;
+  const ground = createGroundContext({ roads: geo.roads || [], buildings, venues: venues ?? (await loadVenues()), entrances: entranceDoc ? createEntranceIndex(entranceDoc) : null });
+  let doorCount = 0;
+  const doorInfo = new Map(); // building id -> { source: 'dar' | 'heuristic' | 'none', count, conf } for the info panel
+  const doorMaterial = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.05 });
+  doorMaterial.name = 'cph-entrance-doors';
   const leaves = [];
   const pickables = [];
   const glassAcc = createAccumulator();
@@ -351,14 +403,20 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
   const leafNodes = collectLeaves(tree);
   for (const leaf of leafNodes) {
     const acc = createAccumulator();
+    const doorAcc = createDoorAccumulator();
     for (const { b } of leaf.items) {
       const glassy = b.wall_material === 'glas';
       const quads = tex && observed && !glassy && b.observed?.atlas?.walls?.length ? [] : null;
-      const added = addBuilding(acc, b, { ...(glassy ? { wallAcc: glassAcc } : {}), ...(lod2Records.has(b.id) ? { lod2: lod2Records.get(b.id) } : {}), ...(quads ? { quads } : {}), ...(observed ? {} : { observed: false }), ...(terrain ? { terrain } : {}) });
+      const added = addBuilding(acc, b, { ground, ...(glassy ? { wallAcc: glassAcc } : {}), ...(lod2Records.has(b.id) ? { lod2: lod2Records.get(b.id) } : {}), ...(quads ? { quads } : {}), ...(observed ? {} : { observed: false }), ...(terrain ? { terrain } : {}) });
       if (added) triangles += added.wallTriangles + added.roofTriangles;
+      if (added?.doorInfo) doorInfo.set(b.id, added.doorInfo);
+      if (added?.doors?.length) doorCount += addDoors(doorAcc, added.doors, { ground: b.ground, heightAt: terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null });
       if (added && quads) {
         const walls = texturedWalls(b, quads, added.mapping);
-        if (walls) { const [cx, cz] = ringCentre(b.ring); texCandidates.push({ id: b.id, cx, cz, walls }); }
+        if (walls) {
+          const [cx, cz] = ringCentre(b.ring);
+          texCandidates.push({ id: b.id, cx, cz, walls, tone: added.mapping.buildingTone, brick: added.style.mat === 0, layout: added.layout });
+        }
       }
     }
     const group = new THREE.Group();
@@ -374,11 +432,14 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     if (acc.roof.index.length) {
       const roofMesh = new THREE.Mesh(roofGeometry(acc.roof), roofMaterial);
       roofMesh.userData.ranges = acc.roofRanges.filter((r) => r.end > r.start);
+      roofMesh.userData.detailRanges = acc.detailParts;
       roofMesh.castShadow = roofMesh.receiveShadow = true;
       roofMesh.name = 'roofs';
       group.add(roofMesh);
       pickables.push(roofMesh);
     }
+    const doorMesh = makeDoorMesh(doorAcc, doorMaterial);
+    if (doorMesh) group.add(doorMesh);
     const bounds = leaf.bounds;
     group.userData.centre = [(bounds.minX + bounds.maxX) / 2, (bounds.minZ + bounds.maxZ) / 2];
     group.userData.radius = Math.hypot(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ) / 2;
@@ -409,12 +470,19 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
       if (b) heroIds.delete(hero.building_id);
       if (b) {
         const acc = createAccumulator();
-        addBuilding(acc, b, terrain ? { terrain } : {});
+        const added = addBuilding(acc, b, { ground, ...(terrain ? { terrain } : {}) });
+        if (added?.doorInfo) doorInfo.set(b.id, added.doorInfo);
+        const heroDoors = createDoorAccumulator();
+        if (added?.doors?.length) doorCount += addDoors(heroDoors, added.doors, { ground: b.ground, heightAt: terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null });
         const group = new THREE.Group();
+        const heroDoorMesh = makeDoorMesh(heroDoors, doorMaterial);
+        if (heroDoorMesh) group.add(heroDoorMesh);
         const wm = new THREE.Mesh(toBufferGeometry(acc.wall), masonry);
         wm.userData.ranges = acc.wallRanges;
         const rm = new THREE.Mesh(roofGeometry(acc.roof), roofMaterial);
         rm.userData.ranges = acc.roofRanges;
+        rm.userData.detailRanges = acc.detailParts;
+        rm.name = 'roofs';
         for (const m of [wm, rm]) { m.castShadow = m.receiveShadow = true; group.add(m); pickables.push(m); }
         root.add(group);
         leaves.push(Object.assign(group, {}));
@@ -455,7 +523,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
       while (o && !o.userData.buildingId) o = o.parent;
       if (o?.userData.buildingId) return { id: o.userData.buildingId, point: hit.point, distance: hit.distance };
       const range = hit.object.userData.ranges && rangeAt(hit.object.userData.ranges, hit.faceIndex);
-      if (range) return { id: range.id, point: hit.point, distance: hit.distance, surface: hit.object.name === 'roofs' ? 'roof' : 'wall' };
+      if (range) return { id: range.id, point: hit.point, distance: hit.distance, surface: rangeAt(hit.object.userData.detailRanges || [], hit.faceIndex) ? 'detail' : hit.object.name === 'roofs' ? 'roof' : 'wall' };
     }
     return null;
   }
@@ -464,6 +532,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     const b = byId.get(id);
     if (!b || !panel) return null;
     const info = describeBuilding(b, lod2?.entry(id));
+    info.doors = doorInfo.get(id) || null;
     info.appearance = describeAppearance(b, hit?.surface || 'wall', hit?.point || null, { textured: !!texManager?.state.resident.has(id) });
     panel.show(info, isPinned);
     return info;
@@ -496,7 +565,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
 
   const stats = {
     tex: texManager ? { candidates: texCandidates.length } : null,
-    buildings: buildings.length - heroIds.size, heroes: heroStatus, cells: leaves.length, triangles, lod2: lod2Records.size, neon: neon.stats,
+    buildings: buildings.length - heroIds.size, heroes: heroStatus, cells: leaves.length, triangles, doors: doorCount, lod2: lod2Records.size, neon: neon.stats,
     meshes: pickables.length + heroGroups.reduce((n, g) => n + g.children[0].children.length, 0)
   };
 
