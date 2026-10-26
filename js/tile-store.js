@@ -14,7 +14,10 @@
 import { parseLod2Record } from './lod2-geometry.js';
 import { decodeGrid } from './terrain-cph.js';
 import { tilesForLocalBbox } from './tile-grid.js';
+import { dataUrl, isRemoteBase } from './data-config.js';
 
+/** The tile directory of this page: `<data base>/tiles` (js/data-config.js: `?data=` or the build default, './data' locally). */
+export const tilesUrl = () => dataUrl('tiles');
 export const TILES_URL = './data/tiles';
 export const TILE_VERSION = 'cph-tiles/1';
 
@@ -194,7 +197,7 @@ export function createTileLod2(meta, fetchBin) {
  * Opens data/tiles/index.json. Null when absent or not cph-tiles/1: the engine then loads the monolithic files.
  * @returns {Promise<null | { index, ids: string[], tilesForLocalBbox, loadCity, loadTiles, loadArea }>}
  */
-export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThis.fetch } = {}) {
+export async function openTileStore({ baseUrl = tilesUrl(), fetchImpl = globalThis.fetch } = {}) {
   let index;
   try {
     const response = await fetchImpl(`${baseUrl}/index.json`, { cache: 'no-cache' });
@@ -206,8 +209,10 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
   }
   if (index?.version !== TILE_VERSION || !index.tiles) return null;
 
+  const remote = isRemoteBase(baseUrl);
   const json = async (url, signal) => {
-    const r = await fetchImpl(url, { cache: 'no-cache', ...(signal ? { signal } : {}) });
+    // remote data sits under a version prefix and is served with long cache headers: let the browser cache it
+    const r = await fetchImpl(url, { cache: remote ? 'default' : 'no-cache', ...(signal ? { signal } : {}) });
     if (!r.ok) throw new Error(`HTTP ${r.status} ${url}`);
     return r.json();
   };

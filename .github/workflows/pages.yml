@@ -1,0 +1,49 @@
+name: Deploy static site to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Stage site files
+        env:
+          # Citywide data (tiles, city, facade atlases) lives on Cloudflare R2, not in the Pages artifact (1 GB limit).
+          # Override with the repository variable CPH_DATA_URL; bump the vN segment after republishing the data
+          # (tools/hosting/upload_r2.py --version vN).
+          CPH_DATA_URL: ${{ vars.CPH_DATA_URL || 'https://pub-74be4ee48611455badf5e844894d286f.r2.dev/v1' }}
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          cp index.html _site/
+          cp -R css js _site/
+          # point the engine's data base (js/data-config.js BUILD_DATA_BASE) at R2
+          sed -i "s|^export const BUILD_DATA_BASE = .*|export const BUILD_DATA_BASE = '${CPH_DATA_URL%/}';|" _site/js/data-config.js
+          grep -q "BUILD_DATA_BASE = 'https://" _site/js/data-config.js
+          touch _site/.nojekyll
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

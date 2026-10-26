@@ -17,6 +17,7 @@ import { CPH_FRAME, toLocal } from './city-config.js';
 import { disposeTree } from './dispose-tree.js';
 import { nextFrame } from './yield-frame.js';
 import { createHeroCache } from './hero-cache.js';
+import { dataUrl } from './data-config.js';
 
 // js/buildings-real.js
 // Copenhagen's real buildings (M2): every geodata building is extruded from its measured footprint (rings with holes)
@@ -239,7 +240,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch, budg
   const byId = new Map(candidates.map((c) => [c.id, c]));
 
   async function fetchBitmap(file) {
-    const response = await fetchImpl(`./data/${file}`);
+    const response = await fetchImpl(dataUrl(file)); // data/tex-look/<id>.webp, data/tex/<id>.jpg (js/data-config.js)
     if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
     const blob = await response.blob();
     return createImageBitmap(blob, { imageOrientation: 'none', premultiplyAlpha: 'none' });

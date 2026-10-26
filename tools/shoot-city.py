@@ -25,7 +25,7 @@ out = args.out if os.path.isabs(args.out) else os.path.join(root, args.out)
 os.makedirs(out, exist_ok=True)
 W, H = (int(v) for v in args.size.split('x'))
 
-s = socket.socket(); s.bind(('127.0.0.1', 0)); port = s.getsockname()[1]; s.close()
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(('127.0.0.1', int(os.environ.get('SHOOT_PORT', 0)))); port = s.getsockname()[1]; s.close()
 server = subprocess.Popen([sys.executable, '-m', 'http.server', str(port), '--bind', '127.0.0.1'], cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1)
 
@@ -53,6 +53,12 @@ try:
         logs = []
         page.on('console', lambda m: logs.append(f'{m.type}: {m.text}'))
         page.on('pageerror', lambda e: logs.append(f'pageerror: {e}'))
+        from urllib.parse import urlparse
+        hosts, failed, status = {}, [], {}
+        page.on('response', lambda r: (hosts.__setitem__(urlparse(r.url).netloc, hosts.get(urlparse(r.url).netloc, 0) + 1), status.__setitem__((urlparse(r.url).netloc, r.status), status.get((urlparse(r.url).netloc, r.status), 0) + 1)))
+        not404 = []
+        page.on('response', lambda r: not404.append(r.url) if r.status == 404 else None)
+        page.on('requestfailed', lambda r: failed.append(f'{r.url} {r.failure}'))
         q = 'hooks' + (f'&stream={args.stream}' if args.stream else '') + (f'&{args.query}' if args.query else '')
         t0 = time.time()
         page.goto(f'http://127.0.0.1:{port}/index.html?{q}')
@@ -80,6 +86,9 @@ try:
             print(f'{name}: settled in {time.time() - t1:.1f} s', json.dumps(sn))
         errs = [l for l in logs if l.startswith(('error', 'pageerror'))]
         print('\n'.join(l for l in logs if l.startswith(('warning', 'log: [init]')))[:3000])
+        print('REQUESTS by host:', json.dumps(hosts), 'status:', json.dumps({f'{h} {c}': n for (h, c), n in status.items()}))
+        print('404s:', [u for u in not404[:6]])
+        print('FAILED requests:', len(failed)); print('\n'.join(failed[:10]))
         print('ERRORS:', len(errs)); print('\n'.join(errs[:20]))
         code = 1 if errs else 0
         browser.close()

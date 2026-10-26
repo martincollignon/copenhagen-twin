@@ -142,6 +142,24 @@ node tools/audit/oneway.mjs                                     # cars and cycli
 Look shots for lakes, trees and night lighting: `uv run --with playwright python tools/shoot-look.py --tag after` (docs/look/lakes-trees).
 `uv run tools/cph-geodata/basins.py` adds the per-basin water levels to `data/cph-lakes.json` (after `lakes.py`).
 
+## Hosting the citywide data
+
+The app (index.html, css, js) is deployed by GitHub Pages; the citywide data is too big for Pages (1 GB limit) and for git, so it sits on Cloudflare R2 (free egress), bucket `cph-twin-data`, public through its r2.dev URL, under a version prefix:
+
+```
+<public url>/v1/tiles/   index.json + <tile id>/<layer>.json|bin    from data/tiles
+<public url>/v1/city/    meta, roadgraph, streets, post, far.bin ...  from data/city (the files the index and post.json name)
+<public url>/v1/tex-look/ <building>.webp facade atlases              from gs://lun-integrations-dev-cph-twin/skraafoto/tex-look
+```
+
+**Engine.** `js/data-config.js` holds the one data base URL (`BUILD_DATA_BASE`, default `./data`, so local dev is unchanged). It is used for the tile store (`<base>/tiles`, and the city files through the tile index) and the facade atlases (`<base>/tex-look/...`). `?data=<url>` overrides it for one session (`?data=https://pub-74be4ee48611455badf5e844894d286f.r2.dev/v1`); `?tiles=<url>` still overrides the tile directory alone. Remote data is cached by the browser normally, local data is revalidated on every load as before.
+
+**Pages build.** `.github/workflows/pages.yml` publishes only index.html, css and js and rewrites `BUILD_DATA_BASE` to the repository variable `CPH_DATA_URL` (default: the r2.dev URL above, `v1`).
+
+**Publishing data.** `python3 tools/hosting/upload_r2.py [--version v1] [--only tiles,city,tex-look] [--dry-run]`. It lists the bucket and skips objects whose size and MD5 match, so rerun it after regenerating tiles or atlases. JSON is stored gzip-compressed (`Content-Encoding: gzip`, 1.2 GB of tiles become about 270 MB); layers and atlases get `Cache-Control: public, max-age=31536000, immutable`, the roots (`tiles/index.json`, `city/post.json`, `city/meta.json`) `no-cache`. Because of the immutable headers, publish regenerated data that visitors may already have cached under a new version (`--version v2`), then set `CPH_DATA_URL` to `.../v2`. Objects are written through the small ingest Worker in `tools/hosting/ingest-worker` (the Cloudflare REST object API allows about 4 requests/s, too slow for 158k atlases); its URL and secret are in `~/.config/cph-twin/r2-ingest.json`, never in the repo. GCS is read with an ADC access token (`gcloud auth application-default print-access-token`).
+
+**One-time bucket setup** (done): `wrangler r2 bucket create cph-twin-data`, `wrangler r2 bucket dev-url enable cph-twin-data`, `wrangler r2 bucket cors set cph-twin-data --file tools/hosting/cors.json` (GET/HEAD from https://martincollignon.github.io and localhost:8000/8080/3000/5173), `wrangler deploy` in `tools/hosting/ingest-worker` plus `wrangler secret put INGEST_KEY`. All in the Plans Cloudflare account. The r2.dev endpoint is rate limited and not CDN-cached; for launch traffic put a custom domain on the bucket (Cloudflare dashboard, R2, Settings, Custom Domains) and set `CPH_DATA_URL` to it.
+
 ## Licence and attributions
 
 The project code is available under the [MIT License](LICENSE).
