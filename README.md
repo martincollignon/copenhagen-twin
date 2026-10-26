@@ -22,6 +22,38 @@ Useful query parameters: `?debug=footprints` draws the geodata's buildings, wate
 
 `?water=simple` drops the planar reflection pass of the lakes (sky reflection only), `?debug=nowater` shows the plain ground, `?debug=nocal` the uncalibrated facade tones.
 
+Lighting uses 26 October 2026 in Europe/Copenhagen: Golden Hour at 16:10, Midday at 12:00, Blue Hour at 17:20, and Night at 23:00. The solar position follows NOAA equations with the local UTM grid correction; the sun switches off below the horizon. AgX tone mapping and restrained saturation keep the sky and water pale.
+
+| Query | Behaviour |
+|---|---|
+| `?date=2026-06-21` | Changes the scene date, retaining each preset's local clock time; CET/CEST is handled automatically. |
+| `?time=12:00` | Overrides the solar clock time; the selected preset still supplies its lighting mood. |
+| `?sky=overcast` | Broken overcast clouds, reduced sunlight, more daylight sky fill, and wetness 0.35. Clear remains the default. |
+| `?wet=0.7` | Overrides ground wetness from 0 to 1; clear presets default to dry. |
+| `?ao=1` | Enables half-resolution GTAO at 0.6 strength. It remains opt-in pending a GPU cost measurement. |
+
+The lake promenade is inferred at runtime from the lake rings because this checkout lacks `data/raw/`. It supplies a four-metre gravel path and a two-metre grass bank where roads, bridges, buildings and registered surfaces leave space, using the existing surface renderer. These are approximate bands, not surveyed path outlines. Connected large Søerne basins use a +0.35 m visual water-level adjustment relative to the DTM; small lakes and ponds keep their measured levels. Terrain still controls the shoreline, so freeboard varies near banks and bridge approaches. Some land-side bank samples on `lake:1` and `lake:2` lie below the corrected water elevation, outside the water footprint; their profile needs visual review before any coordinated terrain and walking-height correction.
+
+Capture and benchmark the atmospheric changes on a machine that permits a local browser/server:
+
+```sh
+uv run --with playwright python tools/shoot-m2.py --water --out .context/after-water
+uv run --with playwright python tools/shoot-m2.py --water --query 'sky=overcast&wet=0.35' --out .context/after-overcast
+uv run --with playwright python tools/shoot-m2.py --audit-sweep --out .context/after-atmos-sweep
+uv run --with playwright python tools/shoot-m2.py --perf --query 'ao=0'
+uv run --with playwright python tools/shoot-m2.py --perf --query 'ao=1'
+```
+
+The lead supplied browser captures for visual review: the lake benchmark recorded 37.7 FPS with planar reflection and 47.3 FPS with sky-only water. These measurements precede the subsequent shader, haze and coping-join corrections. This implementation sandbox still denies the screenshot server's localhost socket bind, so those corrections need a fresh browser capture. GTAO cost remains unmeasured: compare the two unthrottled `--perf` runs at 1440×900 before enabling it by default; its additional frame cost must stay below 2 ms. The water captures preserve `--query` overrides and switch the lighting and colour grade together through the preset UI.
+
+Wet ground supplies its SSR weight through material context, which only the main scene MRT consumes. Material-level MRT overrides cannot be used here: the planar reflection target has an unnamed colour attachment and would produce an empty WGSL output structure. `tools/shader-pass-matrix.mjs` checks canvas, planar reflection, main MRT, partial normal/depth output, and Three's shadow-map override, including contact effects and colour-write/output overrides. With the matching Three bundles and loader cached locally:
+
+```sh
+node --experimental-loader /private/tmp/dlb-three/loader.mjs tools/shader-pass-matrix.mjs
+```
+
+Clear midday haze uses density 0.00013 (about 12% attenuation at 1 km) and caps fog in-scatter luminance at 0.48 scene-linear to prevent the HDR sun lobe from washing out buildings. Where terrain sits below the coping, a landward granite face now joins the ledge to the gravel; inferred gravel overlaps the coping edge by 5 mm.
+
 Tests (Node 20+, no dependencies):
 
 ```sh

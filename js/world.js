@@ -9,6 +9,7 @@ import { buildDirectionOverlay } from './direction-overlay.js';
 import { buildSignalHeads } from './signal-heads-cph.js';
 import { createWalkSpace } from './walk-space-cph.js';
 import { buildLakes } from './water-cph.js';
+import { buildLakePromenadeSurfaces } from './lake-promenade-cph.js';
 import { setCalibration } from './appearance.js';
 import { applySurfaceCuts } from './lakes-cph.js';
 import { loadCphFurniture } from './street-furniture-data.js';
@@ -347,6 +348,20 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   let surfacesCut = null;
   if (geo?.roadGraph && !debug.split(',').includes('noroads')) {
     surfacesCut = applySurfaceCuts(await loadCphSurfaces(), mergeSurfaceCuts(lakesDoc?.surface_cuts, geo.surfaceCuts));
+    if (lakesDoc?.lakes?.length) {
+      const promenade = buildLakePromenadeSurfaces(lakesDoc, {
+        existingSurfaces: surfacesCut?.surfaces,
+        roads: geo.roads,
+        cycleTracks: geo.cycleTracks,
+        sidewalks: geo.sidewalks,
+        buildings: geo.buildings,
+        bridges: lakesDoc.bridges,
+        bbox: geo.frame?.bbox
+      });
+      if (promenade.length) {
+        surfacesCut = { ...(surfacesCut || {}), surfaces: [...(surfacesCut?.surfaces || []), ...promenade] };
+      }
+    }
     traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: surfacesCut, terrain, debug });
   }
 

@@ -249,7 +249,7 @@ export function buildPavementBuckets(geo, surfacesDoc, { roads, y, groundY, skip
   }
   // register polygons that are not pavements (park paths, squares, gravel); drawn just above the ground plane
   for (const s of surfacesDoc?.surfaces || []) {
-    if (!s.ring || s.ring.length < 6 || s.cls === 'grass') continue;
+    if (!s.ring || s.ring.length < 6) continue;
     // holes (lawns inside a path network) are carved out by the triangulation
     tessellateFramed(s.ring, {
       holes: s.holes,

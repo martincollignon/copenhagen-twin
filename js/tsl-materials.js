@@ -74,7 +74,7 @@ const cityUniforms = {
   uSkyHorizonColor: uniform(new THREE.Color(0xebd1b5)),
   uSkySunDir: uniform(new THREE.Vector3(-0.66, 0.34, -0.67).normalize()),
   uInteriorGlow: uniform(0.78),
-  uRoadWetness: uniform(0.38),
+  uRoadWetness: uniform(0),
   uCanyonBounce: uniform(0.52)
 };
 
