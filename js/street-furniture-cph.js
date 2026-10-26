@@ -1,5 +1,4 @@
 import * as THREE from 'three/webgpu';
-import { attribute, mix, vec3 } from 'three/tsl';
 import { BODY_SPECS, buildCarGeometry, buildCarProxyGeometry, createLoftedCarMaterial } from './actor-models.js';
 import {
   TREE_STYLES, buildFurniturePlan, composeYaw, composeYawPitch, indexItems, planCounts
@@ -10,7 +9,7 @@ import { resolveGenus } from './tree-species-cph.js';
 import { alignLakeFurniture } from './lake-furniture-cph.js';
 import { buildPoolWindow, encodePoolWindow, haloSize, lampPhotometry, realIntensity, selectRealLights } from './night-lights-cph.js';
 import { POOL, poolUniforms, setPoolWindow } from './pool-light-cph.js';
-import { Fn, attribute, cameraPosition, cross, float, length, normalize, positionLocal, smoothstep, uniform, uv, vec3, vec4, exp, abs } from 'three/tsl';
+import { Fn, attribute, cameraPosition, cross, float, length, mix, normalize, positionLocal, smoothstep, uniform, uv, vec3, vec4, exp, abs } from 'three/tsl';
 
 // js/street-furniture-cph.js
 // The Copenhagen street furniture (data/cph-furniture.json, see street-furniture-data.js): trees by genus with three
