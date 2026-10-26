@@ -19,40 +19,68 @@ function inside(ring, x, z) {
   return c;
 }
 
-/** Point-in-any-ring test over flat rings [x0, z0, x1, z1, ...], bucketed on a CELL grid. */
-function ringIndex(rings) {
+/**
+ * Point-in-any-ring test over flat rings [x0, z0, x1, z1, ...], bucketed on a CELL grid. `index.add(tag, rings)` /
+ * `index.remove(tag)` let a streamed city bring the footprints of a tile in and out; `ringIndex(rings)` is the one-shot form.
+ */
+function createRingIndex() {
   const hash = new Map();
-  for (const ring of rings) {
-    if (!ring || ring.length < 6) continue;
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minZ = Infinity;
-    let maxZ = -Infinity;
-    for (let i = 0; i < ring.length; i += 2) {
-      minX = Math.min(minX, ring[i]);
-      maxX = Math.max(maxX, ring[i]);
-      minZ = Math.min(minZ, ring[i + 1]);
-      maxZ = Math.max(maxZ, ring[i + 1]);
-    }
-    const poly = { ring, minX, maxX, minZ, maxZ };
-    for (let ix = Math.floor(minX / CELL); ix <= Math.floor(maxX / CELL); ix++) {
-      for (let iz = Math.floor(minZ / CELL); iz <= Math.floor(maxZ / CELL); iz++) {
-        const k = ix * 100000 + iz;
-        if (!hash.has(k)) hash.set(k, []);
-        hash.get(k).push(poly);
-      }
-    }
-  }
-  return (x, z) => {
+  const byTag = new Map(); // tag -> [[cell key, poly]]
+  const index = (x, z) => {
     for (const p of hash.get(Math.floor(x / CELL) * 100000 + Math.floor(z / CELL)) || []) {
       if (x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ && inside(p.ring, x, z)) return true;
     }
     return false;
   };
+  index.add = (tag, rings) => {
+    const refs = byTag.get(tag) || [];
+    byTag.set(tag, refs);
+    for (const ring of rings) {
+      if (!ring || ring.length < 6) continue;
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      for (let i = 0; i < ring.length; i += 2) {
+        minX = Math.min(minX, ring[i]);
+        maxX = Math.max(maxX, ring[i]);
+        minZ = Math.min(minZ, ring[i + 1]);
+        maxZ = Math.max(maxZ, ring[i + 1]);
+      }
+      const poly = { ring, minX, maxX, minZ, maxZ };
+      for (let ix = Math.floor(minX / CELL); ix <= Math.floor(maxX / CELL); ix++) {
+        for (let iz = Math.floor(minZ / CELL); iz <= Math.floor(maxZ / CELL); iz++) {
+          const k = ix * 100000 + iz;
+          if (!hash.has(k)) hash.set(k, []);
+          hash.get(k).push(poly);
+          refs.push([k, poly]);
+        }
+      }
+    }
+  };
+  index.remove = (tag) => {
+    for (const [k, poly] of byTag.get(tag) || []) {
+      const list = hash.get(k);
+      if (!list) continue;
+      const at = list.indexOf(poly);
+      if (at >= 0) list.splice(at, 1);
+      if (!list.length) hash.delete(k);
+    }
+    return byTag.delete(tag);
+  };
+  return index;
+}
+
+function ringIndex(rings) {
+  const index = createRingIndex();
+  index.add('all', rings);
+  return index;
 }
 
 export function createWalkSpace(geo, lakes = null) {
-  const inBuilding = ringIndex((geo.buildings || []).map((b) => b.ring));
+  // the footprints can change under it (streamed tiles): addBuildings / removeBuildings
+  const inBuilding = createRingIndex();
+  inBuilding.add('all', (geo.buildings || []).map((b) => b.ring));
   const inLake = ringIndex([...(lakes?.lakes || []), ...(lakes?.ponds || [])].map((l) => l.ring));
   const onBridge = ringIndex((lakes?.bridges || []).map((b) => b.ring));
   const inWater = (x, z) => inLake(x, z) && !onBridge(x, z);
@@ -61,6 +89,8 @@ export function createWalkSpace(geo, lakes = null) {
   const block = { id: 'copenhagen', poly: [] };
   return {
     inBuilding,
+    addBuildings: (tag, buildings) => inBuilding.add(tag, buildings.map((b) => b.ring)),
+    removeBuildings: (tag) => inBuilding.remove(tag),
     inWater,
     walkable: (minX, maxX, minZ, maxZ) => !blocked(minX, minZ) && !blocked(maxX, maxZ) && !blocked(minX, maxZ)
       && !blocked(maxX, minZ) && !blocked((minX + maxX) / 2, (minZ + maxZ) / 2),

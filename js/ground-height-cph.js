@@ -110,3 +110,32 @@ export function composeHeightField(terrain, offsets) {
     heightAt: (x, z) => (t ? t.heightAt(x, z) : 0) + offsets.heightAt(x, z)
   };
 }
+
+/**
+ * composeHeightField over per-tile offset grids: `addTile(id, grid, bounds)` / `removeTile(id)` as the streamer brings tiles in
+ * and out. A point reads the grid of the tile it lies in (the grids reach 20 m past their tile, so the bilinear lookup never
+ * runs off a grid inside its own tile); a tile without a grid has offset 0, i.e. bare terrain.
+ * @param {{ heightAt: Function, flat?: boolean }|null} terrain the streamed terrain (js/terrain-cph.js createStreamTerrain)
+ * @param {(x: number, z: number) => string} tileOf tile id of a local point (js/tile-grid.js tileOfLocal)
+ */
+export function createTiledHeightField(terrain, tileOf) {
+  const grids = new Map();
+  let lastId = null;
+  let last = null;
+  const offsets = {
+    heightAt(x, z) {
+      const id = tileOf(x, z);
+      if (id !== lastId) { lastId = id; last = grids.get(id) || null; }
+      return last ? last.heightAt(x, z) : 0;
+    }
+  };
+  const field = composeHeightField(terrain, offsets);
+  Object.assign(field, {
+    stream: true,
+    addTile(id, grid) { grids.set(id, grid); lastId = null; },
+    removeTile(id) { const had = grids.delete(id); lastId = null; return had; },
+    hasTile: (id) => grids.has(id)
+  });
+  Object.defineProperty(field, 'tileCount', { get: () => grids.size, enumerable: true });
+  return field;
+}

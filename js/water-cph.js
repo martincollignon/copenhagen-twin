@@ -8,6 +8,7 @@ import { buildLakeArrays, groundWithHoles, shoreDistanceField, WATER } from './l
 import { buildTerrainMeshArrays } from './terrain-cph.js';
 import { applyGroundField } from './ground-shader-cph.js';
 import { lakeDistanceFrom } from './ground-field-cph.js';
+import { getDataBbox } from './city-config.js';
 
 // js/water-cph.js
 // The Soerne as water: sunken lake surface with TSL ripples, fresnel sky/planar reflection and a soft shoreline, held by
@@ -179,19 +180,22 @@ function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
  * Builds the lakes into `scene`. Returns { group, ground, water, material, stats, update, attach, setPlanar }.
  * `ground` is the cut ground mesh (replaces the plain plane); `update(x, z)` gates the planar reflection pass.
  */
-function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -750, 750, 750], planar = true, terrain = null, parks = null, modelBridge = () => false } = {}) {
+function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = getDataBbox(), planar = true, terrain = null, parks = null, modelBridge = () => false, skipGround = false } = {}) {
   const arrays = buildLakeArrays(doc, { bbox, terrain, modelBridge });
   const group = new THREE.Group();
   group.name = 'CopenhagenLakes';
 
   // ground plane with the lakes cut out
   // (with terrain: the terrain mesh, whose cut cells follow the lake outlines; otherwise the flat plane)
-  const g = terrain && !terrain.flat ? buildTerrainMeshArrays(terrain, { uvSize: size }) : groundWithHoles(size, arrays.cutRings, arrays.islands);
+  // (`skipGround`: the streamed city cuts the ground into tiles itself, js/ground-stream.js; this still applies the ground shader)
+  const g = skipGround ? null : terrain && !terrain.flat ? buildTerrainMeshArrays(terrain, { uvSize: size }) : groundWithHoles(size, arrays.cutRings, arrays.islands);
   const groundGeometry = new THREE.BufferGeometry();
-  groundGeometry.setAttribute('position', new THREE.Float32BufferAttribute(g.position, 3));
-  groundGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
-  groundGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(g.normal || Array.from(g.position, (_, i) => (i % 3 === 1 ? 1 : 0)), 3));
-  groundGeometry.setIndex(new THREE.Uint32BufferAttribute(g.index, 1));
+  if (g) {
+    groundGeometry.setAttribute('position', new THREE.Float32BufferAttribute(g.position, 3));
+    groundGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
+    groundGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(g.normal || Array.from(g.position, (_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+    groundGeometry.setIndex(new THREE.Uint32BufferAttribute(g.index, 1));
+  }
   // fine-gravel lake path + grass (js/ground-shader-cph.js); the same raster answers `lakeDistance` (tree species context)
   const groundFieldInfo = parks ? applyGroundField(groundMaterial, doc, parks, { bbox }) : null;
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
@@ -282,7 +286,7 @@ function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -75
   return {
     group, ground, water, material, walls, field, state, setPlanar,
     lakeDistance: groundFieldInfo ? lakeDistanceFrom(groundFieldInfo.field) : null,
-    stats: { ...arrays.stats, surfaceTriangles: arrays.surface.index.length / 3, groundTriangles: g.index.length / 3 },
+    stats: { ...arrays.stats, surfaceTriangles: arrays.surface.index.length / 3, groundTriangles: g ? g.index.length / 3 : 0 },
     level: arrays.level,
     attach: ({ camera: cam }) => { camera = cam; },
     // the reflection pass renders the whole scene again: skip it from high above or far from the lakes

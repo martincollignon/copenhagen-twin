@@ -7,7 +7,7 @@ import {
 import * as G from './street-furniture-geometry.js';
 import * as T from './tree-geometry-cph.js';
 import { treeDayOfYear } from './tree-season.js';
-import { TREE_LOD, treeCapacities, originalTreeBudget, selectTreeDraws } from './tree-budget.js';
+import { TREE_LOD, TREE_CAPACITY, treeCapacities, originalTreeBudget, selectTreeDraws } from './tree-budget.js';
 import { resolveGenus } from './tree-species-cph.js';
 import { alignLakeFurniture } from './lake-furniture-cph.js';
 import { buildPoolWindow, encodePoolWindow, haloSize, lampPhotometry, realIntensity, selectRealLights } from './night-lights-cph.js';
@@ -159,20 +159,33 @@ function textSprite(text) {
   return sprite;
 }
 
-export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 1, place = null, lakeDistance = null, treeDate } = {}) {
+const PLAN_KEYS = ['trees', 'lamps', 'cars', 'meters', 'bins', 'glass', 'stands', 'bollards', 'benches', 'hoops', 'freeBikes', 'bikes', 'flags', 'shelters', 'countdowns', 'rescue', 'lakeLights', 'monuments'];
+
+/**
+ * @param {object} opts
+ *   streaming  true: `doc` is ignored and the furniture is fed tile by tile (addTile / removeTile). The instance sets are sized
+ *              for their caps instead of for the document, the tree geometry of a genus is built when its first tree arrives, and
+ *              the plan, indexes and lamp pool are rebuilt (lazily, once per frame at most) when the tile set changes.
+ *   adoptMesh  (streaming) called with the InstancedMesh of every set made after the build (a new tree genus), so the host can give it the
+ *              same treatment as the sets that existed at boot (main.js moves small instanced meshes to storage buffers)
+ */
+export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 1, place = null, lakeDistance = null, treeDate, streaming = false, adoptMesh = null } = {}) {
   // untyped laser-detected crowns get a context genus (Soerne avenues: lime / horse chestnut), js/tree-species-cph.js
-  const plan = buildFurniturePlan(doc, groundHeight, { seed, place, resolveTree: (t) => resolveGenus(t, { lakeDistance }) });
-  alignLakeFurniture(plan, lakeDistance); // benches / rescue posts face the water, lake lights project over the path
+  const resolveTree = (t) => resolveGenus(t, { lakeDistance });
+  const plan = streaming ? Object.fromEntries(PLAN_KEYS.map((k) => [k, []])) : buildFurniturePlan(doc, groundHeight, { seed, place, resolveTree });
+  if (!streaming) alignLakeFurniture(plan, lakeDistance); // benches / rescue posts face the water, lake lights project over the path
   const group = new THREE.Group();
   group.name = 'CopenhagenStreetFurniture';
   scene.add(group);
   const sets = [];
+  let booted = false;
   const mk = (name, geo, mat, cap, opts) => {
     const s = new MeshSet(name, geo, mat, cap, { ...opts, parent: group });
     sets.push(s);
+    if (booted) adoptMesh?.(s.mesh);
     return s;
   };
-  const count = (n, cap) => Math.max(1, Math.min(n, cap));
+  const count = (n, cap) => Math.max(1, streaming ? cap : Math.min(n, cap));
 
   // ------------------------------------------------------------------------------------------- trees
   const treeDay = treeDayOfYear(treeDate);
@@ -184,48 +197,56 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     if (!byGenus.has(t.genus)) byGenus.set(t.genus, []);
     byGenus.get(t.genus).push(t);
   }
-  const bill = T.createBillboardAtlas([...byGenus.keys()], treeDay);
+  // billboards: the district's genera, or (streaming) every style, because trees of any genus can arrive with a tile
+  const bill = T.createBillboardAtlas(streaming ? Object.keys(TREE_STYLES) : [...byGenus.keys()], treeDay);
   const billMat = T.createTreeMaterial(bill.texture, { billboard: true });
   const treeNear = new Map();
   const treeMid = new Map();
   const treeFar = new Map();
-  for (const [genus, list] of byGenus) {
-    treeNear.set(genus, mk(`trees-near-${genus}`, T.buildNearTree(genus, treeDay, { variation: true }), treeMat, count(list.length, 260), { seasonal: true, cast: false }));
-    treeMid.set(genus, mk(`trees-mid-${genus}`, T.buildMidTree(genus, treeDay, { variation: true }), treeMat, count(list.length, 900), { seasonal: true, cast: false }));
-    treeFar.set(genus, mk(`trees-far-${genus}`, T.buildBillboard(bill.cellOf.get(genus)), billMat, count(list.length, 4000), { seasonal: true, receive: false }));
-  }
   const treeCosts = {}, fullTreeCosts = {};
-  for (const [genus] of byGenus) {
+  /** The three LoD meshes of a genus and their triangle costs; `n` sizes the sets (the document build only). */
+  const ensureGenus = (genus, n = Infinity) => {
+    if (treeNear.has(genus)) return;
+    treeNear.set(genus, mk(`trees-near-${genus}`, T.buildNearTree(genus, treeDay, { variation: true }), treeMat, count(n, 260), { seasonal: true, cast: false }));
+    treeMid.set(genus, mk(`trees-mid-${genus}`, T.buildMidTree(genus, treeDay, { variation: true }), treeMat, count(n, 900), { seasonal: true, cast: false }));
+    treeFar.set(genus, mk(`trees-far-${genus}`, T.buildBillboard(bill.cellOf.get(genus)), billMat, count(n, 4000), { seasonal: true, receive: false }));
     treeCosts[genus] = {}; fullTreeCosts[genus] = {};
-    for (const [lod, sets] of [['near', treeNear], ['mid', treeMid], ['far', treeFar]]) {
-      const geometry = sets.get(genus).mesh.geometry;
+    for (const [lod, group] of [['near', treeNear], ['mid', treeMid], ['far', treeFar]]) {
+      const geometry = group.get(genus).mesh.geometry;
       treeCosts[genus][lod] = geometry.index.count / 3;
       fullTreeCosts[genus][lod] = geometry.userData.fullTriangles;
     }
-  }
-  const treeCaps = treeCapacities(plan.trees);
-  const originalCaps = treeCapacities(plan.trees, true);
+  };
+  for (const [genus, list] of byGenus) ensureGenus(genus, list.length);
+  const treeCaps = streaming ? {} : treeCapacities(plan.trees);
+  const originalCaps = streaming ? {} : treeCapacities(plan.trees, true);
+  const fullCaps = () => Object.fromEntries(Object.entries(TREE_CAPACITY));
   // An original genus can disappear when unspecified lakeside trees become chestnuts.
-  for (const genus of Object.keys(originalCaps)) {
-    if (fullTreeCosts[genus]) continue;
+  const ensureBaseline = (genus) => {
+    if (fullTreeCosts[genus]) return;
     const near = T.buildNearTree(genus, 190), mid = T.buildMidTree(genus, 190);
     fullTreeCosts[genus] = { near: near.index.count / 3, mid: mid.index.count / 3, far: 4 };
     near.dispose(); mid.dispose();
-  }
+  };
+  for (const genus of Object.keys(originalCaps)) ensureBaseline(genus);
   // Optional litter uses one instanced draw only when the original camera budget has room.
   const litter = mk('tree-litter', T.buildTreeLitterGeometry(), T.createTreeLitterMaterial(atlas), 1500, { receive: true });
-  const litterItems = [];
-  for (const t of plan.trees) {
-    const coverage = t.season.litter;
-    if (!['chestnut', 'lime'].includes(t.genus) || coverage <= 0) continue;
-    for (let i = 0; i < t.litterPoints.length; i += 2) {
-      if (((i * 0.61803398875 + t.tint) % 1) >= coverage) continue;
-      const x = t.litterOrigin[0] + t.litterPoints[i], z = t.litterOrigin[1] + t.litterPoints[i + 1];
-      litterItems.push({ cx: x, cz: z, x, z, y: (groundHeight ? groundHeight.heightAt(x, z) : 0) + 0.016,
-        yaw: i * 2.399 + t.yaw, size: 0.24 + (i % 5) * 0.025 });
+  const litterOf = (trees) => {
+    const out = [];
+    for (const t of trees) {
+      const coverage = t.season.litter;
+      if (!['chestnut', 'lime'].includes(t.genus) || coverage <= 0) continue;
+      for (let i = 0; i < t.litterPoints.length; i += 2) {
+        if (((i * 0.61803398875 + t.tint) % 1) >= coverage) continue;
+        const x = t.litterOrigin[0] + t.litterPoints[i], z = t.litterOrigin[1] + t.litterPoints[i + 1];
+        out.push({ cx: x, cz: z, x, z, y: (groundHeight ? groundHeight.heightAt(x, z) : 0) + 0.016,
+          yaw: i * 2.399 + t.yaw, size: 0.24 + (i % 5) * 0.025 });
+      }
     }
-  }
-  const litterIndex = indexItems(litterItems);
+    return out;
+  };
+  const litterItems = litterOf(plan.trees);
+  let litterIndex = indexItems(litterItems);
   // crowns cast their shadow from a cheap blob (leaf cards in the shadow pass cost more than the whole scene)
   const shadowOnly = std({ roughness: 1, metalness: 0 });
   shadowOnly.colorWrite = false;
@@ -294,7 +315,8 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   const poolBytes = new Uint8Array(POOL.size * POOL.size * 4);
   let poolData = null;
   // lake lights as lamp-like items for the pool raster
-  const lakeLamps = plan.lakeLights.map((l) => ({ x: l.x, z: l.z, y: l.y, lampY: l.y + 1, light: 'led', led: true, cct: 3000, watt: 12, kind: 'lake', color: l.color }));
+  const lakeLampsOf = (lights) => lights.map((l) => ({ x: l.x, z: l.z, y: l.y, lampY: l.y + 1, light: 'led', led: true, cct: 3000, watt: 12, kind: 'lake', color: l.color }));
+  let lakeLamps = lakeLampsOf(plan.lakeLights);
 
   // real lights near the camera (a fixed pool: the light count must not change, it would recompile every shader)
   const lights = [];
@@ -340,15 +362,60 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   const plinths = mk('monuments', G.buildPlinth(), std({ roughness: 0.8, metalness: 0.1 }), count(plan.monuments.length, 200), { cast: true });
 
   // ------------------------------------------------------------------------------------------- indexes and update
-  const trees = indexItems(plan.trees);
-  const lampIndex = indexItems(plan.lamps);
-  const carIndex = indexItems(plan.cars);
-  const small = {
-    meters: indexItems(plan.meters), bins: indexItems(plan.bins), stands: indexItems(plan.stands), glass: indexItems(plan.glass),
-    bollards: indexItems(plan.bollards), benches: indexItems(plan.benches), hoops: indexItems(plan.hoops), bikes: indexItems(plan.bikes),
-    flags: indexItems(plan.flags), shelters: indexItems(plan.shelters), countdowns: indexItems(plan.countdowns),
-    rescue: indexItems(plan.rescue), lakeLights: indexItems(plan.lakeLights), monuments: indexItems(plan.monuments)
+  let trees, lampIndex, carIndex, small, allLamps;
+  // the quadtrees cover the items they hold (a tile at a time when streaming)
+  const boundsOf = () => {
+    let x0 = Infinity; let z0 = Infinity; let x1 = -Infinity; let z1 = -Infinity;
+    for (const k of PLAN_KEYS) for (const it of plan[k]) { x0 = Math.min(x0, it.x); x1 = Math.max(x1, it.x); z0 = Math.min(z0, it.z); z1 = Math.max(z1, it.z); }
+    return Number.isFinite(x0) ? { minX: x0 - 10, maxX: x1 + 10, minZ: z0 - 10, maxZ: z1 + 10 } : undefined;
   };
+  const reindex = () => {
+    const b = streaming ? boundsOf() : undefined;
+    const ix = (items) => indexItems(items, b);
+    trees = ix(plan.trees);
+    lampIndex = ix(plan.lamps);
+    carIndex = ix(plan.cars);
+    small = {
+      meters: ix(plan.meters), bins: ix(plan.bins), stands: ix(plan.stands), glass: ix(plan.glass),
+      bollards: ix(plan.bollards), benches: ix(plan.benches), hoops: ix(plan.hoops), bikes: ix(plan.bikes),
+      flags: ix(plan.flags), shelters: ix(plan.shelters), countdowns: ix(plan.countdowns),
+      rescue: ix(plan.rescue), lakeLights: ix(plan.lakeLights), monuments: ix(plan.monuments)
+    };
+    lakeLamps = lakeLampsOf(plan.lakeLights);
+    allLamps = plan.lamps.concat(lakeLamps);
+  };
+  reindex();
+
+  // ------------------------------------------------------------------------------------------- streaming
+  const tilePlans = new Map(); // id -> { plan, litter }
+  let dirty = false;
+  function addTile(id, tileDoc, { place: tilePlace = place } = {}) {
+    removeTile(id);
+    if (!tileDoc) return;
+    const tp = buildFurniturePlan(tileDoc, groundHeight, { seed, place: tilePlace, resolveTree });
+    alignLakeFurniture(tp, lakeDistance);
+    for (const t of tp.trees) {
+      t.season = T.treeInstanceSeason(t.genus, treeDay, t.x, t.z, t.tint);
+      ensureGenus(t.genus);
+      ensureBaseline(t.baselineGenus);
+      treeCaps[t.genus] ||= fullCaps();
+      originalCaps[t.baselineGenus] ||= fullCaps();
+    }
+    tilePlans.set(id, { plan: tp, litter: litterOf(tp.trees) });
+    dirty = true;
+  }
+  function removeTile(id) {
+    if (tilePlans.delete(id)) dirty = true;
+  }
+  function mergeTiles() {
+    const parts = [...tilePlans.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map((e) => e[1]);
+    for (const k of PLAN_KEYS) plan[k] = parts.flatMap((p) => p.plan[k]);
+    litterItems.length = 0;
+    for (const p of parts) litterItems.push(...p.litter);
+    litterIndex = indexItems(litterItems, boundsOf());
+    reindex();
+    dirty = false;
+  }
 
   const BIN_COLOURS = [lin([0.17, 0.30, 0.22]), lin([0.30, 0.32, 0.33])];
   const BOLLARD_COLOURS = { galvanised: lin([0.62, 0.65, 0.67]), granite: lin([0.5, 0.49, 0.47]), other: lin([0.34, 0.36, 0.37]) };
@@ -365,7 +432,6 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   };
   const seen = new Set();
   const nearLamps = [];
-  const allLamps = plan.lamps.concat(lakeLamps);
 
   function rebuild(cx, cz) {
     const t0 = performance.now();
@@ -559,6 +625,7 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   function update(x, z, nightFactor = state.nightFactor) {
     const before = state.on;
     setNight(nightFactor);
+    if (dirty) { mergeTiles(); state.x = Infinity; } // the tile set changed: re-plan, re-index, redraw
     const moved = Math.hypot(x - state.x, z - state.z);
     const nightChanged = Math.abs(state.on - before) > 0.004 || (state.on > 0 && before === 0) || (state.on === 0 && before > 0);
     if (state.frames === 0 || moved > MOVE_EPS || nightChanged || state.warm > 0) {
@@ -572,11 +639,15 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     applyNight();
   }
 
+  booted = true;
   return {
     group,
     plan,
     update,
-    counts: planCounts(plan),
+    addTile,
+    removeTile,
+    get tileCount() { return tilePlans.size; },
+    get counts() { return planCounts(plan); },
     sets,
     get stats() {
       return {

@@ -6,6 +6,8 @@
 // DVR90 - origin). Outside the grid the nearest edge value is used (clamped).
 
 import { triangulatePolygon } from './polygon-cph.js';
+import { tileOfLocal } from './tile-grid.js';
+import { CPH_FRAME, getDataBbox } from './city-config.js';
 
 export const TERRAIN_URL = './data/cph-terrain.json';
 export const TERRAIN_MESH_DROP = 0.08; // the ground mesh lies this far under the field so surfaces never z-fight it
@@ -41,7 +43,7 @@ export const FLAT_TERRAIN = Object.freeze({
   lakeLevel: () => null,
   pondLevel: () => null,
   deckHeight: () => null,
-  bbox: [-770, -770, 770, 770]
+  bbox: [...CPH_FRAME.bbox]
 });
 
 /**
@@ -81,6 +83,82 @@ export function createTerrain(doc) {
     pondLevel: (id) => ponds.get(id) ?? null,
     /** Measured deck height of a bridge strip, or null. */
     deckHeight: (id) => decks.get(id) ?? null
+  };
+}
+
+/**
+ * The same height field held as per-tile chunks (js/tile-store.js `terrain` layer: int16 cm, 2 m cells, cell centres owned by
+ * the tile), so tiles can come and go with the streamer. `heightAt` clamps to the compiled grid like createTerrain, then reads
+ * the chunk the cell lives in; a cell whose tile is not resident reads 0, i.e. flat ground at the datum.
+ * `header` is the city meta's `terrain` entry (bbox, cell, width, height, lakes, ponds, bridges, cut ...).
+ * Pinned chunks (the tiles under the lakes, whose rims are baked into the water meshes at boot) are never removed.
+ */
+export function createStreamTerrain(header) {
+  const { width: w, height: h, cell } = header;
+  const [X0, Z0] = header.bbox;
+  const chunks = new Map(); // tile id -> { x0, z0, x1, z1, w, h, grid, pinned }
+  const doc = { ...header, buildings: {} };
+  let last = null;
+  const chunkAt = (px, pz) => {
+    if (last && px >= last.x0 && px < last.x1 && pz >= last.z0 && pz < last.z1) return last;
+    const c = chunks.get(tileOfLocal(px, pz));
+    if (c) last = c;
+    return c || null;
+  };
+  const cellValue = (i, j) => {
+    const c = chunkAt(X0 + (i + 0.5) * cell, Z0 + (j + 0.5) * cell);
+    if (!c) return 0;
+    const ci = Math.floor((X0 + (i + 0.5) * cell - c.x0) / cell);
+    const cj = Math.floor((Z0 + (j + 0.5) * cell - c.z0) / cell);
+    return ci >= 0 && cj >= 0 && ci < c.w && cj < c.h ? c.grid[cj * c.w + ci] : 0;
+  };
+  const heightAt = (x, z) => {
+    let fx = (x - X0) / cell - 0.5;
+    let fz = (z - Z0) / cell - 0.5;
+    fx = fx < 0 ? 0 : fx > w - 1.000001 ? w - 1.000001 : fx;
+    fz = fz < 0 ? 0 : fz > h - 1.000001 ? h - 1.000001 : fz;
+    const i = Math.floor(fx);
+    const j = Math.floor(fz);
+    const tx = fx - i;
+    const tz = fz - j;
+    return (cellValue(i, j) * (1 - tx) + cellValue(i + 1, j) * tx) * (1 - tz) + (cellValue(i, j + 1) * (1 - tx) + cellValue(i + 1, j + 1) * tx) * tz;
+  };
+  const byId = (list, key) => new Map((list || []).map((e) => [e.id, e[key]]));
+  const lakes = byId(header.lakes, 'level');
+  const ponds = byId(header.ponds, 'level');
+  const decks = byId(header.bridges, 'deck');
+  return {
+    flat: false,
+    stream: true,
+    doc,
+    cell,
+    bbox: header.bbox,
+    heightAt,
+    lakeLevel: (id) => lakes.get(id) ?? null,
+    pondLevel: (id) => ponds.get(id) ?? null,
+    deckHeight: (id) => decks.get(id) ?? null,
+    /** payload = the tile's `terrain` layer ({ tile, chunk, buildings }). */
+    addTile(payload, { pin = false } = {}) {
+      const c = payload?.chunk;
+      if (!payload?.tile) return;
+      if (c) {
+        const old = chunks.get(payload.tile);
+        chunks.set(payload.tile, { x0: c.x0, z0: c.z0, x1: c.x0 + c.w * c.cell, z1: c.z0 + c.h * c.cell, w: c.w, h: c.h, grid: decodeGrid(c.data, c.w * c.h), pinned: pin || !!old?.pinned });
+        last = null;
+      }
+      Object.assign(doc.buildings, payload.buildings);
+    },
+    /** Drops the chunk and the per-building ground heights of a tile (`buildingIds` = the ids that tile owned). */
+    removeTile(id, buildingIds = []) {
+      const c = chunks.get(id);
+      if (!c || c.pinned) return false;
+      chunks.delete(id);
+      last = null;
+      for (const b of buildingIds) delete doc.buildings[b];
+      return true;
+    },
+    hasTile: (id) => chunks.has(id),
+    get chunkCount() { return chunks.size; }
   };
 }
 
@@ -144,7 +222,7 @@ export function vertexNormals(position, index) {
  * TERRAIN_MESH_DROP under the height field. All triangles face up.
  * @returns {{ position: Float32Array, normal: Float32Array, uv: Float32Array, index: Uint32Array, stats: object }}
  */
-export function buildTerrainMeshArrays(terrain, { cut = terrain.doc?.cut, frame = terrain.doc?.frame, drop = TERRAIN_MESH_DROP, uvSize = 8000 } = {}) {
+export function buildTerrainMeshArrays(terrain, { cut = terrain.doc?.cut, frame = terrain.doc?.frame, drop = TERRAIN_MESH_DROP, uvSize = 8000, region = null, step = 1, frameOnly = false } = {}) {
   const pos = [];
   const idx = [];
   const y = (x, z) => terrain.heightAt(x, z) - drop;
@@ -154,7 +232,8 @@ export function buildTerrainMeshArrays(terrain, { cut = terrain.doc?.cut, frame 
     const cross = (pos[3 * b + 2] - pos[3 * a + 2]) * (pos[3 * c] - pos[3 * a]) - (pos[3 * b] - pos[3 * a]) * (pos[3 * c + 2] - pos[3 * a + 2]);
     if (cross > 0) idx.push(a, b, c); else idx.push(a, c, b);
   };
-  const [bx0, bz0, bx1, bz1] = terrain.flat ? [-750, -750, 750, 750] : [-(cut?.half ?? 750), -(cut?.half ?? 750), cut?.half ?? 750, cut?.half ?? 750];
+  const half = cut?.half ?? getDataBbox()[2];
+  const [bx0, bz0, bx1, bz1] = [-half, -half, half, half];
   const cell = cut?.cell ?? 4;
   const n = Math.round((bx1 - bx0) / cell);
   const skip = new Set(cut?.skip || []);
@@ -168,27 +247,37 @@ export function buildTerrainMeshArrays(terrain, { cut = terrain.doc?.cut, frame 
     return v;
   };
   let cells = 0;
-  for (let j = 0; j < n; j++) {
-    for (let i = 0; i < n; i++) {
+  // `region` [x0, z0, x1, z1]: one tile's share of the grid (cells whose centre lies inside it, so neighbouring regions share
+  // their edge nodes and leave no crack). `step` 2, 4 ...: coarser quads on the same lattice (only valid where no cut cell lies).
+  const inRegion = (ci, cj) => {
+    if (!region) return true;
+    const mx = bx0 + (ci + step / 2) * cell;
+    const mz = bz0 + (cj + step / 2) * cell;
+    return mx >= region[0] && mx < region[2] && mz >= region[1] && mz < region[3];
+  };
+  for (let j = 0; j < (frameOnly ? 0 : n); j += step) {
+    for (let i = 0; i < n; i += step) {
+      if (!inRegion(i, j)) continue;
       const k = j * n + i;
       if (skip.has(k) || pieceCells.has(k)) continue;
       const a = nodeAt(i, j);
-      const b = nodeAt(i + 1, j);
-      const c = nodeAt(i + 1, j + 1);
-      const d = nodeAt(i, j + 1);
+      const b = nodeAt(i + step, j);
+      const c = nodeAt(i + step, j + step);
+      const d = nodeAt(i, j + step);
       // split along the diagonal that follows the terrain (lower height difference)
       if (Math.abs(pos[3 * a + 1] - pos[3 * c + 1]) <= Math.abs(pos[3 * b + 1] - pos[3 * d + 1])) { up(a, b, c); up(a, c, d); } else { up(a, b, d); up(b, c, d); }
       cells++;
     }
   }
-  for (const [, , ring] of cut?.pieces || []) {
+  for (const [pi, pj, ring] of frameOnly ? [] : cut?.pieces || []) {
+    if (region && !inRegion(pi, pj)) continue;
     const { pts, idx: tri } = triangulatePolygon(ring);
     const base = pos.length / 3;
     for (let i = 0; i < pts.length; i += 2) vert(pts[i], pts[i + 1]);
     for (let t = 0; t < tri.length; t += 3) up(base + tri[t], base + tri[t + 1], base + tri[t + 2]);
   }
   // frame: the hole edges follow the district edge, so they are densified to the grid cell (no cracks against the grid)
-  for (const poly of frame || [{ ring: [-4000, -4000, 4000, -4000, 4000, 4000, -4000, 4000], holes: [[bx0, bz0, bx1, bz0, bx1, bz1, bx0, bz1]] }]) {
+  for (const poly of region && !frameOnly ? [] : frame || [{ ring: [-4000, -4000, 4000, -4000, 4000, 4000, -4000, 4000], holes: [[bx0, bz0, bx1, bz0, bx1, bz1, bx0, bz1]] }]) {
     const { pts, idx: tri } = triangulatePolygon(poly.ring, (poly.holes || []).map((h) => densifyRing(h, cell)));
     const base = pos.length / 3;
     for (let i = 0; i < pts.length; i += 2) vert(pts[i], pts[i + 1]);
@@ -202,4 +291,20 @@ export function buildTerrainMeshArrays(terrain, { cut = terrain.doc?.cut, frame 
     uv[2 * i + 1] = (uvSize / 2 - position[3 * i + 2]) / uvSize;
   }
   return { position, normal: vertexNormals(position, index), uv, index, stats: { cells, pieces: cut?.pieces?.length || 0, skipped: skip.size, triangles: index.length / 3 } };
+}
+
+/** True when a cut cell (lake clipping) lies in the region: such a region must be meshed at step 1. */
+export function cutTouchesRegion(cut, region, { half = cut?.half ?? getDataBbox()[2] } = {}) {
+  if (!cut || !region) return false;
+  const n = Math.round((2 * half) / cut.cell);
+  const inside = (k) => {
+    const i = k % n;
+    const j = Math.floor(k / n);
+    const mx = -half + (i + 0.5) * cut.cell;
+    const mz = -half + (j + 0.5) * cut.cell;
+    return mx >= region[0] - cut.cell && mx < region[2] + cut.cell && mz >= region[1] - cut.cell && mz < region[3] + cut.cell;
+  };
+  for (const k of cut.skip || []) if (inside(k)) return true;
+  for (const [i, j] of cut.pieces || []) if (inside(j * n + i)) return true;
+  return false;
 }

@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { createIrmaNeon } from './irma-neon.js';
+import { irmaNeonArtwork } from './irma-neon-art.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Quadtree } from './quadtree.js';
@@ -13,6 +14,7 @@ import { PHOTO, selectPhotoSet, texRequested, lookFile } from './facade-lod.js';
 import { createContext as createGroundContext } from './groundfloor.js';
 import { createEntranceIndex, createDoorAccumulator, addDoors } from './entrances.js';
 import { CPH_FRAME, toLocal } from './city-config.js';
+import { disposeTree } from './dispose-tree.js';
 
 // js/buildings-real.js
 // Copenhagen's real buildings (M2): every geodata building is extruded from its measured footprint (rings with holes)
@@ -256,6 +258,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
     state.loading.add(c.id);
     try {
       const { bitmap, hasMask } = await atlasBitmap(c);
+      if (state.disposed) { bitmap.close?.(); return; } // the tile went away while the atlas was loading
       const texture = new THREE.Texture(bitmap);
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.generateMipmaps = true;
@@ -297,7 +300,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
     const r = state.resident.get(id);
     if (!r) return;
     root.remove(r.mesh);
-    r.mesh.geometry.dispose();
+    disposeTree(r.mesh);
     r.material.dispose();
     r.texture.dispose();
     r.bitmap.close?.();
@@ -325,7 +328,14 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
     run();
   }
 
-  return { state, update, evict, get active() { return state.resident.size; } };
+  /** Evicts every resident photo (a tile going away); the manager is dead afterwards. */
+  function dispose() {
+    state.enabled = false;
+    state.disposed = true;
+    for (const id of [...state.resident.keys()]) evict(id);
+  }
+
+  return { state, update, evict, dispose, get active() { return state.resident.size; } };
 }
 
 /** Venues (data/cph-groundfloor.json, tools/cph-geodata/groundfloor.py); the file is optional: without it only BBR trade use gives shops. */
@@ -350,7 +360,28 @@ async function loadEntrances(fetchImpl = globalThis.fetch) {
   }
 }
 
-async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoPanel = true, lod2 = null, tex = texRequested(), observed = true, terrain = null, venues = null, entrances = undefined } = {}) {
+/** The four materials every building cell shares (a streamed city builds them once, see buildRealBuildings `shared`). */
+function createBuildingMaterials() {
+  const masonry = createPreWarBuildingMaterial({ wallAttr: true, cornerPier: FACADE_CORNER_PIER, windowRatioY: WINDOW.ratioY, seed: 7.0 });
+  const glass = createCurtainWallMaterial({ wallAttr: true, seed: 3.0 });
+  const roofMaterial = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.88, metalness: 0.02 });
+  roofMaterial.name = 'cph-roof';
+  // Roughness / metalness by roof type hint (tagpap dark matte, tile, slate, metal, ...): per-vertex from the roof geometry
+  roofMaterial.roughnessNode = attribute('roofMat', 'vec2').x;
+  roofMaterial.metalnessNode = attribute('roofMat', 'vec2').y;
+  const doorMaterial = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.05 });
+  doorMaterial.name = 'cph-entrance-doors';
+  return { masonry, glass, roofMaterial, doorMaterial };
+}
+
+/**
+ * @param {object} opts
+ *   shared    { masonry, glass, roofMaterial, doorMaterial } from createBuildingMaterials(): one set for all tiles of a streamed city
+ *   context   { buildings, roads }: the tile and its neighbours (party walls, street-facing walls); `geo.buildings` are the ones to build
+ *   doors     false: no entrance doors and no ground-floor venue / entrance data (the mid ring)
+ *   slice     `await slice()` between quadtree cells: lets a streamed build share the main thread with the render loop (js/yield-frame.js)
+ */
+async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoPanel = true, lod2 = null, tex = texRequested(), observed = true, terrain = null, venues = null, entrances = undefined, shared = null, context = null, doors: wantDoors = true, slice = null } = {}) {
   const buildings = geo.buildings || [];
   const heroIds = new Set((geo.heroes || []).map((h) => h.building_id));
   const byId = new Map(buildings.map((b) => [b.id, b]));
@@ -359,29 +390,26 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
   root.name = 'CopenhagenBuildings';
   scene.add(root);
 
-  const [x0, z0, x1, z1] = CPH_FRAME.bbox;
-  const tree = new Quadtree({ minX: x0 - 50, maxX: x1 + 50, minZ: z0 - 50, maxZ: z1 + 50 }, LEAF_CAPACITY, LEAF_DEPTH);
+  // the quadtree covers the extent of what is built (a whole district, or one tile and the buildings that stick out of it)
+  const items = [];
+  let x0 = Infinity; let z0 = Infinity; let x1 = -Infinity; let z1 = -Infinity;
   for (const b of buildings) {
     if (heroIds.has(b.id) || !b.ring || b.ring.length < 6) continue;
     const [cx, cz] = ringCentre(b.ring);
-    tree.insert({ cx, cz, b });
+    items.push({ cx, cz, b });
+    x0 = Math.min(x0, cx); x1 = Math.max(x1, cx); z0 = Math.min(z0, cz); z1 = Math.max(z1, cz);
   }
+  if (!items.length) { [x0, z0, x1, z1] = CPH_FRAME.bbox; }
+  const tree = new Quadtree({ minX: x0 - 50, maxX: x1 + 50, minZ: z0 - 50, maxZ: z1 + 50 }, LEAF_CAPACITY, LEAF_DEPTH);
+  for (const it of items) tree.insert(it);
 
-  const masonry = createPreWarBuildingMaterial({ wallAttr: true, cornerPier: FACADE_CORNER_PIER, windowRatioY: WINDOW.ratioY, seed: 7.0 });
-  const glass = createCurtainWallMaterial({ wallAttr: true, seed: 3.0 });
-  const roofMaterial = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.88, metalness: 0.02 });
-  roofMaterial.name = 'cph-roof';
-  // Roughness / metalness by roof type hint (tagpap dark matte, tile, slate, metal, ...): per-vertex from the roof geometry
-  roofMaterial.roughnessNode = attribute('roofMat', 'vec2').x;
-  roofMaterial.metalnessNode = attribute('roofMat', 'vec2').y;
+  const { masonry, glass, roofMaterial, doorMaterial } = shared || createBuildingMaterials();
 
   // Ground-floor kinds per wall: street side from the road network, party walls from neighbouring footprints, shops from venue data
-  const entranceDoc = entrances === undefined ? await loadEntrances() : entrances;
-  const ground = createGroundContext({ roads: geo.roads || [], buildings, venues: venues ?? (await loadVenues()), entrances: entranceDoc ? createEntranceIndex(entranceDoc) : null });
+  const entranceDoc = !wantDoors ? null : entrances === undefined ? await loadEntrances() : entrances;
+  const ground = createGroundContext({ roads: context?.roads || geo.roads || [], buildings: context?.buildings || buildings, venues: !wantDoors ? [] : venues ?? (await loadVenues()), entrances: entranceDoc ? createEntranceIndex(entranceDoc) : null });
   let doorCount = 0;
   const doorInfo = new Map(); // building id -> { source: 'dar' | 'heuristic' | 'none', count, conf } for the info panel
-  const doorMaterial = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.05 });
-  doorMaterial.name = 'cph-entrance-doors';
   const leaves = [];
   const pickables = [];
   const glassAcc = createAccumulator();
@@ -400,6 +428,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
 
   const leafNodes = collectLeaves(tree);
   for (const leaf of leafNodes) {
+    if (slice) await slice();
     const acc = createAccumulator();
     const doorAcc = createDoorAccumulator();
     for (const { b } of leaf.items) {
@@ -408,7 +437,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
       const added = addBuilding(acc, b, { ground, ...(glassy ? { wallAcc: glassAcc } : {}), ...(lod2Records.has(b.id) ? { lod2: lod2Records.get(b.id) } : {}), ...(quads ? { quads } : {}), ...(observed ? {} : { observed: false }), ...(terrain ? { terrain } : {}) });
       if (added) triangles += added.wallTriangles + added.roofTriangles;
       if (added?.doorInfo) doorInfo.set(b.id, added.doorInfo);
-      if (added?.doors?.length) doorCount += addDoors(doorAcc, added.doors, { ground: b.ground, heightAt: terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null });
+      if (wantDoors && added?.doors?.length) doorCount += addDoors(doorAcc, added.doors, { ground: b.ground, heightAt: terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null });
       if (added && quads) {
         const walls = texturedWalls(b, quads, added.mapping);
         if (walls) {
@@ -436,7 +465,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
       group.add(roofMesh);
       pickables.push(roofMesh);
     }
-    const doorMesh = makeDoorMesh(doorAcc, doorMaterial);
+    const doorMesh = wantDoors ? makeDoorMesh(doorAcc, doorMaterial) : null;
     if (doorMesh) group.add(doorMesh);
     const bounds = leaf.bounds;
     group.userData.centre = [(bounds.minX + bounds.maxX) / 2, (bounds.minZ + bounds.maxZ) / 2];
@@ -471,7 +500,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
         const added = addBuilding(acc, b, { ground, ...(terrain ? { terrain } : {}) });
         if (added?.doorInfo) doorInfo.set(b.id, added.doorInfo);
         const heroDoors = createDoorAccumulator();
-        if (added?.doors?.length) doorCount += addDoors(heroDoors, added.doors, { ground: b.ground, heightAt: terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null });
+        if (wantDoors && added?.doors?.length) doorCount += addDoors(heroDoors, added.doors, { ground: b.ground, heightAt: terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null });
         const group = new THREE.Group();
         const heroDoorMesh = makeDoorMesh(heroDoors, doorMaterial);
         if (heroDoorMesh) group.add(heroDoorMesh);
@@ -490,7 +519,8 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     }
   }));
 
-  const neon = createIrmaNeon(root, byId, lod2Records);
+  // the Irma sign only exists where its buildings are: a tile without them builds no neon materials
+  const neon = irmaNeonArtwork().some((art) => byId.has(art.buildingId)) ? createIrmaNeon(root, byId, lod2Records) : { group: null, panels: [], update() {}, stats: { panels: 0 } };
   const texManager = tex ? createTexManager(root, texCandidates) : null;
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
@@ -526,14 +556,41 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     return null;
   }
 
-  function showBuilding(id, isPinned = false, hit = null) {
+  /** What the info panel shows for a building of this instance (null when it is not one of ours). */
+  function infoFor(id, hit = null) {
     const b = byId.get(id);
-    if (!b || !panel) return null;
+    if (!b) return null;
     const info = describeBuilding(b, lod2?.entry(id));
     info.doors = doorInfo.get(id) || null;
     info.appearance = describeAppearance(b, hit?.surface || 'wall', hit?.point || null, { textured: !!texManager?.state.resident.has(id) });
-    panel.show(info, isPinned);
     return info;
+  }
+
+  function showBuilding(id, isPinned = false, hit = null) {
+    if (!panel) return null;
+    const info = infoFor(id, hit);
+    if (info) panel.show(info, isPinned);
+    return info;
+  }
+
+  /** Frees the GPU side of this instance: geometries, the photo textures and (when not shared) the materials. */
+  function dispose() {
+    texManager?.dispose();
+    // hero glTFs own their materials and textures (loadHero builds them per load)
+    for (const g of heroGroups) {
+      g.traverse((o) => {
+        const m = o.material;
+        if (!m) return;
+        for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap']) m[k]?.dispose?.();
+        m.dispose();
+      });
+    }
+    disposeTree(root);
+    if (!shared) for (const m of [masonry, glass, roofMaterial, doorMaterial]) m.dispose();
+    panel?.element.remove();
+    root.clear();
+    leaves.length = 0;
+    pickables.length = 0;
   }
 
   /** Wires hover (throttled) and click-to-pin on the canvas. Dragging (orbit) does not pin. */
@@ -567,7 +624,9 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     meshes: pickables.length + heroGroups.reduce((n, g) => n + g.children[0].children.length, 0)
   };
 
-  return { group: root, leaves, update, pick, attach, showBuilding, stats, byId, heroGroups, heroStatus, texManager, neon };
+  const setCamera = (cam) => { camera = cam; };
+
+  return { group: root, leaves, update, pick, attach, setCamera, showBuilding, infoFor, dispose, stats, byId, heroGroups, heroStatus, texManager, neon };
 }
 
-export { buildRealBuildings, loadHero, describeBuilding, rangeAt, mergeByMaterial };
+export { buildRealBuildings, createBuildingMaterials, createInfoPanel, loadHero, describeBuilding, rangeAt, mergeByMaterial };
