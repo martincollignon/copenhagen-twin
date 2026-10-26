@@ -9,7 +9,7 @@ import { createAccumulator, addBuilding } from './building-geometry.js';
 import { describeAppearance, texturedWalls } from './appearance.js';
 import { createPhotoMaterial } from './facade-photo-material.js';
 import { WINDOW, FACADE_CORNER_PIER } from './facade-style.js';
-import { PHOTO, selectPhotoSet, texRequested, lookFile } from './facade-lod.js';
+import { PHOTO, selectPhotoSet, texRequested, lookFile, estimateTextureBytes } from './facade-lod.js';
 import { createContext as createGroundContext } from './groundfloor.js';
 import { createEntranceIndex, createDoorAccumulator, addDoors } from './entrances.js';
 import { CPH_FRAME, toLocal } from './city-config.js';
@@ -227,102 +227,213 @@ function createInfoPanel() {
 /**
  * Lazy photo walls (default on, `?tex=0` disables). Per building one small mesh (photo quads of the usable atlas strips on
  * the extruded wall, depth-biased instead of lifted) with its own atlas texture and photo material. Residency is the LOD
- * policy of js/facade-lod.js: the nearest PHOTO.budget buildings within PHOTO.residency metres of the camera; the material
- * fades each photo into the tone + procedural facade between PHOTO.near and PHOTO.far. The processed look atlas
+ * policy of js/facade-lod.js: the nearest buildings within PHOTO.residency metres, bounded by both count and decoded
+ * texture bytes; texture resolution follows camera distance. The material fades each photo into the tone + procedural
+ * facade between PHOTO.near and PHOTO.far. The processed look atlas
  * (data/tex-look, RGBA with window and unobserved masks) is read first, the raw JPEG atlas as fallback. If neither folder
  * is present (both are gitignored) photo mode turns itself off quietly.
  */
 function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {}) {
-  const state = { enabled: true, probed: false, failures: 0, resident: new Map(), loading: new Set(), failed: new Set(), lastRun: 0, loaded: 0, look: 0, raw: 0 };
+  const state = {
+    enabled: true, probed: false, failures: 0, resident: new Map(), loading: new Map(), failed: new Set(), failedTiers: new Map(),
+    desiredQuality: new Map(), lastRun: 0, loaded: 0, look: 0, raw: 0
+  };
   const loader = typeof createImageBitmap === 'function';
   const byId = new Map(candidates.map((c) => [c.id, c]));
 
-  async function fetchBitmap(file) {
-    const response = await fetchImpl(`./data/${file}`);
+  async function fetchBlob(file, signal) {
+    const url = `./data/${file}`;
+    const response = signal ? await fetchImpl(url, { signal }) : await fetchImpl(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const blob = await response.blob();
-    return createImageBitmap(blob, { imageOrientation: 'none', premultiplyAlpha: 'none' });
+    return response.blob();
   }
 
-  async function atlasBitmap(c) {
+  async function atlasBitmap(c, maxDimension, signal) {
+    const [width, height] = c.walls.size || [];
+    const scale = width > 0 && height > 0
+      ? Math.min(1, maxDimension / Math.max(width, height))
+      : 1;
+    const bitmapOptions = { imageOrientation: 'none', premultiplyAlpha: 'none' };
+    if (scale < 1) {
+      bitmapOptions.resizeWidth = Math.max(1, Math.floor(width * scale));
+      bitmapOptions.resizeHeight = Math.max(1, Math.floor(height * scale));
+      bitmapOptions.resizeQuality = 'high';
+    }
     try {
-      return { bitmap: await fetchBitmap(lookFile(c.walls.file)), hasMask: true };
-    } catch {
-      return { bitmap: await fetchBitmap(c.walls.file), hasMask: false };
+      const blob = await fetchBlob(lookFile(c.walls.file), signal);
+      return { bitmap: await createImageBitmap(blob, bitmapOptions), hasMask: true };
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      const blob = await fetchBlob(c.walls.file, signal);
+      return { bitmap: await createImageBitmap(blob, bitmapOptions), hasMask: false };
     }
   }
 
-  async function load(c) {
-    state.loading.add(c.id);
-    try {
-      const { bitmap, hasMask } = await atlasBitmap(c);
-      const texture = new THREE.Texture(bitmap);
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.generateMipmaps = true;
-      texture.minFilter = THREE.LinearMipmapLinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.anisotropy = 8;
-      texture.flipY = false;
-      texture.needsUpdate = true;
-      const g = new THREE.BufferGeometry();
+  function makeResident(c, bitmap, hasMask, quality, existingGeometry = null) {
+    const texture = new THREE.Texture(bitmap);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.generateMipmaps = true;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.anisotropy = 8;
+    texture.flipY = false;
+    texture.needsUpdate = true;
+    const g = existingGeometry || new THREE.BufferGeometry();
+    if (!existingGeometry) {
       g.setAttribute('position', new THREE.Float32BufferAttribute(c.walls.position, 3));
       g.setAttribute('normal', new THREE.Float32BufferAttribute(c.walls.normal, 3));
       g.setAttribute('uv', new THREE.Float32BufferAttribute(c.walls.uv, 2));
       g.setAttribute('wallUV', new THREE.Float32BufferAttribute(c.walls.wallUV, 2));
       g.setIndex(c.walls.index);
       g.computeBoundingSphere();
-      const material = createPhotoMaterial(texture, { hasMask, tone: c.tone, brick: c.brick, layout: c.layout });
-      const mesh = new THREE.Mesh(g, material);
-      mesh.name = `wall-photos-${c.id}`;
-      mesh.receiveShadow = true;
-      mesh.renderOrder = 2;
-      mesh.raycast = () => {}; // picking uses the extruded walls underneath
-      root.add(mesh);
-      state.resident.set(c.id, { mesh, texture, material, bitmap, last: performance.now() });
-      state.loaded++;
-      if (hasMask) state.look++; else state.raw++;
-      state.failures = 0;
-    } catch (error) {
-      state.failed.add(c.id);
-      if (++state.failures >= PHOTO_MAX_FAILURES) {
-        state.enabled = false;
-        console.info('[cph] wall photos unavailable (data/tex missing or unreadable); keeping tone + procedural facades:', error?.message || error);
-      }
-    } finally {
-      state.loading.delete(c.id);
     }
+    const material = createPhotoMaterial(texture, { hasMask, tone: c.tone, brick: c.brick, layout: c.layout });
+    const mesh = new THREE.Mesh(g, material);
+    mesh.name = `wall-photos-${c.id}`;
+    mesh.receiveShadow = true;
+    mesh.renderOrder = 2;
+    mesh.raycast = () => {}; // picking uses the extruded walls underneath
+    return {
+      mesh, texture, material, bitmap, tier: quality.tier, width: bitmap.width, height: bitmap.height,
+      bytes: estimateTextureBytes(c.walls.size, quality.maxDimension)
+    };
+  }
+
+  function disposeResident(r, { disposeGeometry = true } = {}) {
+    root.remove(r.mesh);
+    if (disposeGeometry) r.mesh.geometry.dispose();
+    r.material.dispose();
+    r.texture.dispose();
+    r.bitmap.close?.();
   }
 
   function evict(id) {
     const r = state.resident.get(id);
     if (!r) return;
-    root.remove(r.mesh);
-    r.mesh.geometry.dispose();
-    r.material.dispose();
-    r.texture.dispose();
-    r.bitmap.close?.();
+    disposeResident(r);
     state.resident.delete(id);
+  }
+
+  function usedBytes() {
+    let total = 0;
+    for (const r of state.resident.values()) total += r.bytes;
+    for (const job of state.loading.values()) total += job.bytes;
+    return total;
+  }
+
+  /** Free the farthest selected resident walls first before reserving a new GPU allocation. */
+  function makeRoom(bytes, protectedId, want) {
+    const order = new Map(want.map((id, index) => [id, index]));
+    const fartherFirst = [...state.resident.keys()]
+      .filter((id) => id !== protectedId)
+      .sort((a, b) => (order.get(b) ?? Infinity) - (order.get(a) ?? Infinity));
+    let total = usedBytes() + bytes;
+    const protectedBytes = state.resident.get(protectedId)?.bytes || 0;
+    let pendingBytes = 0;
+    for (const [id, job] of state.loading) if (id !== protectedId) pendingBytes += job.bytes;
+    // If the target and non-evictable in-flight requests alone cannot fit, preserve the current scene as-is.
+    if (protectedBytes + pendingBytes + bytes > PHOTO.maxResidentBytes) return false;
+    for (const id of fartherFirst) {
+      if (total <= PHOTO.maxResidentBytes) break;
+      const r = state.resident.get(id);
+      if (!r) continue;
+      evict(id);
+      total -= r.bytes;
+    }
+    return total <= PHOTO.maxResidentBytes;
+  }
+
+  async function load(c, quality) {
+    const job = {
+      tier: quality.tier, width: quality.width, height: quality.height, bytes: quality.bytes,
+      replacement: state.resident.has(c.id), controller: typeof AbortController === 'function' ? new AbortController() : null
+    };
+    state.loading.set(c.id, job);
+    let bitmap = null;
+    try {
+      const { bitmap: loadedBitmap, hasMask } = await atlasBitmap(c, quality.maxDimension, job.controller?.signal);
+      bitmap = loadedBitmap;
+      const currentQuality = state.desiredQuality.get(c.id);
+      if (state.loading.get(c.id) !== job || !currentQuality || currentQuality.width !== job.width || currentQuality.height !== job.height || !state.enabled) {
+        bitmap.close?.();
+        bitmap = null;
+        return;
+      }
+
+      const previous = state.resident.get(c.id);
+      const next = makeResident(c, bitmap, hasMask, quality, previous?.mesh.geometry || null);
+      bitmap = null; // ownership moved into `next`
+      if (previous) disposeResident(previous, { disposeGeometry: false });
+      root.add(next.mesh);
+      state.resident.set(c.id, next);
+      state.failedTiers.delete(c.id);
+      state.loaded++;
+      if (hasMask) state.look++; else state.raw++;
+      state.failures = 0;
+    } catch (error) {
+      bitmap?.close?.();
+      if (job.controller?.signal.aborted) {
+        // Camera movement made this request stale; the next update schedules the newly selected atlas tier.
+      } else if (!job.replacement) {
+        state.failed.add(c.id);
+        if (++state.failures >= PHOTO_MAX_FAILURES) {
+          state.enabled = false;
+          console.info('[cph] wall photos unavailable (data/tex missing or unreadable); keeping tone + procedural facades:', error?.message || error);
+        }
+      } else state.failedTiers.set(c.id, quality.tier);
+    } finally {
+      if (state.loading.get(c.id) === job) state.loading.delete(c.id);
+    }
   }
 
   /** Called every frame with the camera position; does its work at most every 350 ms. */
   function update(x, z, now = performance.now()) {
     if (!state.enabled || !loader || now - state.lastRun < 350) return;
     state.lastRun = now;
-    const { want, inRange } = selectPhotoSet(candidates, x, z);
+    const currentTiers = new Map([...state.resident].map(([id, r]) => [id, r.tier]));
+    for (const [id, job] of state.loading) if (!currentTiers.has(id)) currentTiers.set(id, job.tier);
+    const { want, qualityById } = selectPhotoSet(candidates, x, z, PHOTO, currentTiers);
+    state.desiredQuality = qualityById;
+    for (const [id, job] of state.loading) {
+      const quality = qualityById.get(id);
+      if (!quality || quality.width !== job.width || quality.height !== job.height) job.controller?.abort();
+    }
     const wantSet = new Set(want);
-    for (const id of [...state.resident.keys()]) if (!inRange.has(id)) evict(id);
-    // Over budget: drop the residents that lost their slot to a nearer building
-    for (const id of [...state.resident.keys()]) if (!wantSet.has(id) && state.resident.size + state.loading.size > PHOTO.budget) evict(id);
-    const todo = want.filter((id) => !state.resident.has(id) && !state.loading.has(id) && !state.failed.has(id)).map((id) => byId.get(id));
-    const run = async () => {
-      if (!state.probed && todo.length) {
-        state.probed = true;
-        await load(todo.shift()); // the first atlas doubles as the presence probe
-        if (!state.enabled) return;
-      }
-      for (const c of todo.slice(0, Math.max(0, PHOTO.concurrency - state.loading.size))) if (state.enabled) load(c);
-    };
-    run();
+    for (const id of [...state.resident.keys()]) if (!wantSet.has(id)) evict(id);
+    for (const id of want) {
+      const resident = state.resident.get(id);
+      const quality = qualityById.get(id);
+      if (resident && quality && resident.width === quality.width && resident.height === quality.height) resident.tier = quality.tier;
+    }
+
+    // Keep one resident atlas visible while a quality replacement loads. If camera motion supersedes an in-flight
+    // request, load() discards its bitmap before installation.
+    const replacementId = want.find((id) => {
+      const resident = state.resident.get(id);
+      const quality = qualityById.get(id);
+      return resident && quality && (resident.width !== quality.width || resident.height !== quality.height) && state.failedTiers.get(id) !== quality.tier;
+    });
+    if (replacementId && state.loading.size === 0) {
+      const candidate = byId.get(replacementId);
+      const quality = qualityById.get(replacementId);
+      if (candidate && quality.width > 0 && quality.height > 0 && makeRoom(quality.bytes, replacementId, want)) void load(candidate, quality);
+      return;
+    }
+
+    // The first atlas doubles as the presence probe, preserving the existing quiet fallback when photo data is absent.
+    const todo = want.filter((id) => !state.resident.has(id) && !state.loading.has(id) && !state.failed.has(id));
+    if (!state.probed && todo.length) {
+      state.probed = true;
+      const id = todo[0];
+      const quality = qualityById.get(id);
+      if (quality && quality.width > 0 && quality.height > 0 && makeRoom(quality.bytes, id, want)) void load(byId.get(id), quality);
+      return;
+    }
+    for (const id of todo) {
+      if (state.loading.size >= PHOTO.concurrency) break;
+      const quality = qualityById.get(id);
+      if (quality && quality.width > 0 && quality.height > 0 && makeRoom(quality.bytes, id, want)) void load(byId.get(id), quality);
+    }
   }
 
   return { state, update, evict, get active() { return state.resident.size; } };
