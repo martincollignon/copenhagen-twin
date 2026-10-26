@@ -21,18 +21,18 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 // Scene-linear color grading and lens bloom, composed in the existing final render pass.
 
 // Exposure and white balance belong to the camera, independently of the physical lighting presets.
-// Keep exposure restrained for ACES; stronger bloom stays selective so midtones retain their contrast.
+// AgX keeps low sun highlights warm without pushing the pale Nordic sky into cyan.
 const LOOKS = {
-  golden:   { exposure: 1.04, contrast: 1.12, saturation: 1.08, balance: [1.045, 1.00, 0.955], bloom: 0.24, threshold: 1.20 },
-  midday:   { exposure: 1.00, contrast: 1.10, saturation: 1.06, balance: [1.015, 1.00, 0.985], bloom: 0.18, threshold: 1.35 },
-  twilight: { exposure: 1.06, contrast: 1.10, saturation: 1.08, balance: [1.025, 0.995, 1.015], bloom: 0.28, threshold: 1.05 },
-  midnight: { exposure: 1.04, contrast: 1.08, saturation: 1.06, balance: [0.985, 1.00, 1.035], bloom: 0.30, threshold: 1.00 }
+  golden:   { exposure: 1.04, contrast: 1.12, saturation: 0.97, balance: [1.035, 1.00, 0.965], bloom: 0.24, threshold: 1.20 },
+  midday:   { exposure: 1.00, contrast: 1.10, saturation: 0.96, balance: [1.01, 1.00, 0.99], bloom: 0.18, threshold: 1.35 },
+  twilight: { exposure: 1.06, contrast: 1.10, saturation: 0.96, balance: [1.015, 0.995, 1.015], bloom: 0.28, threshold: 1.05 },
+  midnight: { exposure: 1.04, contrast: 1.08, saturation: 0.95, balance: [0.99, 1.00, 1.02], bloom: 0.30, threshold: 1.00 }
 };
 
 function createPostProcessing(renderer, sceneColor, reflections) {
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMapping = THREE.AgXToneMapping;
   // Exposure is applied before bloom so its threshold follows the image's exposed brightness.
-  // RenderPipeline performs ACES and the output color-space conversion exactly once, after this graph.
+  // RenderPipeline performs AgX and the output color-space conversion exactly once, after this graph.
   renderer.toneMappingExposure = 1.0;
 
   const exposure = uniform(1.0);
@@ -62,7 +62,7 @@ function createPostProcessing(renderer, sceneColor, reflections) {
     color.mulAssign(pow(max(luma, 0.0001).div(0.18), contrast.sub(1.0)));
     const gray = dot(color, vec3(0.2126, 0.7152, 0.0722));
     const chroma = max(max(color.r, color.g), color.b).sub(min(min(color.r, color.g), color.b));
-    const vibrance = float(0.10).mul(float(1).sub(chroma.div(max(max(max(color.r, color.g), color.b), 0.0001))));
+    const vibrance = float(0.03).mul(float(1).sub(chroma.div(max(max(max(color.r, color.g), color.b), 0.0001))));
     color.assign(max(mix(vec3(gray), color, saturation.add(vibrance)), vec3(0)));
 
     // Normalize by the corner radius so the lens falloff remains subtle in portrait and landscape.
