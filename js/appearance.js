@@ -16,6 +16,7 @@ const isRgb = (t) => Array.isArray(t) && t.length === 3 && t.every(Number.isFini
 // (setCalibration(false)) shows the raw photogrammetric tones for before/after comparisons.
 let useCalibrated = true;
 const setCalibration = (on) => { useCalibrated = !!on; };
+const calibrationOn = () => useCalibrated;
 const wallRgb = (w) => (useCalibrated && isRgb(w.tone_cal) ? w.tone_cal : w.tone);
 
 // The observed tone is what a camera recorded under sun and sky, not a reflectance: lit by the engine's sun it would be
@@ -275,6 +276,6 @@ function describeAppearance(b, surface, point, { textured = false } = {}) {
 }
 
 export {
-  srgbToLinear, setCalibration, wallRgb, albedoFromLinear, rawRingEdges, buildingTone, observedToneSrgb, mapObservedEdges, roofSurface, atlasWalls, usableStrip, texturedWalls,
+  srgbToLinear, setCalibration, calibrationOn, wallRgb, albedoFromLinear, rawRingEdges, buildingTone, observedToneSrgb, mapObservedEdges, roofSurface, atlasWalls, usableStrip, texturedWalls,
   wallSource, roofSource, describeAppearance, nearestRawEdge, ROOF_SURFACE, TEX_MAX_FILLED
 };

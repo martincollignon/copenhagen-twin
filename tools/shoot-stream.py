@@ -55,6 +55,8 @@ FLY_JS = '''([path, speed, height]) => {
   const frames = [];
   tw.longTasks = [];
   try { new PerformanceObserver((l) => { for (const e of l.getEntries()) tw.longTasks.push({ t: Math.round(e.startTime), ms: Math.round(e.duration) }); }).observe({ type: 'longtask', buffered: false }); } catch (e) {}
+  tw.loaf = [];
+  try { new PerformanceObserver((l) => { for (const e of l.getEntries()) tw.loaf.push({ t: Math.round(e.startTime), ms: Math.round(e.duration), block: Math.round(e.blockingDuration), render: Math.round(e.renderStart ? e.startTime + e.duration - e.renderStart : 0), scripts: (e.scripts || []).map((s) => ({ fn: s.sourceFunctionName, url: (s.sourceURL || '').split('/').pop(), d: Math.round(s.duration), inv: s.invoker })) }); }).observe({ type: 'long-animation-frame', buffered: false }); } catch (e) {}
   const tick = (now) => {
     if (start === null) start = now;
     frames.push(now);
@@ -64,7 +66,7 @@ FLY_JS = '''([path, speed, height]) => {
     const y = height;
     tw.freeCam = { pos: [p.x, y, p.z], target: [p.x + p.dx / l * 60, y - 14, p.z + p.dz / l * 60], fov: 60 };
     if (d < total) requestAnimationFrame(tick);
-    else { const dts = frames.slice(1).map((t, i) => t - frames[i]).sort((a, b) => a - b); tw.flyDone = { frames: frames.length, medianMs: dts[dts.length >> 1], p95Ms: dts[Math.floor(dts.length * 0.95)], maxMs: dts[dts.length - 1] }; }
+    else { const dts = frames.slice(1).map((t, i) => t - frames[i]).sort((a, b) => a - b); tw.flyDone = { frames: frames.length, medianMs: dts[dts.length >> 1], p95Ms: dts[Math.floor(dts.length * 0.95)], p99Ms: dts[Math.floor(dts.length * 0.99)], maxMs: dts[dts.length - 1], over50: dts.filter((d) => d > 50).length, over100: dts.filter((d) => d > 100).length, fps: +(frames.length / ((frames[frames.length - 1] - frames[0]) / 1000)).toFixed(1) }; }
   };
   requestAnimationFrame(tick);
 }'''
@@ -167,7 +169,7 @@ try:
             page.screenshot(path=f'{out}/loop{loop}-return.png')
             h = heap_mb()
             heaps.append(h)
-            print(f"loop {loop} back at start: resident {sn['near']}n+{sn['mid']}m, heap {h:.1f} MB, geometries {sn['geometries']}, textures {sn['textures']}, frame median {timing['medianMs']:.1f} ms p95 {timing['p95Ms']:.1f} ms max {timing['maxMs']:.0f} ms")
+            print(f"loop {loop} back at start: resident {sn['near']}n+{sn['mid']}m, heap {h:.1f} MB, geometries {sn['geometries']}, textures {sn['textures']}, frame median {timing['medianMs']:.1f} ms p95 {timing['p95Ms']:.1f} ms p99 {timing['p99Ms']:.1f} max {timing['maxMs']:.0f} ms, {timing['fps']} fps, frames >50 ms: {timing['over50']}, >100 ms: {timing['over100']}")
             report['loops'].append({'loop': loop, 'heapMB': round(h, 1), 'frames': timing, 'samples': samples, 'end': {k: v for k, v in sn.items() if k != 'ids'}})
 
         final = page.evaluate(SNAP_JS)
@@ -191,6 +193,19 @@ try:
         report['layerMs'] = page.evaluate('() => globalThis.__twin.stream.stats.layerMs')
         slow = page.evaluate('() => globalThis.__twin.stream.stats.slow')
         lt = page.evaluate('() => globalThis.__twin.longTasks || []')
+        loaf = page.evaluate('() => globalThis.__twin.loaf || []')
+        agg = {}
+        for f in loaf:
+            for sc in f['scripts']:
+                k = f"{sc['url']}:{sc['fn'] or sc['inv']}"
+                agg[k] = agg.get(k, 0) + sc['d']
+        report['loaf'] = {'frames': len(loaf), 'over100': sum(1 for f in loaf if f['ms'] > 100), 'blockingMs': sum(f['block'] for f in loaf), 'top': sorted(agg.items(), key=lambda kv: -kv[1])[:12], 'worst': sorted(loaf, key=lambda f: -f['ms'])[:5]}
+        print('long animation frames', report['loaf']['frames'], '>100 ms:', report['loaf']['over100'], 'blocking ms', report['loaf']['blockingMs'])
+        print('  script time in long frames:', [(k, v) for k, v in report['loaf']['top'][:8]])
+        fl = page.evaluate('() => globalThis.__twin.frameLog || []')
+        report['frameLog'] = {'frames': len(fl), 'sum': {k: sum(f[k] for f in fl) for k in ('total', 'traffic', 'world', 'other', 'render')}, 'worst': sorted(fl, key=lambda f: -f['total'])[:8]}
+        print('frames over 60 ms:', len(fl), 'sections (ms):', report['frameLog']['sum'])
+        print('  worst:', report['frameLog']['worst'][:5])
         report['slowLayerAdds'] = sorted(slow, key=lambda x: -x['ms'])[:12]
         report['longTasks'] = {'count': len(lt), 'over50': sum(1 for x in lt if x['ms'] > 50), 'totalMs': sum(x['ms'] for x in lt), 'over100': sum(1 for x in lt if x['ms'] > 100), 'over500': sum(1 for x in lt if x['ms'] > 500), 'max': max([x['ms'] for x in lt] or [0])}
         print('long tasks', report['longTasks'], '| slowest layer adds', [(x['layer'], x['ring'], x['ms']) for x in report['slowLayerAdds'][:6]])

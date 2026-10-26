@@ -679,6 +679,9 @@ async function initApp() {
     };
   }
 
+  // `?hooks`: the frames that took over 60 ms, split by section (globalThis.__twin.frameLog), for tools/shoot-stream.py
+  const frameProbe = new URLSearchParams(location.search).has('hooks') ? [] : null;
+  if (frameProbe) globalThis.__twin.frameLog = frameProbe;
   renderer.setAnimationLoop((now) => {
     const rawDt = (now - lastTime) * 0.001;
     lastTime = now;
@@ -686,6 +689,7 @@ async function initApp() {
     elapsed += dt;
 
     // Update 3rd-person controllers, camera, signals, traffic & vehicle collisions, building LODs, and dynamic shadow focus
+    const T0 = frameProbe ? performance.now() : 0;
     gamepadControls.update(dt);
     controllerManager.update(dt, elapsed);
     cameraSystem.update(dt, elapsed);
@@ -701,7 +705,9 @@ async function initApp() {
       savePlayerState();
       nextPlayerSave = now + 5000;
     }
+    const T1 = frameProbe ? performance.now() : 0;
     world.update(cameraSystem.currentPos.x, cameraSystem.currentPos.z, lightingSystem.uNightFactor.value);
+    const T2 = frameProbe ? performance.now() : 0;
     lightingSystem.update(cameraSystem.currentPos);
     audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.activePresetId === 'midnight');
     if (warmedUp) updateSceneCulling(cameraSystem.camera.position); // the warm-up frame draws every chunk
@@ -726,7 +732,12 @@ async function initApp() {
       for (const o of culled) o.frustumCulled = true;
       markInit('warmup');
     }
+    const T3 = frameProbe ? performance.now() : 0;
     renderPipeline.render();
+    if (frameProbe) {
+      const T4 = performance.now();
+      if (T4 - T0 > 60) frameProbe.push({ t: Math.round(now), total: Math.round(T4 - T0), traffic: Math.round(T1 - T0), world: Math.round(T2 - T1), other: Math.round(T3 - T2), render: Math.round(T4 - T3) });
+    }
     if (!warmedUp) {
       warmedUp = true;
       markInit('firstFrame');

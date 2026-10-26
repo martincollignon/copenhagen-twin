@@ -46,4 +46,34 @@ function selectPhotoSet(candidates, x, z, p = PHOTO) {
 /** Atlas file the photo walls are read from: the processed RGBA look atlas (tools/cph-geodata/facade_look.py) first. */
 const lookFile = (file) => file.replace(/^tex\//, 'tex-look/').replace(/\.jpe?g$/i, '.webp');
 
-export { PHOTO, photoFade, texRequested, selectPhotoSet, lookFile };
+/**
+ * One photo budget for every tile of a streamed city: the nearest PHOTO.budget candidates over all the managers (js/buildings-real.js
+ * createTexManager: { state, candidates, has(id), applyPlan(want, inRange) }) hold an atlas, instead of PHOTO.budget per tile (four tiles
+ * within the residency radius would hold four times as many). `held()` / `loading()` are the totals the managers check their room against.
+ */
+function createPhotoBudget({ interval = 350, select = selectPhotoSet } = {}) {
+  const managers = new Set();
+  let lastRun = -Infinity;
+  const sum = (f) => { let n = 0; for (const m of managers) n += f(m.state); return n; };
+  return {
+    managers,
+    add(manager) { if (manager) managers.add(manager); },
+    remove(manager) { managers.delete(manager); },
+    held: () => sum((s) => s.resident.size + s.loading.size),
+    loading: () => sum((s) => s.loading.size),
+    /** Called every frame with the camera position; plans at most every `interval` ms. */
+    update(x, z, now = performance.now()) {
+      if (now - lastRun < interval) return false;
+      lastRun = now;
+      const live = [...managers].filter((m) => m.state.enabled && m.loader);
+      const all = live.flatMap((m) => m.candidates);
+      const { want, inRange } = select(all, x, z);
+      for (const m of live) {
+        m.applyPlan(want.filter((id) => m.has(id)), new Set([...inRange].filter((id) => m.has(id))));
+      }
+      return true;
+    }
+  };
+}
+
+export { PHOTO, photoFade, texRequested, selectPhotoSet, createPhotoBudget, lookFile };

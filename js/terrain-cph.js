@@ -93,11 +93,10 @@ export function createTerrain(doc) {
  * `header` is the city meta's `terrain` entry (bbox, cell, width, height, lakes, ponds, bridges, cut ...).
  * Pinned chunks (the tiles under the lakes, whose rims are baked into the water meshes at boot) are never removed.
  */
-export function createStreamTerrain(header) {
+export function createChunkSampler(header) {
   const { width: w, height: h, cell } = header;
   const [X0, Z0] = header.bbox;
   const chunks = new Map(); // tile id -> { x0, z0, x1, z1, w, h, grid, pinned }
-  const doc = { ...header, buildings: {} };
   let last = null;
   const chunkAt = (px, pz) => {
     if (last && px >= last.x0 && px < last.x1 && pz >= last.z0 && pz < last.z1) return last;
@@ -123,6 +122,23 @@ export function createStreamTerrain(header) {
     const tz = fz - j;
     return (cellValue(i, j) * (1 - tx) + cellValue(i + 1, j) * tx) * (1 - tz) + (cellValue(i, j + 1) * (1 - tx) + cellValue(i + 1, j + 1) * tx) * tz;
   };
+  return {
+    heightAt,
+    chunks,
+    /** chunk = { x0, z0, w, h, cell, grid: Float32Array metres } */
+    set(id, chunk, pinned = false) {
+      chunks.set(id, { x0: chunk.x0, z0: chunk.z0, x1: chunk.x0 + chunk.w * chunk.cell, z1: chunk.z0 + chunk.h * chunk.cell, w: chunk.w, h: chunk.h, grid: chunk.grid, pinned });
+      last = null;
+    },
+    delete(id) { last = null; return chunks.delete(id); }
+  };
+}
+
+export function createStreamTerrain(header) {
+  const { cell } = header;
+  const sampler = createChunkSampler(header);
+  const chunks = sampler.chunks;
+  const doc = { ...header, buildings: {} };
   const byId = (list, key) => new Map((list || []).map((e) => [e.id, e[key]]));
   const lakes = byId(header.lakes, 'level');
   const ponds = byId(header.ponds, 'level');
@@ -133,7 +149,7 @@ export function createStreamTerrain(header) {
     doc,
     cell,
     bbox: header.bbox,
-    heightAt,
+    heightAt: sampler.heightAt,
     lakeLevel: (id) => lakes.get(id) ?? null,
     pondLevel: (id) => ponds.get(id) ?? null,
     deckHeight: (id) => decks.get(id) ?? null,
@@ -143,8 +159,7 @@ export function createStreamTerrain(header) {
       if (!payload?.tile) return;
       if (c) {
         const old = chunks.get(payload.tile);
-        chunks.set(payload.tile, { x0: c.x0, z0: c.z0, x1: c.x0 + c.w * c.cell, z1: c.z0 + c.h * c.cell, w: c.w, h: c.h, grid: decodeGrid(c.data, c.w * c.h), pinned: pin || !!old?.pinned });
-        last = null;
+        sampler.set(payload.tile, { x0: c.x0, z0: c.z0, w: c.w, h: c.h, cell: c.cell, grid: decodeGrid(c.data, c.w * c.h) }, pin || !!old?.pinned);
       }
       Object.assign(doc.buildings, payload.buildings);
     },
@@ -152,13 +167,18 @@ export function createStreamTerrain(header) {
     removeTile(id, buildingIds = []) {
       const c = chunks.get(id);
       if (!c || c.pinned) return false;
-      chunks.delete(id);
-      last = null;
+      sampler.delete(id);
       for (const b of buildingIds) delete doc.buildings[b];
       return true;
     },
     hasTile: (id) => chunks.has(id),
-    get chunkCount() { return chunks.size; }
+    /** The decoded chunk of a tile { x0, z0, w, h, cell, grid } (what a worker's terrain is made of), or null. */
+    chunkOf(id) {
+      const c = chunks.get(id);
+      return c ? { x0: c.x0, z0: c.z0, w: c.w, h: c.h, cell, grid: c.grid } : null;
+    },
+    get chunkCount() { return chunks.size; },
+    header
   };
 }
 
@@ -212,6 +232,26 @@ export function vertexNormals(position, index) {
   for (let i = 0; i < nrm.length; i += 3) {
     const l = Math.hypot(nrm[i], nrm[i + 1], nrm[i + 2]) || 1;
     nrm[i] /= l; nrm[i + 1] /= l; nrm[i + 2] /= l;
+  }
+  return nrm;
+}
+
+/** Per-vertex normals of a non-indexed triangle list: every triangle's own face normal (what computeVertexNormals gives such a geometry). */
+export function faceNormals(position) {
+  const nrm = new Float32Array(position.length);
+  for (let t = 0; t + 8 < position.length; t += 9) {
+    const ux = position[t + 3] - position[t];
+    const uy = position[t + 4] - position[t + 1];
+    const uz = position[t + 5] - position[t + 2];
+    const vx = position[t + 6] - position[t];
+    const vy = position[t + 7] - position[t + 1];
+    const vz = position[t + 8] - position[t + 2];
+    let nx = uy * vz - uz * vy;
+    let ny = uz * vx - ux * vz;
+    let nz = ux * vy - uy * vx;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nx /= l; ny /= l; nz /= l;
+    for (let k = 0; k < 3; k++) { nrm[t + 3 * k] = nx; nrm[t + 3 * k + 1] = ny; nrm[t + 3 * k + 2] = nz; }
   }
   return nrm;
 }

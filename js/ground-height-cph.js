@@ -5,11 +5,11 @@
 // they see. `composeHeightField` adds the terrain (js/terrain-cph.js, the one ground model of the scene).
 // Frame: x east, z south. heightAt() is bilinear, so a kerb is a ~0.5 m ramp instead of a one-frame jump.
 
-export function createHeightGrid({ bbox, cell = 0.5 }) {
+export function createHeightGrid({ bbox, cell = 0.5, data: given = null }) {
   const [x0, z0, x1, z1] = bbox;
   const w = Math.ceil((x1 - x0) / cell);
   const h = Math.ceil((z1 - z0) / cell);
-  const data = new Uint8Array(w * h); // millimetres, 0..255
+  const data = given || new Uint8Array(w * h); // millimetres, 0..255 (a grid built elsewhere, e.g. in a worker, arrives as `data`)
   const mm = (y) => Math.max(0, Math.min(255, Math.round(y * 1000)));
 
   // even-odd scanline fill of a flat ring at the cell centres; `value(xc, zc)` gives the height of a covered cell

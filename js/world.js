@@ -30,6 +30,9 @@ import { streamConfig, extentOfTiles, distanceToRect } from './tile-rings.js';
 import { createBuildingsLayer } from './buildings-stream.js';
 import { createSlicer, nextFrame } from './yield-frame.js';
 import { createGroundLayer } from './ground-stream.js';
+import { createTilePool } from './tile-pool.js';
+import { makeRoadJob } from './road-compute.js';
+import { makeFurnitureJob } from './furniture-compute.js';
 import { createAgentRegion, createLaneIndex } from './agent-region.js';
 import { buildRoadNetwork } from './road-network.js';
 import { buildCyclistNetworkFor } from './cyclists.js';
@@ -573,6 +576,9 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
   const ground = createGroundLayer(scene, { terrain, material: sharedGround, size: GROUND_SIZE, tileBounds: tileBoundsMap, cut: city.meta.terrain?.cut, generic: citywide });
   markInit('ground');
 
+  // the CPU halves of the buildings and the road surfaces run in Web Workers (`?debug=noworker`: on the main thread, in slices)
+  const pool = flags.has('noworker') ? null : createTilePool();
+
   // the layers the streamer fills
   const layers = [];
   layers.push({ name: 'ground', rings: ['near', 'mid'], fidelity: true, add: (ctx, ring) => ground.addTile(ctx.id, ctx.bounds, { near: ring === 'near' }), remove: (id) => ground.removeTile(id) });
@@ -585,7 +591,11 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     walk = createWalkSpace(geo, waterDoc);
     layers.push({
       name: 'roads', rings: ['near', 'mid'], fidelity: true,
-      add: (ctx, ring) => roads.addTile(ctx.id, ctx.geo, ring === 'near' ? ctx.surfaces : null, { bounds: ctx.bounds, near: ring === 'near', slice: createSlicer(8) }),
+      add: async (ctx, ring) => {
+        const near = ring === 'near';
+        const computed = pool ? await pool.run('roads', makeRoadJob(ctx, { near, terrain })) : null;
+        return roads.addTile(ctx.id, ctx.geo, near ? ctx.surfaces : null, { bounds: ctx.bounds, near, slice: createSlicer(8), computed });
+      },
       remove: (id) => roads.removeTile(id)
     });
     layers.push({ name: 'walk', rings: ['near', 'mid'], add: (ctx) => walk.addBuildings(ctx.id, ctx.ownBuildings), remove: (id) => walk.removeBuildings(id) });
@@ -593,7 +603,7 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
 
   let buildings = null;
   if (!flags.has('nobuildings')) {
-    buildings = createBuildingsLayer(scene, { terrain: terrain.flat ? null : terrain, lod2, observed: !flags.has('noobserved') });
+    buildings = createBuildingsLayer(scene, { terrain: terrain.flat ? null : terrain, lod2, observed: !flags.has('noobserved'), pool, lite: !flags.has('nolite') });
     layers.push({ name: 'buildings', rings: ['near', 'mid'], fidelity: true, add: (ctx, ring) => buildings.addTile(ctx.id, ctx, ring), remove: (id) => buildings.removeTile(id) });
   }
 
@@ -619,10 +629,19 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
         const own = ctx.furniture;
         if (!own) return;
         const doc = bridgeDLB ? filterDLBFurniture(own, bridgeDLB.layout) : own;
-        // ONE spatial constraint map per tile (+ a margin): footprints, water, carriageways, cycle strips, pavements
-        const zones = zonesOn ? createZoneMap({ geo: ctx.geo, lakes: waterDoc, surfaces: ctx.surfaces, bbox: [ctx.bounds[0] - M, ctx.bounds[1] - M, ctx.bounds[2] + M, ctx.bounds[3] + M] }) : null;
-        await nextFrame(); // the zone raster and the placement are two slices of work
-        furniture.addTile(ctx.id, doc, { place: zones ? (d) => placeFurniture(d, { zones, geo: ctx.geo }) : null });
+        // ONE spatial constraint map per tile (+ a margin): footprints, water, carriageways, cycle strips, pavements; the items are placed against it
+        let place = null;
+        if (zonesOn) {
+          const placed = pool ? await pool.run('furniture', makeFurnitureJob(ctx, { doc, water: waterDoc, margin: M })) : null;
+          if (placed) {
+            place = () => placed;
+          } else {
+            const zones = createZoneMap({ geo: ctx.geo, lakes: waterDoc, surfaces: ctx.surfaces, bbox: [ctx.bounds[0] - M, ctx.bounds[1] - M, ctx.bounds[2] + M, ctx.bounds[3] + M] });
+            await nextFrame(); // the zone raster and the placement are two slices of work
+            place = (d) => placeFurniture(d, { zones, geo: ctx.geo });
+          }
+        }
+        furniture.addTile(ctx.id, doc, { place });
       },
       remove: (id) => furniture.removeTile(id)
     });
@@ -729,7 +748,8 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     stream: streamer,
     tileData: data,
     far,
-    agents
+    agents,
+    pool
   };
 }
 

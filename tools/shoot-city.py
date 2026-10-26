@@ -31,7 +31,7 @@ time.sleep(1)
 
 SNAP = '''() => { const t = globalThis.__twin; const s = t.stream && t.stream.snapshot(); const r = t.renderer.info;
   return { stream: s ? { near: s.resident.near, mid: s.resident.mid, fetching: s.fetching, building: s.building, held: s.held, errors: s.errors, loads: s.loads } : null,
-    far: t.world.far ? t.world.far.stats : null, region: t.world.agents ? t.world.agents.stats : null,
+    far: t.world.far ? t.world.far.stats : null, pool: t.world.pool ? t.world.pool.stats : null, region: t.world.agents ? t.world.agents.stats : null,
     geometries: r.memory.geometries, textures: r.memory.textures, calls: r.render.drawCalls, triangles: r.render.triangles }; }'''
 
 def parse(shot, presets):

@@ -219,6 +219,9 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
     return cityPromise;
   };
 
+  /** The whole street layout document (data/city/streets.json), even where the tiles carry it per tile; null when absent. */
+  const loadStreets = async () => (index.city.streets ? json(cityUrl(index.city.streets)).catch(() => null) : null);
+
   const cache = new Map(); // tile id -> Promise<{ [layer]: payload }>
   const loadTile = (tid) => {
     if (!cache.has(tid)) {
@@ -248,6 +251,7 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
     ids,
     tilesForLocalBbox: (bbox, margin = 0) => tilesForLocalBbox(bbox, margin).filter((id) => index.tiles[id]),
     loadCity,
+    loadStreets,
     loadTile,
     fetchBin,
     hasLayer,
@@ -258,7 +262,7 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
       const tileIds = this.tilesForLocalBbox(bbox, margin);
       const [city0, loaded] = await Promise.all([loadCity(), Promise.all(tileIds.map(async (id) => [id, await loadTile(id)]))]);
       // an area document carries the whole street layout, even where the engine streams it per tile
-      const city = city0.streets || !index.city.streets ? city0 : { ...city0, streets: await json(cityUrl(index.city.streets)).catch(() => null) };
+      const city = city0.streets ? city0 : { ...city0, streets: await loadStreets() };
       const set = assembleArea(city, loaded, fetchBin);
       for (const id of tileIds) cache.delete(id); // the assembled documents own the data now; C2 will manage tile lifetimes
       return set;

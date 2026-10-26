@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { buildRealBuildings, createBuildingMaterials, createInfoPanel } from './buildings-real.js';
-import { texRequested } from './facade-lod.js';
+import { texRequested, createPhotoBudget } from './facade-lod.js';
 import { createSlicer } from './yield-frame.js';
 
 // js/buildings-stream.js
@@ -10,11 +10,12 @@ import { createSlicer } from './yield-frame.js';
 // A near tile builds with facade photos and entrance doors; a mid tile (buildings only) without them. A tile that moves between
 // the two is rebuilt. removeTile() disposes the geometries and the photo textures; the materials live as long as the layer.
 
-export function createBuildingsLayer(scene, { terrain = null, lod2 = null, observed = true, tex = texRequested() } = {}) {
+export function createBuildingsLayer(scene, { terrain = null, lod2 = null, observed = true, tex = texRequested(), pool = null, lite = true } = {}) {
   const root = new THREE.Group();
   root.name = 'CopenhagenBuildings';
   scene.add(root);
   const shared = createBuildingMaterials();
+  const photoBudget = tex ? createPhotoBudget() : null; // one residency plan for the photo walls of every tile
   const tiles = new Map(); // id -> { instance, ring, token }
   let camera = null;
   let pinned = null;
@@ -50,7 +51,7 @@ export function createBuildingsLayer(scene, { terrain = null, lod2 = null, obser
       const holder = new THREE.Group();
       holder.name = `buildings-${id}`;
       const instance = await buildRealBuildings(holder, ctx.buildingGeo, {
-        lod2, shared, terrain: terrain?.flat ? null : terrain, observed, withInfoPanel: false, slice: createSlicer(8),
+        lod2, shared, terrain: terrain?.flat ? null : terrain, observed, withInfoPanel: false, slice: createSlicer(8), lite: lite && !near, photoBudget, compute: pool ? (job) => pool.run('buildings', job) : null,
         context: { buildings: ctx.geo.buildings, roads: ctx.geo.roads },
         tex: near ? tex : false, doors: near,
         ...(near ? { entrances: ctx.entrances, venues: ctx.venues } : { entrances: null, venues: [] })
@@ -83,6 +84,7 @@ export function createBuildingsLayer(scene, { terrain = null, lod2 = null, obser
 
     update(x, z, night = 0) {
       for (const { instance } of tiles.values()) instance?.update(x, z, night);
+      photoBudget?.update(camera ? camera.position.x : x, camera ? camera.position.z : z);
     },
 
     /** Nearest building under a normalised-device point over all tiles. */
@@ -131,6 +133,7 @@ export function createBuildingsLayer(scene, { terrain = null, lod2 = null, obser
     },
 
     get stats() { return totals(); },
+    get photoBudget() { return photoBudget; },
     get heroGroups() { return [...tiles.values()].flatMap((t) => t.instance?.heroGroups || []); },
     get heroStatus() { return [...tiles.values()].flatMap((t) => t.instance?.heroStatus || []); },
     /** Every building of the resident tiles by id (a Map-like view). */

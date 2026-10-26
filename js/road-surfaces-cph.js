@@ -12,7 +12,7 @@ import { buildPavementBuckets, createSurfaceIndex } from './pavement-cph.js';
 import { createHeightGrid, composeHeightField } from './ground-height-cph.js';
 import { ownList, isOwned } from './tile-own.js';
 import { disposeTree } from './dispose-tree.js';
-import { densifyPts, drapePositions } from './terrain-cph.js';
+import { densifyPts, drapePositions, vertexNormals, faceNormals } from './terrain-cph.js';
 import { computeMouthLayouts, subtractIntervals } from './junction-mouths-cph.js';
 import { hasContraflow, bikeBanned, stripCoverage, stripDirection } from './bike-direction.js';
 
@@ -771,43 +771,48 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
 }
 
 /** Meshes of one road-surface document into `group`; `materials` are shared (createRoadSurfaceMaterials). Returns the stats. */
-async function fillSurfaceGroup(THREE, group, geo, surfaces, terrain, materials, slice = null) {
+/**
+ * The meshes a set of road surfaces makes, as typed arrays (pure: a worker runs it, js/road-compute.js): the carriageway, kerb,
+ * cycle, paint ... layers (indexed) and the pavement / register-ground buckets (one non-indexed mesh per material class, each
+ * triangle with its own kerb frame), with their normals. `cls` is the key into the materials.
+ */
+export function computeSurfaceMeshes(geo, surfaces, terrain) {
+  const meshes = [];
   const layers = buildRoadSurfaceArrays(geo, { surfaces, pavement: true, terrain });
-  if (slice) await slice();
-  const stats = { pavementTriangles: 0, markings: surfaces?.markings?.length || 0 };
-
-  const addMesh = (name, position, kuv, index, mat, extra = {}) => {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(position, 3));
-    g.setAttribute('kuv', new THREE.BufferAttribute(kuv, 2));
-    if (extra.seed) g.setAttribute('seed', new THREE.BufferAttribute(extra.seed, 1));
-    if (index) g.setIndex(new THREE.BufferAttribute(index, 1));
-    g.computeVertexNormals();
-    const mesh = new THREE.Mesh(g, mat);
-    mesh.name = name;
-    mesh.receiveShadow = true;
-    mesh.frustumCulled = false;
-    group.add(mesh);
-    return mesh;
-  };
-
   for (const [name, layer] of Object.entries(layers)) {
     if (!layer.vertexCount) continue;
     const { position, kuv, index } = layer.arrays();
-    addMesh(`road-${name}`, position, kuv, index, materials[name]);
+    meshes.push({ name: `road-${name}`, cls: name, ground: false, position, kuv, index, seed: null, normal: vertexNormals(position, index) });
   }
-
-  // pavements and register ground: one mesh per material class, non-indexed (each triangle has its own frame)
-  if (slice) await slice();
-  const buckets = buildGroundBuckets(geo, surfaces, terrain);
-  for (const [key, bucket] of buckets) {
-    if (!bucket.vertexCount) continue;
-    const cls = key.replace('ground:', '');
-    const mat = materials.ground[cls];
-    if (!mat || key === 'ground:other') continue; // classes without a look (tree grates, ...) are not drawn
+  for (const [key, bucket] of buildGroundBuckets(geo, surfaces, terrain)) {
+    if (!bucket.vertexCount || key === 'ground:other') continue; // classes without a look (tree grates, ...) are not drawn
     const { position, kuv, seed } = bucket.arrays();
-    addMesh(`ground-${key}`, position, kuv, null, mat, { seed });
-    stats.pavementTriangles += bucket.vertexCount / 3;
+    meshes.push({ name: `ground-${key}`, cls: key.replace('ground:', ''), ground: true, position, kuv, index: null, seed, normal: faceNormals(position) });
+  }
+  return meshes;
+}
+
+async function fillSurfaceGroup(THREE, group, geo, surfaces, terrain, materials, slice = null, computed = null) {
+  const meshes = computed || computeSurfaceMeshes(geo, surfaces, terrain);
+  if (slice) await slice();
+  const stats = { pavementTriangles: 0, markings: surfaces?.markings?.length || 0 };
+
+  for (const m of meshes) {
+    const material = m.ground ? materials.ground[m.cls] : materials[m.cls];
+    if (!material) continue;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(m.position, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(m.normal, 3));
+    g.setAttribute('kuv', new THREE.BufferAttribute(m.kuv, 2));
+    if (m.seed) g.setAttribute('seed', new THREE.BufferAttribute(m.seed, 1));
+    if (m.index) g.setIndex(new THREE.BufferAttribute(m.index, 1));
+    const mesh = new THREE.Mesh(g, material);
+    mesh.name = m.name;
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
+    group.add(mesh);
+    if (m.ground) stats.pavementTriangles += m.position.length / 9;
+    if (slice) await slice();
   }
   return stats;
 }
@@ -843,15 +848,17 @@ export async function createRoadSurfaceLayer(scene, { terrain = null, tiledHeigh
     group,
     stats,
     groundHeight: tiledHeight,
-    async addTile(id, geo, surfaces, { bounds, near = true, slice = null } = {}) {
+    /** `computed` = { meshes, heightGrid } from a worker (js/road-compute.js): the arrays are only turned into meshes here. */
+    async addTile(id, geo, surfaces, { bounds, near = true, slice = null, computed = null } = {}) {
       this.removeTile(id);
       const tileGroup = new THREE.Group();
       tileGroup.name = `road-surfaces-${id}`;
-      const st = await fillSurfaceGroup(THREE, tileGroup, geo, near ? surfaces : null, terrain, materials, slice);
-      group.add(tileGroup);
+      group.add(tileGroup); // its meshes appear as they are made
+      const st = await fillSurfaceGroup(THREE, tileGroup, geo, near ? surfaces : null, terrain, materials, slice, computed?.meshes || null);
       if (slice) await slice();
       if (near && tiledHeight && bounds) {
-        const grid = buildGroundHeightGrid(geo, surfaces, [bounds[0] - HEIGHT_MARGIN, bounds[1] - HEIGHT_MARGIN, bounds[2] + HEIGHT_MARGIN, bounds[3] + HEIGHT_MARGIN]);
+        const grid = computed ? (computed.heightGrid ? createHeightGrid(computed.heightGrid) : null)
+          : buildGroundHeightGrid(geo, surfaces, [bounds[0] - HEIGHT_MARGIN, bounds[1] - HEIGHT_MARGIN, bounds[2] + HEIGHT_MARGIN, bounds[3] + HEIGHT_MARGIN]);
         if (grid) tiledHeight.addTile(id, grid, bounds);
       }
       tiles.set(id, { group: tileGroup, triangles: st.pavementTriangles });

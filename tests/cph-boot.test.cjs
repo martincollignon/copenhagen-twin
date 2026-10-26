@@ -13,14 +13,14 @@ const REMOVED_MODULES = [
   'boroughs', 'landmarks', 'landmark-state', 'fire-escapes', 'street-details', 'road-paint', 'buildings', 'trees'
 ];
 
-// Every module reachable from js/main.js through static imports and dynamic import()s.
+// Every module reachable from js/main.js through static imports, dynamic import()s and Web Workers (`new Worker(new URL('./x.js', import.meta.url))`).
 function reachable() {
   const seen = new Set();
   const visit = (file) => {
     if (seen.has(file)) return;
     seen.add(file);
     const source = read(file);
-    for (const m of source.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|^\s*import\s*)['"](\.[^'"]+)['"]/gm)) {
+    for (const m of source.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|^\s*import\s*|\bnew\s+URL\(\s*)['"](\.[^'"]+)['"]/gm)) {
       visit(normalize(join('js', m[1])));
     }
   };
@@ -87,7 +87,7 @@ test('geodata is optional: absent data boots the empty plane, present data is ex
       './cyclists.js': {}, './direction-overlay.js': {}, './signal-heads-cph.js': {}, './walk-space-cph.js': {}, './water-cph.js': { buildLakes: () => null }, './lakes-cph.js': { applySurfaceCuts: (d) => d }, './appearance.js': { setCalibration() {} }, './street-furniture-data.js': { loadCphFurniture: async () => null }, './street-furniture-cph.js': {}, './buildings-real.js': { buildRealBuildings: async () => null }, './lod2-geometry.js': { loadLod2: async () => null }, './tile-store.js': { openTileStore: async () => null }, './terrain-cph.js': {}, './layout-cph.js': {}, './zones-cph.js': {}, './placement-cph.js': {}, './grass-cph.js': { createGrass: () => null },
       './bridge-dlb.js': { buildBridgeDLB: () => null, filterDLBFurniture: (d) => d },
       // the streamed city (buildStreamedWorld) is not exercised here
-      './ground-height-cph.js': {}, './grass-layout-cph.js': {}, './tile-grid.js': {}, './tile-data.js': {}, './tile-streamer.js': {}, './tile-rings.js': {}, './buildings-stream.js': {}, './ground-stream.js': {}, './yield-frame.js': {}, './agent-region.js': {}, './road-network.js': {}, './far-lod.js': {}, './ground-shader-cph.js': {}
+      './ground-height-cph.js': {}, './grass-layout-cph.js': {}, './tile-grid.js': {}, './tile-data.js': {}, './tile-streamer.js': {}, './tile-rings.js': {}, './buildings-stream.js': {}, './ground-stream.js': {}, './yield-frame.js': {}, './agent-region.js': {}, './tile-pool.js': {}, './road-compute.js': {}, './furniture-compute.js': {}, './road-network.js': {}, './far-lod.js': {}, './ground-shader-cph.js': {}
     },
     globals: { console: { warn: (...a) => warnings.push(a), info() {} }, globalThis: {}, document: {} }
   });

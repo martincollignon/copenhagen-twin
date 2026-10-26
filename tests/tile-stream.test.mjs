@@ -294,7 +294,8 @@ test('ownership helpers: a build emits only what the tile owns', () => {
 
 test('district: streamed terrain equals the monolithic grid; per-tile road surfaces add up to the district build', { skip: !haveTiles && 'run tile_split.py first' }, async () => {
   const store = await openTileStore({ fetchImpl: fileFetch, baseUrl: TILES_URL });
-  const city = await store.loadCity();
+  const city = { ...(await store.loadCity()) };
+  city.streets ||= await store.loadStreets(); // tiled index: the whole layout, for the comparison with the monolithic build
   const tiles = store.ids;
   const roadPayloads = await Promise.all(tiles.map(async (id) => [id, await store.fetchLayer(id, 'roads')]));
   const { geo, roadsByTile } = createCityGeo(city.meta, city.roadGraph, roadPayloads, city.streets);
