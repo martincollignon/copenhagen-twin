@@ -45,11 +45,11 @@ export function buildDirectionOverlay(scene, geo, cyclistNetwork, groundHeight) 
   const h = (x, z) => (groundHeight ? groundHeight.heightAt(x, z) : 0);
   for (const r of geo.roads || []) {
     if (!VEHICULAR.has(r.class) || !r.pts || r.drop || carDirection(r) !== 'fwd') continue;
-    along(r.pts, 22, (x, z, ux, uz) => arrowAt(buckets.car, x, z, ux, uz, h(x, z) + 1.4, 7, 1.6));
+    along(r.pts, 34, (x, z, ux, uz) => arrowAt(buckets.car, x, z, ux, uz, h(x, z) + 1.4, 12, 2.6));
   }
   for (const l of cyclistNetwork.lanes) {
     const kind = buckets[l.kind] ? l.kind : 'track';
-    along(l.pts, 14, (x, z, ux, uz) => arrowAt(buckets[kind], x, z, ux, uz, h(x, z) + (kind === 'track' || kind === 'path' ? 1.9 : 2.2), 4.2, 0.9));
+    along(l.pts, 22, (x, z, ux, uz) => arrowAt(buckets[kind], x, z, ux, uz, h(x, z) + (kind === 'track' || kind === 'path' ? 1.9 : 2.2), 7.5, 1.7));
   }
   const group = new THREE.Group();
   group.name = 'DirectionOverlay';

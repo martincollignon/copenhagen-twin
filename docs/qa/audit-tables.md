@@ -14,10 +14,14 @@
 | high | `water-carriageway` | water | 0 | 916 | 0.0 |
 | high | `water-cycletrack` | water | 0 | 583 | 0.0 |
 | high | `water-pavement` | water | 0 | 1026 | 0.0 |
-| high | `car-off-carriageway` | cars | 0 | 1067 | 0.0 |
-| high | `car-on-pavement` | cars | 0 | 1067 | 0.0 |
-| high | `car-in-moving-lane` | cars | 0 | 1067 | 0.0 |
+| high | `car-off-carriageway` | cars | 0 | 1030 | 0.0 |
+| high | `car-on-pavement` | cars | 0 | 1030 | 0.0 |
+| high | `car-in-moving-lane` | cars | 0 | 1030 | 0.0 |
 | high | `wire-through-building` | lamps | 0 | 502 | 0.0 |
+| high | `dir-car-edge-against-oneway` | traffic direction | 0 | 1615 | 0.0 |
+| high | `dir-car-sim-against-oneway` | traffic direction | 0 | 418756 | 0.0 |
+| high | `dir-bike-lane-illegal` | traffic direction | 0 | 879 | 0.0 |
+| high | `dir-bike-sim-violations` | traffic direction | 0 | 305638 | 0.0 |
 | med | `lod2-eave-mismatch` | lod2 | 1119 | 2097 | 53.36 |
 | med | `busstop-far-from-road` | bus stops | 6 | 41 | 14.63 |
 | med | `signal-no-junction` | signals | 21 | 164 | 12.8 |
@@ -41,18 +45,20 @@
 | med | `tree-crown-facade` | trees | 0 | 4782 | 0.0 |
 | med | `rack-rows` | bikeRacks | 0 | 982 | 0.0 |
 | med | `rack-giant` | bikeRacks | 0 | 982 | 0.0 |
-| med | `car-orientation` | cars | 0 | 1067 | 0.0 |
+| med | `car-orientation` | cars | 0 | 1030 | 0.0 |
 | med | `wire-floating-anchor` | lamps | 0 | 502 | 0.0 |
 | med | `wire-too-low` | lamps | 0 | 502 | 0.0 |
 | med | `signal-in-building` | signals | 0 | 164 | 0.0 |
 | med | `busstop-in-building` | bus stops | 0 | 41 | 0.0 |
 | med | `shelter-conflict` | bus stops | 0 | 17 | 0.0 |
-| low | `on-carriageway:cars` | cars | 1067 | 1067 | 100.0 |
+| low | `on-carriageway:cars` | cars | 1030 | 1030 | 100.0 |
 | low | `tree-generic-genus` | trees | 3709 | 4905 | 75.62 |
 | low | `road-width-cap` | roads | 229 | 916 | 25.0 |
 | low | `tree-crown-clamped` | trees | 741 | 4905 | 15.11 |
+| low | `dir-bike-dead-end-lane` | traffic direction | 99 | 879 | 11.26 |
 | low | `pavement-cycletrack` | pavement | 22 | 1026 | 2.14 |
 | low | `mast-height-high` | lamps | 16 | 1188 | 1.35 |
+| low | `dir-car-oneway-dead-end` | traffic direction | 20 | 1615 | 1.24 |
 | low | `water-paths` | water | 5 | 987 | 0.51 |
 | low | `overlap:benches+lakeLights` | furniture | 1 | 1003 | 0.1 |
 | low | `pavement-in-bld` | pavement | 0 | 1026 | 0.0 |
@@ -64,6 +70,7 @@
 | low | `wire-no-span` | lamps | 0 | 502 | 0.0 |
 | low | `mast-height-low` | lamps | 0 | 1188 | 0.0 |
 | low | `busstop-in-carriageway` | bus stops | 0 | 41 | 0.0 |
+| info | `dir-found` | traffic direction | 66 | 368 | 17.93 |
 
 #### `road-through-bld` (high): Carriageway has >= 8 m2 inside building footprints
 
@@ -153,19 +160,35 @@ Count **0** of 1026 (0.0%). pavement polygon over the lake (floats above the sun
 
 #### `car-off-carriageway` (high): Parked car < 50% on carriageway/bay paint (and not mostly in a building)
 
-Count **0** of 1067 (0.0%). bay points come from kerb lines / parking polygons; where the engine's capped carriageway is narrower than the real kerb-to-kerb the car sits on pavement or bare ground
+Count **0** of 1030 (0.0%). bay points come from kerb lines / parking polygons; where the engine's capped carriageway is narrower than the real kerb-to-kerb the car sits on pavement or bare ground
 
 #### `car-on-pavement` (high): Parked car >= 40% on a pavement polygon
 
-Count **0** of 1067 (0.0%). wheels on the raised pavement at y 0.2 vs car y from the same field
+Count **0** of 1030 (0.0%). wheels on the raised pavement at y 0.2 vs car y from the same field
 
 #### `car-in-moving-lane` (high): Parked car >= 25% inside the moving-traffic corridor (lanes x 3.0 m around the centreline)
 
-Count **0** of 1067 (0.0%). the traffic sim drives through parked cars
+Count **0** of 1030 (0.0%). the traffic sim drives through parked cars
 
 #### `wire-through-building` (high): Wire span crosses a building volume (> 1 m inside the footprint shrunk by 0.4 m, eave above the wire)
 
 Count **0** of 502 (0.0%). the span is facade-to-facade `inferred` across the street, or the 2018 line crosses a courtyard; pendant and wire pass through a house
+
+#### `dir-car-edge-against-oneway` (high): Car network edge runs against a one-way road (judged away from the junctions)
+
+Count **0** of 1615 (0.0%). static: every lane of every edge
+
+#### `dir-car-sim-against-oneway` (high): Live car-steps against a one-way road (10 simulated minutes, headless browser)
+
+Count **0** of 418756 (0.0%). 789599 car-steps in junctions / off any road were not judged
+
+#### `dir-bike-lane-illegal` (high): Cyclist lane that breaks the direction rules (against a track, against a one-way street without contraflow, on a banned road, ...)
+
+Count **0** of 879 (0.0%). {}
+
+#### `dir-bike-sim-violations` (high): Cyclist rider-steps against a track / one-way street / on a banned road (10 simulated minutes, 96 riders)
+
+Count **0** of 305638 (0.0%). 269241 rider-steps at junctions / free-standing tracks were not judged; by category {}
 
 #### `lod2-eave-mismatch` (med): LoD2 median eave differs from geodata eave by > 2 m
 
@@ -411,7 +434,7 @@ Count **0** of 982 (0.0%). one record per whole KK stand field; the engine lays 
 
 #### `car-orientation` (med): Parked car axis > 25 deg off the kerb for parallel bays, or < 35 deg for perpendicular bays
 
-Count **0** of 1067 (0.0%). bay `yaw` is a kerb-line direction; the 90-degree convention of angled/perp bays is derived without the road side
+Count **0** of 1030 (0.0%). bay `yaw` is a kerb-line direction; the 90-degree convention of angled/perp bays is derived without the road side
 
 #### `wire-floating-anchor` (med): Wire anchor > 2.5 m from the nearest facade
 
@@ -435,12 +458,12 @@ Count **0** of 17 (0.0%).
 
 #### `on-carriageway:cars` (low): cars on the capped carriageway (>= 25% of footprint)
 
-Count **1067** of 1067 (100.0%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
+Count **1030** of 1030 (100.0%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
 
 | # | id | x, z | measure |
 |---:|---|---|---|
-| 1 | cars[387] | -27.9, -643.9 | 100% of footprint |
-| 2 | cars[626] | 142.7, 123.5 | 100% of footprint |
+| 1 | cars[355] | -27.9, -643.9 | 100% of footprint |
+| 2 | cars[594] | 142.7, 123.5 | 100% of footprint |
 | 3 | cars[5] | -721.4, -370.7 | 100% of footprint |
 | 4 | cars[10] | -680.2, -367.3 | 100% of footprint |
 | 5 | cars[11] | -674.7, -489.9 | 100% of footprint |
@@ -488,6 +511,10 @@ Count **741** of 4905 (15.11%).
 | 9 | tree[2330] | -487.5, -292.5 | crown r 8.1 / h 2.9 = 2.79 |
 | 10 | tree[3280] | -307.5, 623.5 | crown r 6.9 / h 2.5 = 2.76 |
 
+#### `dir-bike-dead-end-lane` (low): Cyclist lane with no way on (the rider has arrived and restarts), away from the district edge
+
+Count **99** of 879 (11.26%). by kind {'track': 75, 'contra': 10, 'shared': 6, 'path': 8}; contraflow lanes with an exit: 64/75
+
 #### `pavement-cycletrack` (low): Pavement polygon overlaps a cycle track (>= 2 m2; the engine cuts pavement where cycle tracks pass, so this is the area it removes)
 
 Count **22** of 1026 (2.14%). handled by `skip` in buildGroundBuckets; reported to show how much pavement the cycle layer deletes
@@ -521,6 +548,23 @@ Count **16** of 1188 (1.35%).
 | 8 | lamp | 406.7, -124.6 | pole tube poleH 15 |
 | 9 | lamp | -289.2, 524.9 | pole tube poleH 10.4 |
 | 10 | lamp | -193.6, 535.0 | pole tube poleH 10.4 |
+
+#### `dir-car-oneway-dead-end` (low): One-way edge no car can both reach and leave (sink / source / island, interior of the district)
+
+Count **20** of 1615 (1.24%). interior {'sink': 10, 'source': 10, 'island': 0}; at the district boundary (the street continues out of the district) {'sink': 11, 'source': 21, 'island': 1}
+
+| # | id | x, z | measure |
+|---:|---|---|---|
+| 1 | sink Forhåbningsholms Allé | -652.0, 679.0 | sink |
+| 2 | sink Gammeltoftsgade | 660.0, -683.0 | sink |
+| 3 | source osm:way/398385407 | -25.0, 660.0 | source |
+| 4 | sink Struenseegade | -689.0, -487.0 | sink |
+| 5 | source Israels Plads | 358.0, -36.0 | source |
+| 6 | source Israels Plads | 398.0, -21.0 | source |
+| 7 | sink Israels Plads | 426.0, -7.0 | sink |
+| 8 | sink osm:way/367458129 | 278.0, 438.0 | sink |
+| 9 | source osm:way/367458129 | 278.0, 438.0 | source |
+| 10 | source Frederiksborggade | 416.0, -277.0 | source |
 
 #### `water-paths` (low): Footway/cycleway centreline runs > 3 m through open water
 
@@ -577,6 +621,10 @@ Count **0** of 1188 (0.0%).
 #### `busstop-in-carriageway` (low): Stop flag inside the capped carriageway
 
 Count **0** of 41 (0.0%). expected for kerbside poles on narrow caps
+
+#### `dir-found` (info): Direction data found
+
+Count **66** of 368 (17.93%). contraflow streets 66 of 368 one-way car roads (6.25 km; by kind {'shared': 58, 'lane': 6, 'track': 2}); two-way carriageway tracks 0; two-way cycleways 28, one-way cycleways 65; bicycle-banned roads 85; sidepath sides 67; KK/OSM merge {'contraflow_kk_agree': 77, 'contraflow_kk_conflict': 10, 'oneway_kk_only': 42, 'contraflow_kk_granted': 1, 'ways_cycleway_two_way': 28, 'ways_bike_ban': 85, 'ways_contraflow': 66, 'ways_contraflow_shared': 58, 'ways_contraflow_lane': 6, 'ways_sidepath_side': 67, 'ways_contraflow_track': 2, 'ways_cycleway_oneway': 65}
 
 ### Scale: prop dimensions vs visual-refs
 

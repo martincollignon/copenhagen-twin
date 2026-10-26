@@ -61,6 +61,8 @@ plaza-sized polygon says otherwise. Without the file the twin still boots (pavem
 ```sh
 uv run tools/cph-geodata/furniture.py   # KK WFS + Citelum lamp GPKGs + Movia stops; `?debug=nofurniture` skips it in the viewer
 uv run --with playwright python tools/shoot-m2.py --furniture   # shots + fps into docs/m4-furniture
+uv run --with playwright python tools/shoot-m2.py --oneway      # traffic direction: live car check + contraflow / track / arrow-overlay shots into docs/oneway
+node tools/audit/oneway.mjs                                     # cars and cyclists against the one-way / bicycle-direction data (10 simulated minutes)
 ```
 
 ## Licence and attributions

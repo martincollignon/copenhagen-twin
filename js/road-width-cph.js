@@ -133,6 +133,8 @@ export const VEHICLE_HALF = 0.95; // m: half the width of a simulated car
  * centre (1.5 m), one-way lanes are centred; a car is 1.9 m wide. A parked car must stay outside it.
  */
 export function movingHalfWidth(road) {
+  // a painted contraflow lane runs along the left kerb of a one-way street: nothing parks in it
+  if (road.carDir === 'fwd' && road.bike?.contraflow && (road.bike.contraKind === 'lane' || road.bike.contraKind === 'track')) return carriagewayWidth(road) / 2;
   const nf = Math.min(4, road.lanesFwd ?? 1);
   const nb = road.oneway ? 0 : Math.min(4, road.lanesBack ?? 1);
   const n = Math.max(1, nf, nb);

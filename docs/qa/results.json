@@ -322,7 +322,7 @@
   "layer": "cars",
   "title": "Parked car < 50% on carriageway/bay paint (and not mostly in a building)",
   "count": 0,
-  "total": 1067,
+  "total": 1030,
   "pct": 0.0,
   "severity": "high",
   "note": "bay points come from kerb lines / parking polygons; where the engine's capped carriageway is narrower than the real kerb-to-kerb the car sits on pavement or bare ground",
@@ -333,7 +333,7 @@
   "layer": "cars",
   "title": "Parked car >= 40% on a pavement polygon",
   "count": 0,
-  "total": 1067,
+  "total": 1030,
   "pct": 0.0,
   "severity": "high",
   "note": "wheels on the raised pavement at y 0.2 vs car y from the same field",
@@ -344,7 +344,7 @@
   "layer": "cars",
   "title": "Parked car >= 25% inside the moving-traffic corridor (lanes x 3.0 m around the centreline)",
   "count": 0,
-  "total": 1067,
+  "total": 1030,
   "pct": 0.0,
   "severity": "high",
   "note": "the traffic sim drives through parked cars",
@@ -359,6 +359,50 @@
   "pct": 0.0,
   "severity": "high",
   "note": "the span is facade-to-facade `inferred` across the street, or the 2018 line crosses a courtyard; pendant and wire pass through a house",
+  "examples": []
+ },
+ {
+  "id": "dir-car-edge-against-oneway",
+  "layer": "traffic direction",
+  "title": "Car network edge runs against a one-way road (judged away from the junctions)",
+  "count": 0,
+  "total": 1615,
+  "pct": 0.0,
+  "severity": "high",
+  "note": "static: every lane of every edge",
+  "examples": []
+ },
+ {
+  "id": "dir-car-sim-against-oneway",
+  "layer": "traffic direction",
+  "title": "Live car-steps against a one-way road (10 simulated minutes, headless browser)",
+  "count": 0,
+  "total": 418756,
+  "pct": 0.0,
+  "severity": "high",
+  "note": "789599 car-steps in junctions / off any road were not judged",
+  "examples": []
+ },
+ {
+  "id": "dir-bike-lane-illegal",
+  "layer": "traffic direction",
+  "title": "Cyclist lane that breaks the direction rules (against a track, against a one-way street without contraflow, on a banned road, ...)",
+  "count": 0,
+  "total": 879,
+  "pct": 0.0,
+  "severity": "high",
+  "note": "{}",
+  "examples": []
+ },
+ {
+  "id": "dir-bike-sim-violations",
+  "layer": "traffic direction",
+  "title": "Cyclist rider-steps against a track / one-way street / on a banned road (10 simulated minutes, 96 riders)",
+  "count": 0,
+  "total": 305638,
+  "pct": 0.0,
+  "severity": "high",
+  "note": "269241 rider-steps at junctions / free-standing tracks were not judged; by category {}",
   "examples": []
  },
  {
@@ -1298,7 +1342,7 @@
   "layer": "cars",
   "title": "Parked car axis > 25 deg off the kerb for parallel bays, or < 35 deg for perpendicular bays",
   "count": 0,
-  "total": 1067,
+  "total": 1030,
   "pct": 0.0,
   "severity": "med",
   "note": "bay `yaw` is a kerb-line direction; the 90-degree convention of angled/perp bays is derived without the road side",
@@ -1363,20 +1407,20 @@
   "id": "on-carriageway:cars",
   "layer": "cars",
   "title": "cars on the capped carriageway (>= 25% of footprint)",
-  "count": 1067,
-  "total": 1067,
+  "count": 1030,
+  "total": 1030,
   "pct": 100.0,
   "severity": "low",
   "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
   "examples": [
    {
-    "id": "cars[387]",
+    "id": "cars[355]",
     "x": -27.9,
     "z": -643.9,
     "metric": "100% of footprint"
    },
    {
-    "id": "cars[626]",
+    "id": "cars[594]",
     "x": 142.7,
     "z": 123.5,
     "metric": "100% of footprint"
@@ -1587,6 +1631,17 @@
   ]
  },
  {
+  "id": "dir-bike-dead-end-lane",
+  "layer": "traffic direction",
+  "title": "Cyclist lane with no way on (the rider has arrived and restarts), away from the district edge",
+  "count": 99,
+  "total": 879,
+  "pct": 11.26,
+  "severity": "low",
+  "note": "by kind {'track': 75, 'contra': 10, 'shared': 6, 'path': 8}; contraflow lanes with an exit: 64/75",
+  "examples": []
+ },
+ {
   "id": "pavement-cycletrack",
   "layer": "pavement",
   "title": "Pavement polygon overlaps a cycle track (>= 2 m2; the engine cuts pavement where cycle tracks pass, so this is the area it removes)",
@@ -1727,6 +1782,78 @@
     "x": -193.6,
     "z": 535.0,
     "metric": "pole tube poleH 10.4"
+   }
+  ]
+ },
+ {
+  "id": "dir-car-oneway-dead-end",
+  "layer": "traffic direction",
+  "title": "One-way edge no car can both reach and leave (sink / source / island, interior of the district)",
+  "count": 20,
+  "total": 1615,
+  "pct": 1.24,
+  "severity": "low",
+  "note": "interior {'sink': 10, 'source': 10, 'island': 0}; at the district boundary (the street continues out of the district) {'sink': 11, 'source': 21, 'island': 1}",
+  "examples": [
+   {
+    "id": "sink Forhåbningsholms Allé",
+    "x": -652.0,
+    "z": 679.0,
+    "metric": "sink"
+   },
+   {
+    "id": "sink Gammeltoftsgade",
+    "x": 660.0,
+    "z": -683.0,
+    "metric": "sink"
+   },
+   {
+    "id": "source osm:way/398385407",
+    "x": -25.0,
+    "z": 660.0,
+    "metric": "source"
+   },
+   {
+    "id": "sink Struenseegade",
+    "x": -689.0,
+    "z": -487.0,
+    "metric": "sink"
+   },
+   {
+    "id": "source Israels Plads",
+    "x": 358.0,
+    "z": -36.0,
+    "metric": "source"
+   },
+   {
+    "id": "source Israels Plads",
+    "x": 398.0,
+    "z": -21.0,
+    "metric": "source"
+   },
+   {
+    "id": "sink Israels Plads",
+    "x": 426.0,
+    "z": -7.0,
+    "metric": "sink"
+   },
+   {
+    "id": "sink osm:way/367458129",
+    "x": 278.0,
+    "z": 438.0,
+    "metric": "sink"
+   },
+   {
+    "id": "source osm:way/367458129",
+    "x": 278.0,
+    "z": 438.0,
+    "metric": "source"
+   },
+   {
+    "id": "source Frederiksborggade",
+    "x": 416.0,
+    "z": -277.0,
+    "metric": "source"
    }
   ]
  },
@@ -1887,6 +2014,17 @@
   "pct": 0.0,
   "severity": "low",
   "note": "expected for kerbside poles on narrow caps",
+  "examples": []
+ },
+ {
+  "id": "dir-found",
+  "layer": "traffic direction",
+  "title": "Direction data found",
+  "count": 66,
+  "total": 368,
+  "pct": 17.93,
+  "severity": "info",
+  "note": "contraflow streets 66 of 368 one-way car roads (6.25 km; by kind {'shared': 58, 'lane': 6, 'track': 2}); two-way carriageway tracks 0; two-way cycleways 28, one-way cycleways 65; bicycle-banned roads 85; sidepath sides 67; KK/OSM merge {'contraflow_kk_agree': 77, 'contraflow_kk_conflict': 10, 'oneway_kk_only': 42, 'contraflow_kk_granted': 1, 'ways_cycleway_two_way': 28, 'ways_bike_ban': 85, 'ways_contraflow': 66, 'ways_contraflow_shared': 58, 'ways_contraflow_lane': 6, 'ways_sidepath_side': 67, 'ways_contraflow_track': 2, 'ways_cycleway_oneway': 65}",
   "examples": []
  },
  {

@@ -1,0 +1,10 @@
+{
+ "steps": 12000,
+ "carSteps": 1202096,
+ "ok": 372839,
+ "unmatched": 829257,
+ "against": 0,
+ "events": 0,
+ "simulatedSeconds": 600,
+ "examples": []
+}

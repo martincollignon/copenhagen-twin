@@ -923,6 +923,34 @@ DIM_TABLE = [
 ]
 RESULTS.append({"id": "dim-table", "layer": "scale", "title": "Prop dimensions vs visual-refs", "table": DIM_TABLE, "count": 0, "total": 0, "pct": 0, "severity": "info", "note": "", "examples": []})
 
+# ---------------------------------------------------------------------------------------------------------- 10. traffic direction
+# tools/audit/oneway.mjs judges the engine's cars and cyclists against the one-way / bicycle-direction data (tools/cph-geodata/bikedir.py)
+# with checks that read only position + heading and the road data. The live car simulation runs in the browser:
+# `uv run --with playwright python tools/shoot-m2.py --oneway` writes docs/oneway/sim-cars.json.
+subprocess.run(["node", str(ROOT / "tools/audit/oneway.mjs")], check=True, stdout=subprocess.DEVNULL)
+ow = json.loads((OUT / "oneway.json").read_text())
+cars, bikes, bsim, odata = ow["cars"], ow["cyclists"], ow["sim"], ow["data"]
+check("dir-car-edge-against-oneway", "traffic direction", "Car network edge runs against a one-way road (judged away from the junctions)", cars["edgesAgainstOneWay"], cars["edges"], "high",
+      [(f"chain {e['chain']}", e["x"], e["z"], f"{e['against']}/{e['samples']} samples", e["against"]) for e in cars["examples"]], "static: every lane of every edge", weight=3)
+sim_path = ROOT / "docs/oneway/sim-cars.json"
+if sim_path.exists():
+    cs = json.loads(sim_path.read_text())
+    check("dir-car-sim-against-oneway", "traffic direction", f"Live car-steps against a one-way road ({cs['simulatedSeconds'] / 60:.0f} simulated minutes, headless browser)", cs["against"], cs["ok"] + cs["against"], "high",
+          [(f"t={e['t']}", e["x"], e["z"], "against", 1) for e in cs["examples"]], f"{cs['unmatched']} car-steps in junctions / off any road were not judged", weight=3)
+dead = cars["oneWayEdgesNotInTheMainNetwork"]
+n_dead = sum(dead["interior"].values())
+check("dir-car-oneway-dead-end", "traffic direction", "One-way edge no car can both reach and leave (sink / source / island, interior of the district)", n_dead, cars["edges"], "low",
+      [(f"{e['kind']} {e['road']}", e["x"], e["z"], e["kind"], 1) for e in dead["interiorSample"]],
+      f"interior {dead['interior']}; at the district boundary (the street continues out of the district) {dead['atDistrictBoundary']}", weight=0.5, visible=False)
+check("dir-bike-lane-illegal", "traffic direction", "Cyclist lane that breaks the direction rules (against a track, against a one-way street without contraflow, on a banned road, ...)", bikes["illegalLanes"], bikes["lanes"], "high",
+      [(f"lane {e['lane']}", e.get("x", 0), e.get("z", 0), e["why"], 1) for e in bikes["illegalSample"]], str(bikes["illegalByCategory"]), weight=3)
+check("dir-bike-sim-violations", "traffic direction", f"Cyclist rider-steps against a track / one-way street / on a banned road ({bsim['minutes']:.0f} simulated minutes, {bsim['riders']} riders)", bsim["violations"], bsim["ok"] + bsim["violations"], "high",
+      [(f"t={e['t']} lane {e['lane']}", e["x"], e["z"], e["why"], 1) for e in bsim["examples"]], f"{bsim['unmatched']} rider-steps at junctions / free-standing tracks were not judged; by category {bsim['byCategory']}", weight=3)
+check("dir-bike-dead-end-lane", "traffic direction", "Cyclist lane with no way on (the rider has arrived and restarts), away from the district edge", bikes["deadEndLanes"], bikes["lanes"], "low", [],
+      f"by kind {bikes['deadEndByKind']}; contraflow lanes with an exit: {bikes['contraLanesWithAnExit']}/{bikes['contraLanes']}", visible=False)
+RESULTS.append({"id": "dir-found", "layer": "traffic direction", "title": "Direction data found", "count": odata["contraflowStreets"], "total": odata["oneWayCarRoads"], "pct": round(100.0 * odata["contraflowStreets"] / max(1, odata["oneWayCarRoads"]), 2),
+                "severity": "info", "note": f"contraflow streets {odata['contraflowStreets']} of {odata['oneWayCarRoads']} one-way car roads ({odata['contraflowKm']} km; by kind {odata['contraflowByKind']}); two-way carriageway tracks {odata['twoWayCarriagewayTracks']}; two-way cycleways {odata['twoWayCyclewayWays']}, one-way cycleways {odata['oneWayCyclewayWays']}; bicycle-banned roads {odata['bicycleBannedRoads']}; sidepath sides {odata['sidepathSides']}; KK/OSM merge {odata['roadStats']}", "examples": []})
+
 # ---------------------------------------------------------------------------------------------------------- output
 sev_rank = {"high": 0, "med": 1, "low": 2, "info": 3}
 RESULTS.sort(key=lambda r: (sev_rank.get(r["severity"], 9), -r["pct"]))

@@ -15,6 +15,7 @@ ap.add_argument('--colours', action='store_true', help='M4 observed colours: bef
 ap.add_argument('--water', action='store_true', help='M4 lakes + calibrated facade colours: Peblinge Soe from Dronning Louises Bro day/night, lake path, Norre Sogade facades and aerial before/after into --out (default docs/m4-water-colour)')
 ap.add_argument('--furniture', action='store_true', help='M4 street furniture: Nørre Søgade day+night (wire lamps), parked cars, lake-path trees, a bus stop; fps and draw calls (default out docs/m4-furniture)')
 ap.add_argument('--audit-sweep', action='store_true', help='QA audit: ~30 eye-level and 6 aerial shots at the points in docs/qa/sweep-points.json (tools/audit/audit.py) into docs/qa/sweep + contact sheets')
+ap.add_argument('--oneway', action='store_true', help='traffic direction: 10 simulated minutes of live cars checked against the one-way roads (docs/oneway/sim-cars.json), contraflow / track / overview-with-arrows shots into --out (default docs/oneway)')
 ap.add_argument('--perf', action='store_true', help='unthrottled frame timing instead of captures')
 args = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -294,7 +295,7 @@ try:
         logs = []
         page.on('console', lambda m: logs.append(f'{m.type}: {m.text}'))
         page.on('pageerror', lambda e: logs.append(f'pageerror: {e}'))
-        page.goto(f'http://127.0.0.1:{port}/index.html?{("hooks&" + args.query.lstrip("&")) if (args.furniture or args.audit_sweep) else args.query.lstrip("&")}')
+        page.goto(f'http://127.0.0.1:{port}/index.html?{("hooks&" + args.query.lstrip("&")) if (args.furniture or args.audit_sweep or args.oneway) else args.query.lstrip("&")}')
         page.wait_for_function('globalThis.__twin && globalThis.__twin.world', timeout=120000)
         page.wait_for_timeout(4000)
         view = lambda pos, look, fov=60: page.evaluate('([p,l,f]) => { globalThis.__twin.cameraSystem.debugView = {pos:p, look:l, fov:f}; }', [pos, look, fov])
@@ -483,6 +484,138 @@ try:
                 page.screenshot(path=f'{args.out}/pedestrian-feet.png')
                 print('shot pedestrian-feet', ped)
             errs = [l for l in logs if l.startswith(('error', 'pageerror', 'warning'))]
+            print('\n'.join(errs[:20]))
+            browser.close()
+            raise SystemExit(0)
+
+        if args.oneway:
+            import math
+            out_dir = args.out if args.out != 'docs/m2' else 'docs/oneway'
+            os.makedirs(out_dir, exist_ok=True)
+            free = lambda pos, look, fov=60: page.evaluate("""([p,l,f]) => { const t = globalThis.__twin.world.terrain; const g = (x, z) => (t && !t.flat && p[1] < 80) ? t.heightAt(x, z) : 0;
+              globalThis.__twin.freeCam = {pos:[p[0], p[1] + g(p[0], p[2]), p[2]], target:[l[0], l[1] + g(l[0], l[2]), l[2]], fov:f}; }""", [pos, look, fov])
+            page.evaluate("(id) => document.querySelector(`[data-time=\"${id}\"]`).click()", 'midday')
+            page.wait_for_function('globalThis.__twin.trafficSystem && globalThis.__twin.trafficSystem.cars.some((c) => c.edge)', timeout=120000)
+            # ---- 1. live cars: 10 simulated minutes, five places, every car-step judged against the one-way roads
+            foci = [[0, 140], [97, -477], [-300, -440], [300, 380], [-200, -150]]
+            res = page.evaluate("""async (foci) => {
+              const { buildRoadIndex, carCheck } = await import('/tools/audit/oneway-check.mjs');
+              const tw = globalThis.__twin, ts = tw.trafficSystem, idx = buildRoadIndex(globalThis.CPH_GEO);
+              const out = { steps: 0, carSteps: 0, ok: 0, unmatched: 0, against: 0, events: 0, simulatedSeconds: 0, examples: [] };
+              const seen = new Set();
+              let t = 9000;
+              for (const [fx, fz] of foci) {
+                for (let k = 0; k < 2400; k++) { // 120 s at 0.05 s each
+                  t += 0.05;
+                  ts.update(0.05, t, { x: fx, z: fz }, null, 'car', null);
+                  out.steps++;
+                  for (const v of ts.cars.concat(ts.buses)) {
+                    if (!v.edge || v.conn) continue;
+                    const l = Math.hypot(v.tx, v.tz) || 1;
+                    const c = carCheck(idx, v.x, v.z, v.tx / l, v.tz / l);
+                    out.carSteps++;
+                    if (c.status === 'ok') out.ok++;
+                    else if (c.status === 'unmatched') out.unmatched++;
+                    else {
+                      out.against++;
+                      const key = Math.round(v.x / 8) + ':' + Math.round(v.z / 8);
+                      if (!seen.has(key)) { seen.add(key); out.events++; if (out.examples.length < 12) out.examples.push({ t: +(t - 9000).toFixed(1), x: +v.x.toFixed(1), z: +v.z.toFixed(1), tx: +(v.tx / l).toFixed(2), tz: +(v.tz / l).toFixed(2) }); }
+                    }
+                  }
+                }
+              }
+              out.simulatedSeconds = out.steps * 0.05;
+              return out;
+            }""", foci)
+            json.dump(res, open(f'{out_dir}/sim-cars.json', 'w'), indent=1)
+            print('cars sim:', {k: v for k, v in res.items() if k != 'examples'})
+            # ---- 2. shots
+            VEH = ('primary', 'secondary', 'residential', 'service')
+            def plen(p): return sum(math.hypot(p[i+2]-p[i], p[i+3]-p[i+1]) for i in range(0, len(p)-2, 2))
+            def mid_and_dir(r):
+                p = r['pts']; L = plen(p); acc = 0
+                for i in range(0, len(p)-2, 2):
+                    seg = math.hypot(p[i+2]-p[i], p[i+3]-p[i+1])
+                    if acc + seg >= L / 2:
+                        t = (L / 2 - acc) / (seg or 1)
+                        return (p[i] + (p[i+2]-p[i]) * t, p[i+1] + (p[i+3]-p[i+1]) * t), ((p[i+2]-p[i]) / (seg or 1), (p[i+3]-p[i+1]) / (seg or 1))
+                    acc += seg
+                return (p[0], p[1]), (1, 0)
+            inside = lambda r: all(abs(v) < 740 for v in r['pts'][:2] + r['pts'][-2:])
+            def pick(pred, names=()):
+                c = [r for r in GEO['roads'] if r['class'] in VEH and r.get('bike') and pred(r) and inside(r) and plen(r['pts']) > 40]
+                for n in names:
+                    m = [r for r in c if r['name'] == n]
+                    if m: return max(m, key=lambda r: plen(r['pts']))
+                return max(c, key=lambda r: plen(r['pts']))
+            lane_road = pick(lambda r: r['bike']['contraflow'] and r['bike']['contraKind'] == 'lane', ('Sankt Hans Gade', 'Vester Søgade', 'Linnésgade', 'Farvergade'))
+            kk_road = pick(lambda r: r['bike']['contraflow'] and r['bike']['contraKind'] == 'shared' and any('cykling_mod_ensretning' in x for x in r['src']), ('Thorupsgade', 'Kapelvej', 'Gartnergade', 'Kjeld Langes Gade'))
+            print('lane road', lane_road['id'], lane_road['name'], 'kk road', kk_road['id'], kk_road['name'])
+            def put_riders(road_id, kinds_counts, x, z):
+                """teleport the player (the riders' focus), then put riders on the lanes of one road: [(kind, [fractions])]"""
+                page.evaluate("([x, z]) => globalThis.__twin.controllerManager.teleportActiveTo(x, z, 0)", [x, z])
+                page.wait_for_timeout(2500)
+                return page.evaluate("""async ([id, plan]) => {
+                  const { lanePoint } = await import('/js/cyclist-network.js');
+                  const sys = globalThis.__twin.trafficSystem.cyclistSystem, riders = sys.riders, lanes = sys.network.lanes;
+                  let k = 0; const pt = { x: 0, z: 0, dx: 0, dz: 1 }; const placed = [];
+                  for (const [kind, fracs] of plan) {
+                    const cand = lanes.filter((l) => l.road === id && l.kind === kind).sort((a, b) => b.len - a.len)[0];
+                    if (!cand) continue;
+                    for (const f of fracs) {
+                      const c = riders[k++]; if (!c) break;
+                      c.lane = cand; c.s = cand.len * f; c.speed = 3; c.placed = true; c.wait = 0; c.next = cand.next[0] || null;
+                      lanePoint(cand, c.s, pt); c.x = c.prevX = pt.x; c.z = c.prevZ = pt.z; c.dx = pt.dx; c.dz = pt.dz; c.yaw = Math.atan2(pt.dx, pt.dz);
+                      placed.push({ kind, side: cand.side, along: cand.along, x: +c.x.toFixed(1), z: +c.z.toFixed(1) });
+                    }
+                  }
+                  return placed;
+                }""", [road_id, kinds_counts])
+            def street_shot(road, plan, name, back=26, up=2.3, fov=62, ahead=22, from_end=True):
+                (mx, mz), (ux, uz) = mid_and_dir(road)
+                # stand behind the middle looking along the pts: the left lane (contraflow) is on the left of the picture
+                px, pz = mx - ux * back + (-uz) * 0.0, mz - uz * back
+                put_riders(road['id'], plan, mx, mz)
+                free([px, up, pz], [mx + ux * ahead, 0.4, mz + uz * ahead], fov)
+                page.wait_for_timeout(900)
+                placed = put_riders.__call__ if False else None
+                page.screenshot(path=f'{out_dir}/{name}.png')
+                print('shot', name, road['name'], (round(mx), round(mz)))
+            street_shot(kk_road, [('contra', [0.25, 0.5, 0.75]), ('shared', [0.3, 0.6])], '01-contraflow-kk-street')
+            street_shot(lane_road, [('contra', [0.25, 0.45, 0.65]), ('shared', [0.35, 0.8])], '02-contraflow-lane-painted', back=18, up=2.0, ahead=16)
+            street_shot(lane_road, [('contra', [0.3, 0.5, 0.7])], '03-contraflow-lane-closeup', back=9, up=5.0, fov=64, ahead=9)
+            # Dronning Louises Bro and Nørrebrogade: riders on the tracks
+            def track_shot(name_, x, z, ux, uz, name):
+                road = next(r for r in GEO['roads'] if r['name'] == name_ and r['class'] in VEH and r['cycleTrack'] != 'none' and plen(r['pts']) > 40 and abs(r['pts'][0] - x) < 400)
+                (mx, mz), (dx, dz) = mid_and_dir(road)
+                page.evaluate("([x, z]) => globalThis.__twin.controllerManager.teleportActiveTo(x, z, 0)", [mx, mz])
+                page.wait_for_timeout(2500)
+                lanes = page.evaluate("""async ([id]) => {
+                  const { lanePoint } = await import('/js/cyclist-network.js');
+                  const sys = globalThis.__twin.trafficSystem.cyclistSystem, riders = sys.riders, lanes = sys.network.lanes.filter((l) => l.road === id && l.kind === 'track');
+                  let k = 0; const pt = { x: 0, z: 0, dx: 0, dz: 1 }; const info = [];
+                  for (const l of lanes) for (const f of [0.3, 0.55, 0.8]) {
+                    const c = riders[k++]; if (!c) break;
+                    c.lane = l; c.s = l.len * f; c.speed = 4; c.placed = true; c.wait = 0; c.next = l.next[0] || null;
+                    lanePoint(l, c.s, pt); c.x = c.prevX = pt.x; c.z = c.prevZ = pt.z; c.dx = pt.dx; c.dz = pt.dz; c.yaw = Math.atan2(pt.dx, pt.dz);
+                  }
+                  return lanes.map((l) => ({ side: l.side, along: l.along, len: +l.len.toFixed(0) }));
+                }""", [road['id']])
+                print(name, road['id'], 'track lanes', lanes)
+                free([mx - dx * 22, 4.2, mz - dz * 22], [mx + dx * 18, 0.2, mz + dz * 18], 62)
+                page.wait_for_timeout(900)
+                page.screenshot(path=f'{out_dir}/{name}.png')
+            track_shot('Dronning Louises Bro', 97, -477, 0, 0, '04-tracks-dronning-louises-bro')
+            track_shot('Nørrebrogade', 0, -540, 0, 0, '05-tracks-norrebrogade')
+            # overview with the direction overlay
+            page.goto(f'http://127.0.0.1:{port}/index.html?hooks&debug=oneway')
+            page.wait_for_function('globalThis.__twin && globalThis.__twin.world && globalThis.__twin.trafficSystem', timeout=120000)
+            page.wait_for_timeout(5000)
+            page.evaluate("(id) => document.querySelector(`[data-time=\"${id}\"]`).click()", 'midday')
+            for name, v in (('06-overview-directions', ([-420, 330, 380], [20, 0, -20], 50)), ('07-directions-dronning-louises-bro', ([60, 150, -330], [97, 0, -477], 50)), ('08-directions-norrebro-side-streets', ([-90, 170, -20], [-196, 0, -150], 52))):
+                free(*v); page.wait_for_timeout(5000)
+                page.screenshot(path=f'{out_dir}/{name}.png'); print('shot', name)
+            errs = [l for l in logs if l.startswith(('error', 'pageerror'))]
             print('\n'.join(errs[:20]))
             browser.close()
             raise SystemExit(0)

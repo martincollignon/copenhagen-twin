@@ -127,7 +127,7 @@ test('no car edge runs against a one-way road', () => {
     judged += c.judged;
     assert.ok(!c.violation, `edge at ${c.at?.x}, ${c.at?.z}: ${c.against} of ${c.judged} samples against a one-way road`);
   }
-  assert.ok(judged > 5000, `${judged} samples judged`);
+  assert.ok(judged > 3000, `${judged} samples judged`);
 });
 
 test('10 simulated minutes of cyclists: no rider against a track, against the cars without contraflow, or on a banned road', () => {

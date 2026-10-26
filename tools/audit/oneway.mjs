@@ -28,6 +28,7 @@ const VEH = new Set(['primary', 'secondary', 'residential', 'service']);
 const vehicular = geo.roads.filter((r) => VEH.has(r.class) && r.pts?.length >= 4 && !r.drop);
 const len = (p) => { let s = 0; for (let i = 0; i + 3 < p.length; i += 2) s += Math.hypot(p[i + 2] - p[i], p[i + 3] - p[i + 1]); return s; };
 const END_BLEND = 12; // m of a lane next to its junction: its geometry is pulled to the junction centre there
+const category = (why) => (/ban/.test(why) ? 'bicycles banned' : /contraflow/.test(why) ? 'contraflow without permission' : /track/.test(why) ? 'against a cycle track' : /cycleway|path/.test(why) ? 'against a one-way cycleway' : /one-way|against the traffic/.test(why) ? 'against a one-way street' : 'construction');
 const wayOf = (id) => id.split('#')[0];
 const mulberry = (a) => () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const report = { engine, geo: { roads: geo.roads.length } };
@@ -181,7 +182,7 @@ const roadById = new Map(geo.roads.map((r) => [r.id, r]));
   const sharedLanes = net.lanes.filter((l) => l.kind === 'shared');
   report.cyclists = {
     lanes: net.lanes.length, kinds, lengthKm: +net.stats.lengthKm.toFixed(1), judgedSamples: judged,
-    illegalLanes: bad.length, illegalSample: bad.slice(0, 15),
+    illegalLanes: bad.length, illegalByCategory: bad.reduce((o, b) => (o[category(b.why)] = (o[category(b.why)] || 0) + 1, o), {}), illegalSample: bad.slice(0, 15),
     deadEndLanes: sinks.length, deadEndByKind: sinks.reduce((o, l) => (o[l.kind] = (o[l.kind] || 0) + 1, o), {}),
     mainComponentLanes: main.size, contraLanes: contraLanes.length, contraLanesInMainComponent: contraLanes.filter((l) => main.has(l)).length, sharedLanesInMainComponent: sharedLanes.filter((l) => main.has(l)).length, sharedLanes: sharedLanes.length,
     contraLanesWithAnExit: contraLanes.filter((l) => l.next.length).length
@@ -194,7 +195,8 @@ const roadById = new Map(geo.roads.map((r) => [r.id, r]));
   const sim = createCyclists(net, { count: 96, random });
   const dt = 0.1;
   const steps = Math.round(minutes * 60 / dt);
-  const tally = { riderSteps: 0, ok: 0, unmatched: 0, violations: 0, contraSteps: 0 };
+  const tally = { riderSteps: 0, ok: 0, unmatched: 0, violations: 0 };
+  const byCategory = {};
   const events = new Map();
   const examples = [];
   const laneUse = {};
@@ -212,6 +214,7 @@ const roadById = new Map(geo.roads.map((r) => [r.id, r]));
       else if (ch.status === 'unmatched') tally.unmatched++;
       else {
         tally.violations++;
+        byCategory[category(ch.why)] = (byCategory[category(ch.why)] || 0) + 1;
         const key = `${c.id}:${c.lane.id}`;
         if (!events.has(key)) {
           events.set(key, 1);
@@ -220,7 +223,7 @@ const roadById = new Map(geo.roads.map((r) => [r.id, r]));
       }
     }
   }
-  report.sim = { minutes, dt, riders: sim.riders.length, ...tally, violationEvents: events.size, laneUse, examples };
+  report.sim = { minutes, dt, riders: sim.riders.length, ...tally, byCategory, violationEvents: events.size, laneUse, examples };
 }
 
 mkdirSync(dirname(out), { recursive: true });

@@ -62,8 +62,23 @@ Field-level overrides go in `conf_fields: {field: conf}`. Nothing may be invente
 ### Road
 
 ```json
-{"id": "…", "name": "…", "class": "residential", "pts": [...], "width": 9.0, "lanesFwd": 1, "lanesBack": 1, "oneway": false, "speedKmh": 40, "cycleTrack": "both|left|right|none", "src": [...], "conf": "…", "conf_fields": {"lanesFwd": "inferred"}}
+{"id": "…", "name": "…", "class": "residential", "pts": [...], "width": 9.0, "lanesFwd": 1, "lanesBack": 1, "oneway": false, "speedKmh": 40, "cycleTrack": "both|left|right|none",
+ "carDir": "fwd|both|none", "bike": {"left": "none", "right": "fwd", "leftKind": null, "rightKind": "track", "carriageway": "both", "contraflow": false, "contraKind": null, "sidepath": null, "ban": false},
+ "src": [...], "conf": "…", "conf_fields": {"lanesFwd": "inferred", "bike": "inferred"}}
 ```
+
+#### Traffic direction (`carDir`, `bike`; additive, `tools/cph-geodata/bikedir.py`)
+
+`pts` always run **with** the traffic: the compiler re-orients `oneway=-1` ways (and swaps their left/right and fwd/back), so `carDir` is `fwd` (one-way, cars follow `pts`), `both`, or `none` (paths). `back` is never emitted. Everything under `bike` is in that frame; sides are left/right of the `pts` direction (z south: right of an eastbound road is south).
+
+- `bike.left` / `bike.right`: the direction a cycle lane or track on that side is ridden in: `fwd` (with `pts`), `back`, `both` (a two-way track, `cycleway:<side>:oneway=no`), `none` (no lane/track). Matches `cycleTrack` (`left`/`right`/`both` = which sides are not `none`). `leftKind` / `rightKind`: `track` | `lane` | `shared` (sharrows) | `sidepath` (the track is mapped as its own `highway=cycleway` way, `cycleway:<side>=separate`) | `null`.
+- **Convention** when a side has no direction tag (Copenhagen is right-hand traffic): on a two-way street the right-hand track runs `fwd`, the left-hand one `back`; on a one-way street both sides run with the cars (`fwd`) unless tagged (`cycleway:left:oneway=-1`, `cycleway=opposite_lane|opposite_track`). A track known only from KK `cykelsti` gets the convention, flagged `conf_fields.bike = "inferred"`.
+- `bike.carriageway`: who may ride the street itself, `fwd` | `back` | `both` | `none`: with the cars on a one-way street, both ways where there is contraflow (`oneway:bicycle=no`, `cycleway=opposite*`, an opposite lane/track, or KK `cykling_mod_ensretning = 1`), `none` where `bicycle=no` / `use_sidepath` / `dismount` bans bicycles. On `class: "cycleway"` roads it is the path's own direction (`oneway=yes|-1` -> `fwd`, else `both`).
+- `bike.contraflow` (only on one-way streets) with `contraKind` `lane` | `track` | `shared` (no infrastructure, bicycles share the street); `bike.ban`; `bike.sidepath` (`left|right|both` when the street's bicycle traffic is on separately mapped cycleways).
+- Sources: `src` gains `osm:bicycle-direction` and `kk:ensrettede_gader:cykling_mod_ensretning`; `conf_fields.contraflow = "observed"`. KK is the municipal record: it grants contraflow on a one-way street unless OSM says `oneway:bicycle=yes` (reported as `contraflow_kk_conflict` in `meta.road_stats`); KK one-way streets that OSM does not mark one-way (`oneway_kk_only`) stay two-way, since KK gives no direction.
+- `meta.road_stats` carries the counts (`ways_contraflow`, `ways_contraflow_lane|track|shared`, `ways_two_way_track`, `ways_cycleway_two_way|oneway`, `ways_bike_ban`, `ways_sidepath_side`, `contraflow_kk_agree|granted|conflict`).
+
+Regenerate only the roads (the rest of the file is kept as it is): `uv run tools/cph-geodata/build.py --patch-roads --out data/cph-geodata.json` (cached raw layers under `data/raw/`). Tag-parsing tests: `python3 tools/cph-geodata/test_bikedir.py`.
 
 ## Appearance (M4, `tools/cph-geodata/appearance.py`)
 

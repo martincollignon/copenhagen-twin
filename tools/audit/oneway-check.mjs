@@ -51,7 +51,8 @@ export function buildRoadIndex(geo) {
     jcells.get(k).push(j);
   }
   const atJunction = (x, z, r = JUNCTION_R) => {
-    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+    const k = Math.ceil(r / CELL);
+    for (let a = -k; a <= k; a++) for (let b = -k; b <= k; b++) {
       for (const j of jcells.get((Math.floor(x / CELL) + a) * 100003 + Math.floor(z / CELL) + b) || []) if (Math.hypot(j[0] - x, j[1] - z) < r) return true;
     }
     return false;
@@ -59,6 +60,7 @@ export function buildRoadIndex(geo) {
   return { roads, atJunction, near: (x, z) => cells.get(Math.floor(x / CELL) * 100003 + Math.floor(z / CELL)) || [] };
 }
 const JUNCTION_R = 12;
+const CAR_JUNCTION_R = 25;
 
 // nearest segment of `rec` to (x, z): { d, cos (heading vs segment), off (+ right of the pts direction) }
 function probe(rec, x, z, dx, dz) {
@@ -84,7 +86,7 @@ function probe(rec, x, z, dx, dz) {
 
 /** A car at (x, z) heading (dx, dz): 'ok' | 'against' (every road it could be on is one-way the other way) | 'unmatched' */
 export function carCheck(idx, x, z, dx, dz) {
-  if (idx.atJunction(x, z)) return { status: 'unmatched' };
+  if (idx.atJunction(x, z, CAR_JUNCTION_R)) return { status: 'unmatched' }; // junctions that road-network.js collapses span up to ~25 m
   let any = false;
   for (const rec of idx.near(x, z)) {
     if (!rec.veh) continue;
