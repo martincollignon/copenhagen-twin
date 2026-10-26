@@ -18,13 +18,13 @@
 | high | `car-on-pavement` | cars | 0 | 1067 | 0.0 |
 | high | `car-in-moving-lane` | cars | 0 | 1067 | 0.0 |
 | high | `wire-through-building` | lamps | 0 | 502 | 0.0 |
-| med | `lod2-eave-mismatch` | lod2 | 1128 | 2097 | 53.79 |
-| med | `bld-height-sanity` | buildings | 426 | 2497 | 17.06 |
+| med | `lod2-eave-mismatch` | lod2 | 1119 | 2097 | 53.36 |
 | med | `busstop-far-from-road` | bus stops | 6 | 41 | 14.63 |
 | med | `signal-no-junction` | signals | 21 | 164 | 12.8 |
+| med | `bld-height-sanity` | buildings | 288 | 2497 | 11.53 |
 | med | `ground-jump-centreline` | ground height | 245 | 4690 | 5.22 |
 | med | `lake-wall-too-tall` | water | 62 | 1631 | 3.8 |
-| med | `lod2-spire` | lod2 | 66 | 2097 | 3.15 |
+| med | `lod2-spire` | lod2 | 63 | 2097 | 3.0 |
 | med | `ground-jump-gt25cm` | ground height | 117 | 4690 | 2.49 |
 | med | `road-road-overlap` | roads | 19 | 916 | 2.07 |
 | med | `bld-carriageway` | buildings | 23 | 2497 | 0.92 |
@@ -169,7 +169,7 @@ Count **0** of 502 (0.0%). the span is facade-to-facade `inferred` across the st
 
 #### `lod2-eave-mismatch` (med): LoD2 median eave differs from geodata eave by > 2 m
 
-Count **1128** of 2097 (53.79%). facade walls are cut to the LoD2 eave per edge, so this changes the wall height silently
+Count **1119** of 2097 (53.36%). facade walls are cut to the LoD2 eave per edge, so this changes the wall height silently
 
 | # | id | x, z | measure |
 |---:|---|---|---|
@@ -181,25 +181,8 @@ Count **1128** of 2097 (53.79%). facade walls are cut to the LoD2 eave per edge,
 | 6 | gdk:1064713496 | 197.0, 325.4 | LoD2 median eave 15.8 vs geodata eave 33.6 (-17.8 m) |
 | 7 | gdk:1064713976 | 720.5, -172.6 | LoD2 median eave 5.8 vs geodata eave 23.4 (-17.6 m) |
 | 8 | gdk:1064713468 | 266.9, 553.3 | LoD2 median eave 16.8 vs geodata eave 33.0 (-16.2 m) |
-| 9 | gdk:1233978021 | 558.0, 153.4 | LoD2 median eave 19.4 vs geodata eave 3.2 (+16.2 m) |
-| 10 | gdk:1064713391 | -323.9, -686.2 | LoD2 median eave 5.3 vs geodata eave 21.1 (-15.8 m) |
-
-#### `bld-height-sanity` (med): Height implausible: > 60 m, < 2.5 m, or > 6.5 / < 2.0 m per storey
-
-Count **426** of 2497 (17.06%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | gdk:1064712326 | 708.2, 318.0 | h 24.9 m, 3 storeys, measured |
-| 2 | gdk:1064710530 | -307.6, -48.4 | h 24.2 m, 2 storeys, measured |
-| 3 | gdk:1213434780 | -83.5, 795.1 | h 23.7 m, 19 storeys, measured |
-| 4 | gdk:1064714062 | 631.1, -232.9 | h 22.1 m, 3 storeys, measured |
-| 5 | gdk:1064714130 | 579.5, -150.0 | h 21.6 m, 12 storeys, measured |
-| 6 | gdk:1064813456 | 649.2, -45.8 | h 20.6 m, 3 storeys, measured |
-| 7 | gdk:1064714568 | 178.6, -22.2 | h 20.1 m, 3 storeys, measured |
-| 8 | gdk:1064714265 | 700.6, -679.4 | h 20.0 m, 3 storeys, measured |
-| 9 | gdk:1064713699 | -591.4, -474.1 | h 19.8 m, 3 storeys, measured |
-| 10 | gdk:1064713815 | 429.8, -418.2 | h 17.9 m, 2 storeys, measured |
+| 9 | gdk:1064713391 | -323.9, -686.2 | LoD2 median eave 5.3 vs geodata eave 21.1 (-15.8 m) |
+| 10 | gdk:1064713471 | 55.5, 483.6 | LoD2 median eave 5.9 vs geodata eave 21.3 (-15.4 m) |
 
 #### `busstop-far-from-road` (med): Stop flag > 5 m from the nearest carriageway edge
 
@@ -230,6 +213,23 @@ Count **21** of 164 (12.8%). the engine matches signals to junction nodes; unmat
 | 8 | signal[41] | 151.2, 743.4 | 17 m from the nearest road-graph junction (degree >= 3) |
 | 9 | signal[157] | -396.3, 501.2 | 16 m from the nearest road-graph junction (degree >= 3) |
 | 10 | signal[74] | 711.2, -273.4 | 16 m from the nearest road-graph junction (degree >= 3) |
+
+#### `bld-height-sanity` (med): Height implausible: > 60 m, < 2.5 m, or > 6.5 / < 2.0 m per storey
+
+Count **288** of 2497 (11.53%). 
+
+| # | id | x, z | measure |
+|---:|---|---|---|
+| 1 | gdk:1064712326 | 708.2, 318.0 | h 24.9 m, 3 storeys, measured |
+| 2 | gdk:1064710530 | -307.6, -48.4 | h 24.2 m, 2 storeys, measured |
+| 3 | gdk:1213434780 | -83.5, 795.1 | h 23.7 m, 19 storeys, measured |
+| 4 | gdk:1064714062 | 631.1, -232.9 | h 22.1 m, 3 storeys, measured |
+| 5 | gdk:1064714130 | 579.5, -150.0 | h 21.6 m, 12 storeys, measured |
+| 6 | gdk:1064813456 | 649.2, -45.8 | h 20.6 m, 3 storeys, measured |
+| 7 | gdk:1064714568 | 178.6, -22.2 | h 20.1 m, 3 storeys, measured |
+| 8 | gdk:1064714265 | 700.6, -679.4 | h 20.0 m, 3 storeys, measured |
+| 9 | gdk:1064713699 | -591.4, -474.1 | h 19.8 m, 3 storeys, measured |
+| 10 | gdk:1064713815 | 429.8, -418.2 | h 17.9 m, 2 storeys, measured |
 
 #### `ground-jump-centreline` (med): Height step > 0.15 m ALONG a carriageway centreline
 
@@ -267,7 +267,7 @@ Count **62** of 1631 (3.8%). free-board p5/p50/p95 0.30 / 0.82 / 1.75 m; the wat
 
 #### `lod2-spire` (med): LoD2 roof top > 8 m above geodata eave
 
-Count **66** of 2097 (3.15%). tall pitched roofs / towers / vegetation points in the cloud
+Count **63** of 2097 (3.0%). tall pitched roofs / towers / vegetation points in the cloud
 
 | # | id | x, z | measure |
 |---:|---|---|---|

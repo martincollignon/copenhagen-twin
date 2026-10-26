@@ -305,7 +305,9 @@ try:
             out_dir = args.out if args.out != 'docs/m2' else 'docs/qa/sweep'
             os.makedirs(out_dir, exist_ok=True)
             pts = json.load(open(os.path.join(root, 'docs/qa/sweep-points.json')))
-            free = lambda pos, look, fov=60: page.evaluate('([p,l,f]) => { globalThis.__twin.freeCam = {pos:p, target:l, fov:f}; }', [pos, look, fov])
+            # eye-level points are heights above the ground: the terrain (the one ground model) is added in the page; aerial points (y >= 80) are absolute
+            free = lambda pos, look, fov=60: page.evaluate('''([p,l,f]) => { const t = globalThis.__twin.world.terrain; const g = (x, z) => (t && !t.flat && p[1] < 80) ? t.heightAt(x, z) : 0;
+              globalThis.__twin.freeCam = {pos:[p[0], p[1] + g(p[0], p[2]), p[2]], target:[l[0], l[1] + g(l[0], l[2]), l[2]], fov:f}; }''', [pos, look, fov])
             page.evaluate("(id) => document.querySelector(`[data-time=\"${id}\"]`).click()", 'midday')
             page.wait_for_timeout(2500)
             shots = []
@@ -420,7 +422,9 @@ try:
             os.makedirs(out_dir, exist_ok=True)
             views = furniture_views()
             print('bus stop', json.dumps(views.pop('_bus_stop'), ensure_ascii=False))
-            free = lambda pos, look, fov=60: page.evaluate('([p,l,f]) => { globalThis.__twin.freeCam = {pos:p, target:l, fov:f}; }', [pos, look, fov])
+            # eye-level points are heights above the ground: the terrain (the one ground model) is added in the page; aerial points (y >= 80) are absolute
+            free = lambda pos, look, fov=60: page.evaluate('''([p,l,f]) => { const t = globalThis.__twin.world.terrain; const g = (x, z) => (t && !t.flat && p[1] < 80) ? t.heightAt(x, z) : 0;
+              globalThis.__twin.freeCam = {pos:[p[0], p[1] + g(p[0], p[2]), p[2]], target:[l[0], l[1] + g(l[0], l[2]), l[2]], fov:f}; }''', [pos, look, fov])
             measure = '''() => new Promise((res) => { const d = []; let last = performance.now(); const end = last + 3000;
               const tick = (now) => { d.push(now - last); last = now; if (now < end) requestAnimationFrame(tick); else { d.sort((a, b) => a - b); res({ frames: d.length, medianMs: +d[d.length >> 1].toFixed(2), p95Ms: +d[Math.floor(d.length * .95)].toFixed(2), fps: +(d.length / 3).toFixed(1) }); } };
               requestAnimationFrame(tick); })'''

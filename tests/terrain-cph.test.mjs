@@ -121,6 +121,10 @@ test('buildings take the terrain ground; eave and ridge stay the measured absolu
   assert.equal(applyTerrainGround(geo, t), 1);
   assert.deepEqual(geo.buildings.map((b) => b.ground), [1.25, -0.4, 2]);
   assert.deepEqual(geo.buildings.map((b) => b.eave), [10, 7, 9]);
+  // an unsurveyed building (default ground 0, `eave` is only a height) keeps its height when the ground moves
+  const shed = { buildings: [{ id: 'a', ground: 0, eave: 3.2, ridge: 3.2, conf_fields: { ground: 'inferred' } }] };
+  applyTerrainGround(shed, t);
+  assert.deepEqual([shed.buildings[0].ground, shed.buildings[0].eave, shed.buildings[0].ridge], [1.25, 4.45, 4.45], 'eave = ground + 3.2 m');
   assert.equal(geo.buildings[0].groundSurvey, 0.3);
   assert.equal(applyTerrainGround(geo, FLAT_TERRAIN), 0);
 });

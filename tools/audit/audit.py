@@ -136,7 +136,7 @@ B = []
 for lb in lay["buildings"]:
     base = _data_b.get(lb["id"]) or _data_b[lb["id"].split("#")[0]]
     b = dict(base)
-    b.update(id=lb["id"], ring=lb["ring"], holes=lb.get("holes") or [], ground=lb["ground"], street=lb["street"], terrain=lb["terrain"], fix=lb.get("fix"))
+    b.update(id=lb["id"], ring=lb["ring"], holes=lb.get("holes") or [], ground=lb["ground"], eave=lb["eave"], street=lb["street"], terrain=lb["terrain"], fix=lb.get("fix"))
     B.append(b)
 bpoly = [ring_poly(b["ring"], b.get("holes")) for b in B]
 bvalid = [i for i, p in enumerate(bpoly) if p is not None and not p.is_empty]

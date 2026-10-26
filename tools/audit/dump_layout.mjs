@@ -115,7 +115,7 @@ const layout = {
   layers: { asphalt: tris(layers.asphalt), cycle: tris(layers.cycle), blue: layers.blue ? tris(layers.blue) : [] },
   sidewalks: geo.sidewalks.map((s) => ({ id: s.id, ring: s.ring, holes: s.holes || [] })),
   cycleTracks: (geo.cycleTracks || []).map((c) => ({ id: c.id, pts: c.pts, width: c.width || null })),
-  placed: { bikeRacks: plan.placedDoc.bikeRacks, parkingBays: plan.placedDoc.parkingBays, busStops: plan.placedDoc.busStops },
+  placed: plan.placedDoc ? { bikeRacks: plan.placedDoc.bikeRacks, parkingBays: plan.placedDoc.parkingBays, busStops: plan.placedDoc.busStops } : null,
   placement: plan.report ? { counts: plan.report.counts, dropped: plan.report.dropped.length, moved: plan.report.moved.length } : null,
   surfaceCuts: geo.surfaceCuts || [],
   roadGraph: { nodes: geo.roadGraph.nodes, links: geo.roadGraph.links },

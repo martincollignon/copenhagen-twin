@@ -365,9 +365,9 @@
   "id": "lod2-eave-mismatch",
   "layer": "lod2",
   "title": "LoD2 median eave differs from geodata eave by > 2 m",
-  "count": 1128,
+  "count": 1119,
   "total": 2097,
-  "pct": 53.79,
+  "pct": 53.36,
   "severity": "med",
   "note": "facade walls are cut to the LoD2 eave per edge, so this changes the wall height silently",
   "examples": [
@@ -420,88 +420,16 @@
     "metric": "LoD2 median eave 16.8 vs geodata eave 33.0 (-16.2 m)"
    },
    {
-    "id": "gdk:1233978021",
-    "x": 558.0,
-    "z": 153.4,
-    "metric": "LoD2 median eave 19.4 vs geodata eave 3.2 (+16.2 m)"
-   },
-   {
     "id": "gdk:1064713391",
     "x": -323.9,
     "z": -686.2,
     "metric": "LoD2 median eave 5.3 vs geodata eave 21.1 (-15.8 m)"
-   }
-  ]
- },
- {
-  "id": "bld-height-sanity",
-  "layer": "buildings",
-  "title": "Height implausible: > 60 m, < 2.5 m, or > 6.5 / < 2.0 m per storey",
-  "count": 426,
-  "total": 2497,
-  "pct": 17.06,
-  "severity": "med",
-  "note": "",
-  "examples": [
-   {
-    "id": "gdk:1064712326",
-    "x": 708.2,
-    "z": 318.0,
-    "metric": "h 24.9 m, 3 storeys, measured"
    },
    {
-    "id": "gdk:1064710530",
-    "x": -307.6,
-    "z": -48.4,
-    "metric": "h 24.2 m, 2 storeys, measured"
-   },
-   {
-    "id": "gdk:1213434780",
-    "x": -83.5,
-    "z": 795.1,
-    "metric": "h 23.7 m, 19 storeys, measured"
-   },
-   {
-    "id": "gdk:1064714062",
-    "x": 631.1,
-    "z": -232.9,
-    "metric": "h 22.1 m, 3 storeys, measured"
-   },
-   {
-    "id": "gdk:1064714130",
-    "x": 579.5,
-    "z": -150.0,
-    "metric": "h 21.6 m, 12 storeys, measured"
-   },
-   {
-    "id": "gdk:1064813456",
-    "x": 649.2,
-    "z": -45.8,
-    "metric": "h 20.6 m, 3 storeys, measured"
-   },
-   {
-    "id": "gdk:1064714568",
-    "x": 178.6,
-    "z": -22.2,
-    "metric": "h 20.1 m, 3 storeys, measured"
-   },
-   {
-    "id": "gdk:1064714265",
-    "x": 700.6,
-    "z": -679.4,
-    "metric": "h 20.0 m, 3 storeys, measured"
-   },
-   {
-    "id": "gdk:1064713699",
-    "x": -591.4,
-    "z": -474.1,
-    "metric": "h 19.8 m, 3 storeys, measured"
-   },
-   {
-    "id": "gdk:1064713815",
-    "x": 429.8,
-    "z": -418.2,
-    "metric": "h 17.9 m, 2 storeys, measured"
+    "id": "gdk:1064713471",
+    "x": 55.5,
+    "z": 483.6,
+    "metric": "LoD2 median eave 5.9 vs geodata eave 21.3 (-15.4 m)"
    }
   ]
  },
@@ -622,6 +550,78 @@
     "x": 711.2,
     "z": -273.4,
     "metric": "16 m from the nearest road-graph junction (degree >= 3)"
+   }
+  ]
+ },
+ {
+  "id": "bld-height-sanity",
+  "layer": "buildings",
+  "title": "Height implausible: > 60 m, < 2.5 m, or > 6.5 / < 2.0 m per storey",
+  "count": 288,
+  "total": 2497,
+  "pct": 11.53,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "gdk:1064712326",
+    "x": 708.2,
+    "z": 318.0,
+    "metric": "h 24.9 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064710530",
+    "x": -307.6,
+    "z": -48.4,
+    "metric": "h 24.2 m, 2 storeys, measured"
+   },
+   {
+    "id": "gdk:1213434780",
+    "x": -83.5,
+    "z": 795.1,
+    "metric": "h 23.7 m, 19 storeys, measured"
+   },
+   {
+    "id": "gdk:1064714062",
+    "x": 631.1,
+    "z": -232.9,
+    "metric": "h 22.1 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064714130",
+    "x": 579.5,
+    "z": -150.0,
+    "metric": "h 21.6 m, 12 storeys, measured"
+   },
+   {
+    "id": "gdk:1064813456",
+    "x": 649.2,
+    "z": -45.8,
+    "metric": "h 20.6 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064714568",
+    "x": 178.6,
+    "z": -22.2,
+    "metric": "h 20.1 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064714265",
+    "x": 700.6,
+    "z": -679.4,
+    "metric": "h 20.0 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064713699",
+    "x": -591.4,
+    "z": -474.1,
+    "metric": "h 19.8 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064713815",
+    "x": 429.8,
+    "z": -418.2,
+    "metric": "h 17.9 m, 2 storeys, measured"
    }
   ]
  },
@@ -773,9 +773,9 @@
   "id": "lod2-spire",
   "layer": "lod2",
   "title": "LoD2 roof top > 8 m above geodata eave",
-  "count": 66,
+  "count": 63,
   "total": 2097,
-  "pct": 3.15,
+  "pct": 3.0,
   "severity": "med",
   "note": "tall pitched roofs / towers / vegetation points in the cloud",
   "examples": [

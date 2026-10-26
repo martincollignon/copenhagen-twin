@@ -5,8 +5,8 @@
 
 /**
  * Buildings stand on the terrain: `ground` becomes the measured terrain height along the outline
- * (data/cph-terrain.json `buildings`, tools/cph-geodata/terrain.py). `eave` and `ridge` are absolute heights (DSM) and are
- * left alone, so the walls and roofs keep their real tops.
+ * (data/cph-terrain.json `buildings`, tools/cph-geodata/terrain.py). A surveyed building's `eave` and `ridge` are absolute heights
+ * (DSM) and are left alone, so its walls and roof keep their real tops; an unsurveyed one keeps its HEIGHT (see below).
  * @returns {number} buildings changed
  */
 export function applyTerrainGround(geo, terrain) {
@@ -17,6 +17,14 @@ export function applyTerrainGround(geo, terrain) {
     const g = ground[b.id];
     if (g === undefined || g === b.ground) continue;
     b.groundSurvey = b.ground; // the old per-footprint DTM median, kept for reference
+    // A building with a MEASURED ground (DTM median) has an absolute DSM eave and ridge: they stay. One without a survey
+    // (conf_fields.ground 'inferred': a default ground of 0, most are small outbuildings) only has a height: its eave and ridge
+    // move with the ground so the building keeps that height.
+    if (b.conf_fields?.ground === 'inferred') {
+      const dh = g - b.ground;
+      if (Number.isFinite(b.eave)) b.eave += dh;
+      if (Number.isFinite(b.ridge)) b.ridge += dh;
+    }
     b.ground = g;
     n++;
   }

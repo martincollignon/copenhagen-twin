@@ -1,0 +1,7817 @@
+[
+ {
+  "id": "car-off-carriageway",
+  "layer": "cars",
+  "title": "Parked car < 50% on carriageway/bay paint (and not mostly in a building)",
+  "count": 1314,
+  "total": 2694,
+  "pct": 48.78,
+  "severity": "high",
+  "note": "bay points come from kerb lines / parking polygons; where the engine's capped carriageway is narrower than the real kerb-to-kerb the car sits on pavement or bare ground",
+  "examples": [
+   {
+    "id": "car[60] par",
+    "x": -346.8,
+    "z": -249.6,
+    "metric": "0% on carriageway/bay paint, 0% on pavement, 4.9 m from centreline"
+   },
+   {
+    "id": "car[66] par",
+    "x": -350.1,
+    "z": -244.2,
+    "metric": "0% on carriageway/bay paint, 0% on pavement, 4.9 m from centreline"
+   },
+   {
+    "id": "car[67] par",
+    "x": -354.9,
+    "z": -236.2,
+    "metric": "0% on carriageway/bay paint, 0% on pavement, 4.9 m from centreline"
+   },
+   {
+    "id": "car[68] par",
+    "x": -357.8,
+    "z": -231.5,
+    "metric": "0% on carriageway/bay paint, 0% on pavement, 5.0 m from centreline"
+   },
+   {
+    "id": "car[69] par",
+    "x": -361.0,
+    "z": -226.3,
+    "metric": "0% on carriageway/bay paint, 0% on pavement, 5.1 m from centreline"
+   },
+   {
+    "id": "car[70] par",
+    "x": -363.8,
+    "z": -221.6,
+    "metric": "0% on carriageway/bay paint, 0% on pavement, 5.2 m from centreline"
+   },
+   {
+    "id": "car[71] par",
+    "x": -369.9,
+    "z": -211.8,
+    "metric": "0% on carriageway/bay paint, 0% on pavement, 5.4 m from centreline"
+   },
+   {
+    "id": "car[74] perp",
+    "x": 73.3,
+    "z": 317.7,
+    "metric": "0% on carriageway/bay paint, 0% on pavement, 4.9 m from centreline"
+   },
+   {
+    "id": "car[108] par",
+    "x": 680.5,
+    "z": 302.6,
+    "metric": "0% on carriageway/bay paint, 0% on pavement, 11.3 m from centreline"
+   },
+   {
+    "id": "car[109] par",
+    "x": 685.8,
+    "z": 300.5,
+    "metric": "0% on carriageway/bay paint, 0% on pavement, 16.2 m from centreline"
+   }
+  ]
+ },
+ {
+  "id": "bld-ground-vs-flat-plane",
+  "layer": "buildings",
+  "title": "|ground| > 1 m: the building is placed on real terrain, but the roads, pavements, lakes and plane are flat (y 0.02-0.2)",
+  "count": 1190,
+  "total": 2517,
+  "pct": 47.28,
+  "severity": "high",
+  "note": "1090 buildings have ground > +1 m (ground floor and entrances float above the street, the facade rows start `ground` m above the pavement), 100 have ground < -1 m (sunk). Percentiles 5/50/95: -0.88 / 0.62 / 2.67",
+  "examples": [
+   {
+    "id": "gdk:1064780389",
+    "x": 82.6,
+    "z": 679.9,
+    "metric": "ground -6.23 m"
+   },
+   {
+    "id": "gdk:1064780705",
+    "x": 118.4,
+    "z": 544.9,
+    "metric": "ground -6.12 m"
+   },
+   {
+    "id": "gdk:1114558373",
+    "x": 81.9,
+    "z": 743.0,
+    "metric": "ground -5.50 m"
+   },
+   {
+    "id": "gdk:1064712951",
+    "x": 333.5,
+    "z": 168.9,
+    "metric": "ground +4.18 m"
+   },
+   {
+    "id": "gdk:1064716172",
+    "x": -500.4,
+    "z": -752.9,
+    "metric": "ground +4.02 m"
+   },
+   {
+    "id": "gdk:1064714133",
+    "x": 374.0,
+    "z": -53.9,
+    "metric": "ground +4.01 m"
+   },
+   {
+    "id": "gdk:1064716464",
+    "x": -637.8,
+    "z": -762.4,
+    "metric": "ground +3.86 m"
+   },
+   {
+    "id": "gdk:1064802214",
+    "x": -473.5,
+    "z": -751.2,
+    "metric": "ground +3.86 m"
+   },
+   {
+    "id": "gdk:1064812240",
+    "x": -602.5,
+    "z": -743.5,
+    "metric": "ground +3.82 m"
+   },
+   {
+    "id": "gdk:1064716463",
+    "x": -590.9,
+    "z": -735.8,
+    "metric": "ground +3.73 m"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:cars",
+  "layer": "cars",
+  "title": "cars on a cycle track (>= 25% of footprint)",
+  "count": 824,
+  "total": 2694,
+  "pct": 30.59,
+  "severity": "high",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "cars[1888]",
+    "x": 503.1,
+    "z": 90.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[135]",
+    "x": 676.7,
+    "z": 438.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[582]",
+    "x": 558.1,
+    "z": 7.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[676]",
+    "x": -343.3,
+    "z": 112.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[945]",
+    "x": -371.8,
+    "z": -58.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[1788]",
+    "x": 226.2,
+    "z": 41.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[1830]",
+    "x": 230.6,
+    "z": 30.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[1876]",
+    "x": 534.9,
+    "z": 41.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[1950]",
+    "x": -391.0,
+    "z": 121.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[2187]",
+    "x": 315.2,
+    "z": -223.1,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-carriageway:glass",
+  "layer": "glass",
+  "title": "glass on the capped carriageway (>= 25% of footprint)",
+  "count": 6,
+  "total": 23,
+  "pct": 26.09,
+  "severity": "high",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "glass[10]",
+    "x": 615.8,
+    "z": 197.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "glass[12]",
+    "x": 132.4,
+    "z": 18.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "glass[13]",
+    "x": 35.6,
+    "z": 182.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "glass[14]",
+    "x": 343.1,
+    "z": -350.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "glass[17]",
+    "x": -50.0,
+    "z": -605.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "glass[5]",
+    "x": -546.4,
+    "z": -474.0,
+    "metric": "79% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "car-in-moving-lane",
+  "layer": "cars",
+  "title": "Parked car >= 25% inside the moving-traffic corridor (lanes x 3.0 m around the centreline)",
+  "count": 692,
+  "total": 2694,
+  "pct": 25.69,
+  "severity": "high",
+  "note": "the traffic sim drives through parked cars",
+  "examples": [
+   {
+    "id": "car[18] par",
+    "x": -154.3,
+    "z": -487.2,
+    "metric": "100% inside the moving-lane corridor (Baggesensgade)"
+   },
+   {
+    "id": "car[142] par",
+    "x": 279.4,
+    "z": -450.0,
+    "metric": "100% inside the moving-lane corridor (Gothersgade)"
+   },
+   {
+    "id": "car[169] par",
+    "x": 117.6,
+    "z": 685.0,
+    "metric": "100% inside the moving-lane corridor (Hammerichsgade)"
+   },
+   {
+    "id": "car[177] par",
+    "x": 122.2,
+    "z": 641.1,
+    "metric": "100% inside the moving-lane corridor (Hammerichsgade)"
+   },
+   {
+    "id": "car[185] par",
+    "x": 127.4,
+    "z": 687.0,
+    "metric": "100% inside the moving-lane corridor (Hammerichsgade)"
+   },
+   {
+    "id": "car[334] par",
+    "x": -320.8,
+    "z": -320.4,
+    "metric": "100% inside the moving-lane corridor (Korsgade)"
+   },
+   {
+    "id": "car[804] par",
+    "x": -200.5,
+    "z": -137.7,
+    "metric": "100% inside the moving-lane corridor (Thorupsgade)"
+   },
+   {
+    "id": "car[806] par",
+    "x": -195.2,
+    "z": -148.1,
+    "metric": "100% inside the moving-lane corridor (Thorupsgade)"
+   },
+   {
+    "id": "car[865] par",
+    "x": -177.0,
+    "z": -251.8,
+    "metric": "100% inside the moving-lane corridor (Wesselsgade)"
+   },
+   {
+    "id": "car[878] par",
+    "x": -166.5,
+    "z": -269.8,
+    "metric": "100% inside the moving-lane corridor (Wesselsgade)"
+   }
+  ]
+ },
+ {
+  "id": "on-carriageway:shelters",
+  "layer": "shelters",
+  "title": "shelters on the capped carriageway (>= 25% of footprint)",
+  "count": 4,
+  "total": 21,
+  "pct": 19.05,
+  "severity": "high",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "shelters[0]",
+    "x": 114.1,
+    "z": 315.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "shelters[11]",
+    "x": 71.9,
+    "z": 531.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "shelters[6]",
+    "x": 723.8,
+    "z": -249.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "shelters[3]",
+    "x": 606.5,
+    "z": -155.2,
+    "metric": "93% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-carriageway:benches",
+  "layer": "benches",
+  "title": "benches on the capped carriageway (>= 25% of footprint)",
+  "count": 104,
+  "total": 938,
+  "pct": 11.09,
+  "severity": "high",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "benches[829]",
+    "x": -439.6,
+    "z": -550.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[874]",
+    "x": -493.5,
+    "z": -578.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[15]",
+    "x": 714.3,
+    "z": 343.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[22]",
+    "x": 658.1,
+    "z": 664.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[23]",
+    "x": 646.1,
+    "z": 678.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[24]",
+    "x": 652.5,
+    "z": 670.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[25]",
+    "x": 648.8,
+    "z": 675.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[26]",
+    "x": 658.1,
+    "z": 664.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[594]",
+    "x": -195.4,
+    "z": -490.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[620]",
+    "x": 689.4,
+    "z": 352.8,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "overlap:cars+cars",
+  "layer": "furniture",
+  "title": "cars overlaps cars (>= 20% of the smaller footprint)",
+  "count": 286,
+  "total": 2694,
+  "pct": 10.62,
+  "severity": "high",
+  "note": "",
+  "examples": [
+   {
+    "id": "cars[815] x cars[2446]",
+    "x": -567.5,
+    "z": -632.6,
+    "metric": "9.01 m2 (98% of smaller)"
+   },
+   {
+    "id": "cars[814] x cars[2445]",
+    "x": -572.9,
+    "z": -634.0,
+    "metric": "8.92 m2 (97% of smaller)"
+   },
+   {
+    "id": "cars[278] x cars[2416]",
+    "x": -215.6,
+    "z": 527.8,
+    "metric": "8.91 m2 (97% of smaller)"
+   },
+   {
+    "id": "cars[917] x cars[918]",
+    "x": -116.9,
+    "z": 731.5,
+    "metric": "8.61 m2 (98% of smaller)"
+   },
+   {
+    "id": "cars[275] x cars[1497]",
+    "x": -656.6,
+    "z": -422.4,
+    "metric": "8.58 m2 (98% of smaller)"
+   },
+   {
+    "id": "cars[813] x cars[2444]",
+    "x": -578.1,
+    "z": -635.2,
+    "metric": "8.56 m2 (98% of smaller)"
+   },
+   {
+    "id": "cars[68] x cars[2634]",
+    "x": -357.8,
+    "z": -231.5,
+    "metric": "8.51 m2 (97% of smaller)"
+   },
+   {
+    "id": "cars[725] x cars[2627]",
+    "x": -284.4,
+    "z": -641.4,
+    "metric": "8.50 m2 (97% of smaller)"
+   },
+   {
+    "id": "cars[819] x cars[2447]",
+    "x": -546.5,
+    "z": -627.5,
+    "metric": "8.49 m2 (97% of smaller)"
+   },
+   {
+    "id": "cars[276] x cars[2415]",
+    "x": -204.5,
+    "z": 529.0,
+    "metric": "8.48 m2 (97% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "bld-ground-step-neighbours",
+  "layer": "buildings",
+  "title": "Touching buildings whose `ground` differs by > 1.5 m (stepped base along one frontage)",
+  "count": 239,
+  "total": 2517,
+  "pct": 9.5,
+  "severity": "high",
+  "note": "a continuous Copenhagen block front gets a staircase of base lines / floating ground floors",
+  "examples": [
+   {
+    "id": "gdk:1064780389 / gdk:1107312288",
+    "x": 81.6,
+    "z": 696.6,
+    "metric": "party-wall neighbours' ground differ 6.2 m"
+   },
+   {
+    "id": "gdk:1064780389 / gdk:1107312287",
+    "x": 81.1,
+    "z": 712.6,
+    "metric": "party-wall neighbours' ground differ 6.2 m"
+   },
+   {
+    "id": "gdk:1064812240 / gdk:1233983965",
+    "x": -600.4,
+    "z": -740.5,
+    "metric": "party-wall neighbours' ground differ 3.8 m"
+   },
+   {
+    "id": "gdk:1064716463 / gdk:1233983965",
+    "x": -598.5,
+    "z": -739.3,
+    "metric": "party-wall neighbours' ground differ 3.7 m"
+   },
+   {
+    "id": "gdk:1064716174 / gdk:1064803837",
+    "x": -405.9,
+    "z": -746.9,
+    "metric": "party-wall neighbours' ground differ 3.5 m"
+   },
+   {
+    "id": "gdk:1064714034 / gdk:1064813344",
+    "x": 568.7,
+    "z": 12.5,
+    "metric": "party-wall neighbours' ground differ 3.4 m"
+   },
+   {
+    "id": "gdk:1064805491 / gdk:1064813344",
+    "x": 563.6,
+    "z": 14.3,
+    "metric": "party-wall neighbours' ground differ 3.4 m"
+   },
+   {
+    "id": "gdk:1064813344 / gdk:1227520193",
+    "x": 564.6,
+    "z": 31.4,
+    "metric": "party-wall neighbours' ground differ 3.4 m"
+   },
+   {
+    "id": "gdk:1064802216 / gdk:1088168692",
+    "x": -380.6,
+    "z": -715.4,
+    "metric": "party-wall neighbours' ground differ 3.4 m"
+   },
+   {
+    "id": "gdk:1064716175 / gdk:1064803837",
+    "x": -405.2,
+    "z": -746.8,
+    "metric": "party-wall neighbours' ground differ 3.3 m"
+   }
+  ]
+ },
+ {
+  "id": "on-carriageway:lamp-poles",
+  "layer": "lamp-poles",
+  "title": "lamp-poles on the capped carriageway (>= 25% of footprint)",
+  "count": 38,
+  "total": 467,
+  "pct": 8.14,
+  "severity": "high",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "lamp-poles[54]",
+    "x": 299.1,
+    "z": -70.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[280]",
+    "x": -431.8,
+    "z": -543.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[294]",
+    "x": 103.8,
+    "z": 319.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[412]",
+    "x": -423.3,
+    "z": -76.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[414]",
+    "x": 289.8,
+    "z": 550.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[419]",
+    "x": 223.7,
+    "z": 747.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[426]",
+    "x": -104.2,
+    "z": 555.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[428]",
+    "x": 80.2,
+    "z": 553.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[430]",
+    "x": -378.2,
+    "z": -617.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[461]",
+    "x": 575.6,
+    "z": -77.2,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-carriageway:bins",
+  "layer": "bins",
+  "title": "bins on the capped carriageway (>= 25% of footprint)",
+  "count": 40,
+  "total": 539,
+  "pct": 7.42,
+  "severity": "high",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "bins[101]",
+    "x": -451.9,
+    "z": -556.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[104]",
+    "x": 590.4,
+    "z": 494.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[380]",
+    "x": 561.4,
+    "z": 520.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[385]",
+    "x": -262.6,
+    "z": -678.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[391]",
+    "x": 581.9,
+    "z": -91.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[473]",
+    "x": -462.5,
+    "z": -208.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[477]",
+    "x": 24.8,
+    "z": -734.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[501]",
+    "x": 112.3,
+    "z": 312.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[507]",
+    "x": 603.5,
+    "z": -156.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[508]",
+    "x": 462.8,
+    "z": -247.5,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "road-through-bld",
+  "layer": "roads",
+  "title": "Carriageway has >= 8 m2 inside building footprints",
+  "count": 38,
+  "total": 931,
+  "pct": 4.08,
+  "severity": "high",
+  "note": "the road's capped width reaches into a house (centreline too close to the facade or width over-estimated)",
+  "examples": [
+   {
+    "id": "osm:way/156945517",
+    "x": -736.2,
+    "z": -464.2,
+    "metric": "Struenseegade: 161 m2 of the carriageway inside buildings"
+   },
+   {
+    "id": "osm:way/330953504",
+    "x": -267.5,
+    "z": -159.2,
+    "metric": "Murergade: 82 m2 of the carriageway inside buildings"
+   },
+   {
+    "id": "osm:way/150895717",
+    "x": -322.4,
+    "z": 58.2,
+    "metric": "-: 74 m2 of the carriageway inside buildings"
+   },
+   {
+    "id": "osm:way/150896096",
+    "x": -379.8,
+    "z": -10.8,
+    "metric": "-: 71 m2 of the carriageway inside buildings"
+   },
+   {
+    "id": "osm:way/1567559968",
+    "x": -22.4,
+    "z": 567.7,
+    "metric": "-: 68 m2 of the carriageway inside buildings"
+   },
+   {
+    "id": "osm:way/1033304012",
+    "x": 22.9,
+    "z": 443.0,
+    "metric": "-: 66 m2 of the carriageway inside buildings"
+   },
+   {
+    "id": "osm:way/1217510945",
+    "x": 79.6,
+    "z": 355.6,
+    "metric": "-: 58 m2 of the carriageway inside buildings"
+   },
+   {
+    "id": "osm:way/266625734",
+    "x": -27.5,
+    "z": 365.7,
+    "metric": "-: 57 m2 of the carriageway inside buildings"
+   },
+   {
+    "id": "osm:way/243391205",
+    "x": 460.3,
+    "z": -598.5,
+    "metric": "-: 56 m2 of the carriageway inside buildings"
+   },
+   {
+    "id": "osm:way/243391201",
+    "x": 480.6,
+    "z": -625.8,
+    "metric": "-: 56 m2 of the carriageway inside buildings"
+   }
+  ]
+ },
+ {
+  "id": "on-carriageway:stands",
+  "layer": "stands",
+  "title": "stands on the capped carriageway (>= 25% of footprint)",
+  "count": 30,
+  "total": 740,
+  "pct": 4.05,
+  "severity": "high",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "stands[176]",
+    "x": 409.2,
+    "z": -708.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[477]",
+    "x": -512.8,
+    "z": -347.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[526]",
+    "x": -50.0,
+    "z": -605.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[581]",
+    "x": -513.1,
+    "z": -370.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[48]",
+    "x": 35.6,
+    "z": 182.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[50]",
+    "x": 615.8,
+    "z": 197.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[177]",
+    "x": -641.0,
+    "z": -442.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[229]",
+    "x": 487.4,
+    "z": 431.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[232]",
+    "x": 524.0,
+    "z": 404.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[263]",
+    "x": -328.8,
+    "z": 34.2,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "in-building-partial:monuments",
+  "layer": "monuments",
+  "title": "monuments straddles a facade (25-90% of footprint inside a building)",
+  "count": 3,
+  "total": 76,
+  "pct": 3.95,
+  "severity": "high",
+  "note": "half inside the wall: visible poking through the facade",
+  "examples": [
+   {
+    "id": "monuments[21]",
+    "x": -670.2,
+    "z": -349.3,
+    "metric": "59% of footprint"
+   },
+   {
+    "id": "monuments[20]",
+    "x": 62.8,
+    "z": -659.8,
+    "metric": "38% of footprint"
+   },
+   {
+    "id": "monuments[22]",
+    "x": 145.0,
+    "z": 28.5,
+    "metric": "32% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-carriageway:trees",
+  "layer": "trees",
+  "title": "trees on the capped carriageway (>= 25% of footprint)",
+  "count": 178,
+  "total": 4905,
+  "pct": 3.63,
+  "severity": "high",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "trees[1298]",
+    "x": 490.5,
+    "z": 95.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[1463]",
+    "x": 493.5,
+    "z": 91.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[1492]",
+    "x": -419.6,
+    "z": -64.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[1503]",
+    "x": 148.0,
+    "z": -273.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[1504]",
+    "x": 148.0,
+    "z": -273.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[2475]",
+    "x": -461.5,
+    "z": -118.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[2534]",
+    "x": -645.5,
+    "z": -66.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[3750]",
+    "x": -129.5,
+    "z": -336.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[180]",
+    "x": -268.0,
+    "z": -680.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[222]",
+    "x": -302.1,
+    "z": -525.2,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bikes+cars",
+  "layer": "furniture",
+  "title": "bikes overlaps cars (>= 20% of the smaller footprint)",
+  "count": 249,
+  "total": 9796,
+  "pct": 2.54,
+  "severity": "high",
+  "note": "",
+  "examples": [
+   {
+    "id": "cars[2433] x bikes[4448]",
+    "x": 195.2,
+    "z": -328.9,
+    "metric": "0.88 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[1078] x bikes[224]",
+    "x": -318.7,
+    "z": -296.0,
+    "metric": "0.88 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[1628] x bikes[1897]",
+    "x": 323.3,
+    "z": -316.2,
+    "metric": "0.88 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[1628] x bikes[6443]",
+    "x": 323.3,
+    "z": -316.2,
+    "metric": "0.88 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2666] x bikes[4446]",
+    "x": 220.8,
+    "z": -306.7,
+    "metric": "0.88 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[1628] x bikes[1894]",
+    "x": 323.3,
+    "z": -316.2,
+    "metric": "0.88 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[1660] x bikes[1910]",
+    "x": 241.5,
+    "z": -165.8,
+    "metric": "0.88 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[75] x bikes[457]",
+    "x": 21.2,
+    "z": 361.7,
+    "metric": "0.87 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[1628] x bikes[1891]",
+    "x": 323.3,
+    "z": -316.2,
+    "metric": "0.87 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2604] x bikes[4403]",
+    "x": 277.4,
+    "z": -267.1,
+    "metric": "0.87 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "in-water:trees",
+  "layer": "trees",
+  "title": "trees in open water (>= 25% of footprint)",
+  "count": 112,
+  "total": 4905,
+  "pct": 2.28,
+  "severity": "high",
+  "note": "47 are more than 1 m from the shore; the rest sit on the quay edge. Items stand at y = ground field (0) while the water plane is 0.8 m lower",
+  "examples": [
+   {
+    "id": "trees[4812]",
+    "x": 361.5,
+    "z": 85.5,
+    "metric": "10.4 m from shore"
+   },
+   {
+    "id": "trees[4293]",
+    "x": -138.5,
+    "z": 566.5,
+    "metric": "8.3 m from shore"
+   },
+   {
+    "id": "trees[3983]",
+    "x": 277.5,
+    "z": 73.5,
+    "metric": "8.3 m from shore"
+   },
+   {
+    "id": "trees[4249]",
+    "x": -122.5,
+    "z": 462.5,
+    "metric": "7.8 m from shore"
+   },
+   {
+    "id": "trees[4814]",
+    "x": 376.5,
+    "z": 89.5,
+    "metric": "5.4 m from shore"
+   },
+   {
+    "id": "trees[4123]",
+    "x": -98.5,
+    "z": 254.5,
+    "metric": "4.9 m from shore"
+   },
+   {
+    "id": "trees[4120]",
+    "x": 246.5,
+    "z": 249.5,
+    "metric": "4.9 m from shore"
+   },
+   {
+    "id": "trees[4781]",
+    "x": 359.5,
+    "z": 34.5,
+    "metric": "4.8 m from shore"
+   },
+   {
+    "id": "trees[4334]",
+    "x": -148.5,
+    "z": 742.5,
+    "metric": "4.7 m from shore"
+   },
+   {
+    "id": "trees[4620]",
+    "x": 736.5,
+    "z": -426.5,
+    "metric": "4.6 m from shore"
+   }
+  ]
+ },
+ {
+  "id": "car-on-pavement",
+  "layer": "cars",
+  "title": "Parked car >= 40% on a pavement polygon",
+  "count": 60,
+  "total": 2694,
+  "pct": 2.23,
+  "severity": "high",
+  "note": "wheels on the raised pavement at y 0.2 vs car y from the same field",
+  "examples": [
+   {
+    "id": "car[1142] par",
+    "x": 663.2,
+    "z": 743.5,
+    "metric": "100% on pavement"
+   },
+   {
+    "id": "car[1674] par",
+    "x": 12.9,
+    "z": 345.0,
+    "metric": "100% on pavement"
+   },
+   {
+    "id": "car[2491] par",
+    "x": 323.4,
+    "z": -225.4,
+    "metric": "100% on pavement"
+   },
+   {
+    "id": "car[2598] par",
+    "x": 244.1,
+    "z": -296.8,
+    "metric": "100% on pavement"
+   },
+   {
+    "id": "car[2605] par",
+    "x": 281.8,
+    "z": -263.2,
+    "metric": "100% on pavement"
+   },
+   {
+    "id": "car[853] par",
+    "x": 457.8,
+    "z": -139.9,
+    "metric": "100% on pavement"
+   },
+   {
+    "id": "car[855] par",
+    "x": 469.9,
+    "z": -132.4,
+    "metric": "100% on pavement"
+   },
+   {
+    "id": "car[966] par",
+    "x": 255.5,
+    "z": -85.2,
+    "metric": "100% on pavement"
+   },
+   {
+    "id": "car[1252] par",
+    "x": -429.3,
+    "z": -728.2,
+    "metric": "100% on pavement"
+   },
+   {
+    "id": "car[1378] par",
+    "x": -431.1,
+    "z": 40.8,
+    "metric": "100% on pavement"
+   }
+  ]
+ },
+ {
+  "id": "overlap:cars+hoops",
+  "layer": "furniture",
+  "title": "cars overlaps hoops (>= 20% of the smaller footprint)",
+  "count": 143,
+  "total": 8822,
+  "pct": 1.62,
+  "severity": "high",
+  "note": "",
+  "examples": [
+   {
+    "id": "cars[2468] x hoops[1533]",
+    "x": 734.9,
+    "z": 748.1,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2468] x hoops[1534]",
+    "x": 734.9,
+    "z": 748.1,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2468] x hoops[1535]",
+    "x": 734.9,
+    "z": 748.1,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2468] x hoops[1530]",
+    "x": 734.9,
+    "z": 748.1,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2468] x hoops[1531]",
+    "x": 734.9,
+    "z": 748.1,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2469] x hoops[1528]",
+    "x": 739.1,
+    "z": 744.9,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2470] x hoops[1525]",
+    "x": 743.4,
+    "z": 741.6,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2470] x hoops[1536]",
+    "x": 743.4,
+    "z": 741.6,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2470] x hoops[1537]",
+    "x": 743.4,
+    "z": 741.6,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2470] x hoops[1538]",
+    "x": 743.4,
+    "z": 741.6,
+    "metric": "0.03 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "on-carriageway:monuments",
+  "layer": "monuments",
+  "title": "monuments on the capped carriageway (>= 25% of footprint)",
+  "count": 1,
+  "total": 76,
+  "pct": 1.32,
+  "severity": "high",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "monuments[49]",
+    "x": 216.4,
+    "z": -121.8,
+    "metric": "98% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "overlap:benches+cars",
+  "layer": "furniture",
+  "title": "benches overlaps cars (>= 20% of the smaller footprint)",
+  "count": 39,
+  "total": 3632,
+  "pct": 1.07,
+  "severity": "high",
+  "note": "",
+  "examples": [
+   {
+    "id": "cars[352] x benches[654]",
+    "x": 643.8,
+    "z": 680.1,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[352] x benches[630]",
+    "x": 643.8,
+    "z": 680.1,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[355] x benches[652]",
+    "x": 654.6,
+    "z": 667.5,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[355] x benches[637]",
+    "x": 654.6,
+    "z": 667.5,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[356] x benches[22]",
+    "x": 658.1,
+    "z": 663.4,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[356] x benches[26]",
+    "x": 658.1,
+    "z": 663.4,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[356] x benches[636]",
+    "x": 658.1,
+    "z": 663.4,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[356] x benches[651]",
+    "x": 658.1,
+    "z": 663.4,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2466] x benches[635]",
+    "x": 707.6,
+    "z": 345.5,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2466] x benches[647]",
+    "x": 707.6,
+    "z": 345.5,
+    "metric": "0.99 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "bld-bld-overlap",
+  "layer": "buildings",
+  "title": "Footprint overlaps another footprint (>= 1 m2 and >= 5% of the smaller)",
+  "count": 22,
+  "total": 2517,
+  "pct": 0.87,
+  "severity": "high",
+  "note": "1 pairs are near-duplicates (IoU > 0.8); 6 pairs have eaves within 0.3 m (coplanar roofs: z-fighting)",
+  "examples": [
+   {
+    "id": "gdk:1241239835 x gdk:1064813116",
+    "x": 743.3,
+    "z": -711.9,
+    "metric": "2167 m2 (100% of smaller), eave 20.6/17.8"
+   },
+   {
+    "id": "gdk:1241233804 x gdk:1064714047",
+    "x": 606.7,
+    "z": 56.9,
+    "metric": "429 m2 (100% of smaller), eave 22.0/21.9"
+   },
+   {
+    "id": "gdk:1241239838 x gdk:1064813116",
+    "x": 750.5,
+    "z": -686.5,
+    "metric": "317 m2 (100% of smaller), eave 6.4/17.8"
+   },
+   {
+    "id": "gdk:1107312570 x gdk:1108227800",
+    "x": 618.8,
+    "z": -90.5,
+    "metric": "138 m2 (100% of smaller), eave 8.5/8.5"
+   },
+   {
+    "id": "gdk:1107312549 x gdk:1107312571",
+    "x": 659.7,
+    "z": -158.7,
+    "metric": "106 m2 (100% of smaller), eave 8.1/8.1"
+   },
+   {
+    "id": "gdk:1064712431 x gdk:1064712430",
+    "x": 442.7,
+    "z": 427.5,
+    "metric": "72 m2 (100% of smaller), eave 15.9/12.2"
+   },
+   {
+    "id": "gdk:1107312569 x gdk:1108227800",
+    "x": 603.8,
+    "z": -87.0,
+    "metric": "48 m2 (100% of smaller), eave 8.5/8.5"
+   },
+   {
+    "id": "gdk:1241233805 x gdk:1064714047",
+    "x": 626.8,
+    "z": 62.0,
+    "metric": "22 m2 (100% of smaller), eave 5.4/21.9"
+   },
+   {
+    "id": "gdk:1064780389 x gdk:1107312287",
+    "x": 81.1,
+    "z": 712.6,
+    "metric": "15 m2 (100% of smaller), eave -1.1/3.2"
+   },
+   {
+    "id": "gdk:1064780389 x gdk:1107312288",
+    "x": 81.6,
+    "z": 696.6,
+    "metric": "13 m2 (100% of smaller), eave -1.1/3.2"
+   }
+  ]
+ },
+ {
+  "id": "in-building-partial:benches",
+  "layer": "benches",
+  "title": "benches straddles a facade (25-90% of footprint inside a building)",
+  "count": 4,
+  "total": 938,
+  "pct": 0.43,
+  "severity": "high",
+  "note": "half inside the wall: visible poking through the facade",
+  "examples": [
+   {
+    "id": "benches[834]",
+    "x": 668.8,
+    "z": -152.6,
+    "metric": "67% of footprint"
+   },
+   {
+    "id": "benches[596]",
+    "x": -187.3,
+    "z": -523.4,
+    "metric": "61% of footprint"
+   },
+   {
+    "id": "benches[553]",
+    "x": 421.7,
+    "z": -411.2,
+    "metric": "42% of footprint"
+   },
+   {
+    "id": "benches[559]",
+    "x": 671.2,
+    "z": 284.0,
+    "metric": "30% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "in-water:benches",
+  "layer": "benches",
+  "title": "benches in open water (>= 25% of footprint)",
+  "count": 4,
+  "total": 938,
+  "pct": 0.43,
+  "severity": "high",
+  "note": "4 are more than 1 m from the shore; the rest sit on the quay edge. Items stand at y = ground field (0) while the water plane is 0.8 m lower",
+  "examples": [
+   {
+    "id": "benches[377]",
+    "x": 371.2,
+    "z": 35.1,
+    "metric": "4.4 m from shore"
+   },
+   {
+    "id": "benches[378]",
+    "x": 368.7,
+    "z": 32.8,
+    "metric": "2.4 m from shore"
+   },
+   {
+    "id": "benches[376]",
+    "x": 373.7,
+    "z": 33.1,
+    "metric": "2.1 m from shore"
+   },
+   {
+    "id": "benches[49]",
+    "x": 127.2,
+    "z": -475.3,
+    "metric": "1.1 m from shore"
+   }
+  ]
+ },
+ {
+  "id": "overlap:cars+trees",
+  "layer": "furniture",
+  "title": "cars overlaps trees (>= 20% of the smaller footprint)",
+  "count": 30,
+  "total": 7599,
+  "pct": 0.39,
+  "severity": "high",
+  "note": "",
+  "examples": [
+   {
+    "id": "trees[331] x cars[644]",
+    "x": 310.5,
+    "z": 367.9,
+    "metric": "0.28 m2 (100% of smaller)"
+   },
+   {
+    "id": "trees[332] x cars[635]",
+    "x": 333.1,
+    "z": 333.7,
+    "metric": "0.28 m2 (100% of smaller)"
+   },
+   {
+    "id": "trees[417] x cars[645]",
+    "x": 322.9,
+    "z": 349.0,
+    "metric": "0.28 m2 (100% of smaller)"
+   },
+   {
+    "id": "trees[1320] x cars[649]",
+    "x": 317.0,
+    "z": 358.2,
+    "metric": "0.28 m2 (100% of smaller)"
+   },
+   {
+    "id": "trees[4152] x cars[1860]",
+    "x": 319.5,
+    "z": 308.5,
+    "metric": "0.28 m2 (100% of smaller)"
+   },
+   {
+    "id": "trees[4226] x cars[405]",
+    "x": -1.5,
+    "z": 421.5,
+    "metric": "0.28 m2 (100% of smaller)"
+   },
+   {
+    "id": "trees[341] x cars[1890]",
+    "x": 436.6,
+    "z": 173.3,
+    "metric": "0.28 m2 (100% of smaller)"
+   },
+   {
+    "id": "trees[708] x cars[2675]",
+    "x": 304.5,
+    "z": -245.3,
+    "metric": "0.28 m2 (100% of smaller)"
+   },
+   {
+    "id": "trees[1400] x cars[379]",
+    "x": 164.9,
+    "z": -34.3,
+    "metric": "0.28 m2 (100% of smaller)"
+   },
+   {
+    "id": "trees[1617] x cars[2582]",
+    "x": 597.2,
+    "z": -258.6,
+    "metric": "0.28 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "in-water:bins",
+  "layer": "bins",
+  "title": "bins in open water (>= 25% of footprint)",
+  "count": 2,
+  "total": 539,
+  "pct": 0.37,
+  "severity": "high",
+  "note": "1 are more than 1 m from the shore; the rest sit on the quay edge. Items stand at y = ground field (0) while the water plane is 0.8 m lower",
+  "examples": [
+   {
+    "id": "bins[3]",
+    "x": -174.3,
+    "z": -2.8,
+    "metric": "39.6 m from shore"
+   },
+   {
+    "id": "bins[441]",
+    "x": 373.6,
+    "z": 31.7,
+    "metric": "0.6 m from shore"
+   }
+  ]
+ },
+ {
+  "id": "wire-through-building",
+  "layer": "lamps",
+  "title": "Wire span crosses a building volume (> 1 m inside the footprint shrunk by 0.4 m, eave above the wire)",
+  "count": 4,
+  "total": 1239,
+  "pct": 0.32,
+  "severity": "high",
+  "note": "the span is facade-to-facade `inferred` across the street, or the 2018 line crosses a courtyard; pendant and wire pass through a house",
+  "examples": [
+   {
+    "id": "lamp[1217]",
+    "x": 618.8,
+    "z": -102.0,
+    "metric": "28.3 m of the span inside a building (eave 8.5 > wire 8.2)"
+   },
+   {
+    "id": "lamp[1237]",
+    "x": 149.5,
+    "z": -260.3,
+    "metric": "17.1 m of the span inside a building (eave 19.8 > wire 8.4)"
+   },
+   {
+    "id": "lamp[1238]",
+    "x": 176.2,
+    "z": -279.1,
+    "metric": "13.4 m of the span inside a building (eave 19.9 > wire 8.2)"
+   },
+   {
+    "id": "lamp[72]",
+    "x": -728.1,
+    "z": -458.1,
+    "metric": "10.4 m of the span inside a building (eave 12.0 > wire 8.8)"
+   }
+  ]
+ },
+ {
+  "id": "in-building-partial:cars",
+  "layer": "cars",
+  "title": "cars straddles a facade (25-90% of footprint inside a building)",
+  "count": 6,
+  "total": 2694,
+  "pct": 0.22,
+  "severity": "high",
+  "note": "half inside the wall: visible poking through the facade",
+  "examples": [
+   {
+    "id": "cars[55]",
+    "x": -373.7,
+    "z": -164.0,
+    "metric": "84% of footprint"
+   },
+   {
+    "id": "cars[56]",
+    "x": -369.7,
+    "z": -167.9,
+    "metric": "75% of footprint"
+   },
+   {
+    "id": "cars[54]",
+    "x": -378.0,
+    "z": -159.8,
+    "metric": "66% of footprint"
+   },
+   {
+    "id": "cars[57]",
+    "x": -359.7,
+    "z": -176.5,
+    "metric": "44% of footprint"
+   },
+   {
+    "id": "cars[53]",
+    "x": -382.6,
+    "z": -154.2,
+    "metric": "38% of footprint"
+   },
+   {
+    "id": "cars[2625]",
+    "x": 647.0,
+    "z": 679.7,
+    "metric": "28% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "in-building-partial:lamp-poles",
+  "layer": "lamp-poles",
+  "title": "lamp-poles straddles a facade (25-90% of footprint inside a building)",
+  "count": 1,
+  "total": 467,
+  "pct": 0.21,
+  "severity": "high",
+  "note": "half inside the wall: visible poking through the facade",
+  "examples": [
+   {
+    "id": "lamp-poles[221]",
+    "x": 712.7,
+    "z": 512.7,
+    "metric": "32% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "in-building-partial:bins",
+  "layer": "bins",
+  "title": "bins straddles a facade (25-90% of footprint inside a building)",
+  "count": 1,
+  "total": 539,
+  "pct": 0.19,
+  "severity": "high",
+  "note": "half inside the wall: visible poking through the facade",
+  "examples": [
+   {
+    "id": "bins[139]",
+    "x": 577.2,
+    "z": -68.1,
+    "metric": "65% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "overlap:cars+stands",
+  "layer": "furniture",
+  "title": "cars overlaps stands (>= 20% of the smaller footprint)",
+  "count": 6,
+  "total": 3434,
+  "pct": 0.17,
+  "severity": "high",
+  "note": "",
+  "examples": [
+   {
+    "id": "cars[1587] x stands[526]",
+    "x": -51.0,
+    "z": -604.1,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[1784] x stands[516]",
+    "x": 10.0,
+    "z": 436.1,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "cars[2530] x stands[521]",
+    "x": 611.6,
+    "z": 343.9,
+    "metric": "1.27 m2 (93% of smaller)"
+   },
+   {
+    "id": "cars[2001] x stands[248]",
+    "x": 376.6,
+    "z": 399.8,
+    "metric": "0.63 m2 (46% of smaller)"
+   },
+   {
+    "id": "cars[1080] x stands[495]",
+    "x": -342.5,
+    "z": -257.0,
+    "metric": "0.40 m2 (30% of smaller)"
+   },
+   {
+    "id": "cars[2000] x stands[248]",
+    "x": 371.6,
+    "z": 401.7,
+    "metric": "0.28 m2 (21% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "water-carriageway",
+  "layer": "water",
+  "title": "Carriageway overlaps open water (>= 1 m2)",
+  "count": 1,
+  "total": 931,
+  "pct": 0.11,
+  "severity": "high",
+  "note": "road asphalt over open water (bridges other than bridge:0 are not modelled as bridges: the water plane is cut, the road is not)",
+  "examples": [
+   {
+    "id": "osm:way/160726988",
+    "x": 384.8,
+    "z": -28.5,
+    "metric": "19 m2 over open water"
+   }
+  ]
+ },
+ {
+  "id": "bld-water",
+  "layer": "buildings",
+  "title": "Building footprint overlaps a lake (>= 1 m2)",
+  "count": 2,
+  "total": 2517,
+  "pct": 0.08,
+  "severity": "high",
+  "note": "walls rise out of the water / lake wall + building wall intersect (e.g. houses on the dossering over the lake edge)",
+  "examples": [
+   {
+    "id": "gdk:1216086107",
+    "x": -15.8,
+    "z": -414.3,
+    "metric": "25 m2 in lake"
+   },
+   {
+    "id": "gdk:1216086110",
+    "x": -8.0,
+    "z": -430.0,
+    "metric": "20 m2 in lake"
+   }
+  ]
+ },
+ {
+  "id": "in-building-partial:trees",
+  "layer": "trees",
+  "title": "trees straddles a facade (25-90% of footprint inside a building)",
+  "count": 3,
+  "total": 4905,
+  "pct": 0.06,
+  "severity": "high",
+  "note": "half inside the wall: visible poking through the facade",
+  "examples": [
+   {
+    "id": "trees[3543]",
+    "x": -16.5,
+    "z": -719.5,
+    "metric": "67% of footprint"
+   },
+   {
+    "id": "trees[1776]",
+    "x": -581.5,
+    "z": -744.2,
+    "metric": "56% of footprint"
+   },
+   {
+    "id": "trees[3776]",
+    "x": -265.5,
+    "z": -315.5,
+    "metric": "48% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "lod2-beyond-footprint",
+  "layer": "lod2",
+  "title": "LoD2 mesh has a vertex > 0.5 m outside its footprint",
+  "count": 0,
+  "total": 2114,
+  "pct": 0.0,
+  "severity": "high",
+  "note": "0 exceed 1.5 m; total roof area outside footprints 0 m2. Roofer eave overhangs / neighbour points; the facade walls stop at the footprint so the roof overhangs or floats",
+  "examples": []
+ },
+ {
+  "id": "water-cycletrack",
+  "layer": "water",
+  "title": "Cycletrack overlaps open water (>= 1 m2)",
+  "count": 0,
+  "total": 678,
+  "pct": 0.0,
+  "severity": "high",
+  "note": "cycle track strip over the lake",
+  "examples": []
+ },
+ {
+  "id": "water-pavement",
+  "layer": "water",
+  "title": "Pavement overlaps open water (>= 1 m2)",
+  "count": 0,
+  "total": 983,
+  "pct": 0.0,
+  "severity": "high",
+  "note": "pavement polygon over the lake (floats above the sunk water)",
+  "examples": []
+ },
+ {
+  "id": "wire-floating-anchor",
+  "layer": "lamps",
+  "title": "Wire anchor > 2.5 m from the nearest facade",
+  "count": 1203,
+  "total": 1239,
+  "pct": 97.09,
+  "severity": "med",
+  "note": "the cable ends in mid-air at 8.9 m",
+  "examples": [
+   {
+    "id": "lamp[918]",
+    "x": 450.4,
+    "z": 751.4,
+    "metric": "anchors 58.7 / 39.7 m from any facade"
+   },
+   {
+    "id": "lamp[525]",
+    "x": 459.4,
+    "z": 743.9,
+    "metric": "anchors 57.7 / 48.7 m from any facade"
+   },
+   {
+    "id": "lamp[621]",
+    "x": 459.4,
+    "z": 743.9,
+    "metric": "anchors 57.7 / 48.7 m from any facade"
+   },
+   {
+    "id": "lamp[40]",
+    "x": 240.7,
+    "z": 405.7,
+    "metric": "anchors 54.4 / 50.4 m from any facade"
+   },
+   {
+    "id": "lamp[838]",
+    "x": 240.7,
+    "z": 405.7,
+    "metric": "anchors 54.4 / 50.4 m from any facade"
+   },
+   {
+    "id": "lamp[370]",
+    "x": 258.6,
+    "z": 391.1,
+    "metric": "anchors 50.4 / 39.2 m from any facade"
+   },
+   {
+    "id": "lamp[711]",
+    "x": 236.1,
+    "z": 429.2,
+    "metric": "anchors 46.2 / 50.1 m from any facade"
+   },
+   {
+    "id": "lamp[604]",
+    "x": 408.9,
+    "z": 153.5,
+    "metric": "anchors 49.0 / 23.8 m from any facade"
+   },
+   {
+    "id": "lamp[667]",
+    "x": 306.2,
+    "z": 336.7,
+    "metric": "anchors 35.9 / 47.1 m from any facade"
+   },
+   {
+    "id": "lamp[987]",
+    "x": 438.6,
+    "z": 133.9,
+    "metric": "anchors 35.1 / 46.6 m from any facade"
+   }
+  ]
+ },
+ {
+  "id": "bld-ground-range",
+  "layer": "buildings",
+  "title": "Building `ground` outside [-0.2, 0.5] m (pavement is 0.2, carriageway 0.02, plane 0)",
+  "count": 1682,
+  "total": 2517,
+  "pct": 66.83,
+  "severity": "med",
+  "note": "ground min -6.23 max 4.18 median 0.62; a ground below 0 sinks the walls into the plane, above 0.5 floats the skirt",
+  "examples": [
+   {
+    "id": "gdk:1064780389",
+    "x": 82.6,
+    "z": 679.9,
+    "metric": "ground -6.23"
+   },
+   {
+    "id": "gdk:1064780705",
+    "x": 118.4,
+    "z": 544.9,
+    "metric": "ground -6.12"
+   },
+   {
+    "id": "gdk:1114558373",
+    "x": 81.9,
+    "z": 743.0,
+    "metric": "ground -5.50"
+   },
+   {
+    "id": "gdk:1064712951",
+    "x": 333.5,
+    "z": 168.9,
+    "metric": "ground 4.18"
+   },
+   {
+    "id": "gdk:1064716172",
+    "x": -500.4,
+    "z": -752.9,
+    "metric": "ground 4.02"
+   },
+   {
+    "id": "gdk:1064714133",
+    "x": 374.0,
+    "z": -53.9,
+    "metric": "ground 4.01"
+   },
+   {
+    "id": "gdk:1064716464",
+    "x": -637.8,
+    "z": -762.4,
+    "metric": "ground 3.86"
+   },
+   {
+    "id": "gdk:1064802214",
+    "x": -473.5,
+    "z": -751.2,
+    "metric": "ground 3.86"
+   },
+   {
+    "id": "gdk:1064812240",
+    "x": -602.5,
+    "z": -743.5,
+    "metric": "ground 3.82"
+   },
+   {
+    "id": "gdk:1064716463",
+    "x": -590.9,
+    "z": -735.8,
+    "metric": "ground 3.73"
+   }
+  ]
+ },
+ {
+  "id": "shelter-conflict",
+  "layer": "bus stops",
+  "title": "Shelter footprint >= 15% in a building, or >= 10% on the carriageway / cycle track",
+  "count": 13,
+  "total": 21,
+  "pct": 61.9,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "shelter[0]",
+    "x": 114.1,
+    "z": 315.8,
+    "metric": "0% in building, 100% on carriageway, 0% on cycle track"
+   },
+   {
+    "id": "shelter[11]",
+    "x": 71.9,
+    "z": 531.2,
+    "metric": "0% in building, 100% on carriageway, 0% on cycle track"
+   },
+   {
+    "id": "shelter[15]",
+    "x": 581.2,
+    "z": -564.6,
+    "metric": "0% in building, 0% on carriageway, 100% on cycle track"
+   },
+   {
+    "id": "shelter[6]",
+    "x": 723.8,
+    "z": -249.5,
+    "metric": "0% in building, 100% on carriageway, 0% on cycle track"
+   },
+   {
+    "id": "shelter[14]",
+    "x": 622.7,
+    "z": -129.6,
+    "metric": "0% in building, 0% on carriageway, 94% on cycle track"
+   },
+   {
+    "id": "shelter[3]",
+    "x": 606.5,
+    "z": -155.2,
+    "metric": "0% in building, 93% on carriageway, 0% on cycle track"
+   },
+   {
+    "id": "shelter[17]",
+    "x": 63.7,
+    "z": 715.9,
+    "metric": "0% in building, 0% on carriageway, 86% on cycle track"
+   },
+   {
+    "id": "shelter[4]",
+    "x": 338.8,
+    "z": 279.2,
+    "metric": "0% in building, 12% on carriageway, 79% on cycle track"
+   },
+   {
+    "id": "shelter[20]",
+    "x": 251.8,
+    "z": -374.5,
+    "metric": "0% in building, 0% on carriageway, 76% on cycle track"
+   },
+   {
+    "id": "shelter[1]",
+    "x": 96.6,
+    "z": 250.2,
+    "metric": "0% in building, 0% on carriageway, 61% on cycle track"
+   }
+  ]
+ },
+ {
+  "id": "lod2-eave-mismatch",
+  "layer": "lod2",
+  "title": "LoD2 median eave differs from geodata eave by > 2 m",
+  "count": 1138,
+  "total": 2114,
+  "pct": 53.83,
+  "severity": "med",
+  "note": "facade walls are cut to the LoD2 eave per edge, so this changes the wall height silently",
+  "examples": [
+   {
+    "id": "gdk:1064713205",
+    "x": 186.0,
+    "z": 774.0,
+    "metric": "LoD2 median eave 3.2 vs geodata eave 27.7 (-24.5 m)"
+   },
+   {
+    "id": "gdk:1208857497",
+    "x": 387.4,
+    "z": 594.1,
+    "metric": "LoD2 median eave 2.6 vs geodata eave 25.7 (-23.1 m)"
+   },
+   {
+    "id": "gdk:1064713252",
+    "x": 287.6,
+    "z": 624.7,
+    "metric": "LoD2 median eave 2.5 vs geodata eave 25.0 (-22.5 m)"
+   },
+   {
+    "id": "gdk:1114571663",
+    "x": 321.2,
+    "z": 647.9,
+    "metric": "LoD2 median eave 5.8 vs geodata eave 27.7 (-21.9 m)"
+   },
+   {
+    "id": "gdk:1064712804",
+    "x": 64.1,
+    "z": 445.2,
+    "metric": "LoD2 median eave 4.8 vs geodata eave 23.0 (-18.2 m)"
+   },
+   {
+    "id": "gdk:1064713496",
+    "x": 197.0,
+    "z": 325.4,
+    "metric": "LoD2 median eave 15.8 vs geodata eave 33.6 (-17.8 m)"
+   },
+   {
+    "id": "gdk:1064713976",
+    "x": 720.5,
+    "z": -172.6,
+    "metric": "LoD2 median eave 5.8 vs geodata eave 23.4 (-17.6 m)"
+   },
+   {
+    "id": "gdk:1064713468",
+    "x": 266.9,
+    "z": 553.3,
+    "metric": "LoD2 median eave 16.8 vs geodata eave 33.0 (-16.2 m)"
+   },
+   {
+    "id": "gdk:1233978021",
+    "x": 558.0,
+    "z": 153.4,
+    "metric": "LoD2 median eave 19.4 vs geodata eave 3.2 (+16.2 m)"
+   },
+   {
+    "id": "gdk:1064713391",
+    "x": -323.9,
+    "z": -686.2,
+    "metric": "LoD2 median eave 5.3 vs geodata eave 21.1 (-15.8 m)"
+   }
+  ]
+ },
+ {
+  "id": "pavement-carriageway",
+  "layer": "pavement",
+  "title": "Pavement polygon overlaps a carriageway (>= 2 m2)",
+  "count": 390,
+  "total": 983,
+  "pct": 39.67,
+  "severity": "med",
+  "note": "pavement at 0.2 sits 18 cm above the asphalt: a raised slab in the roadway (carriageway cap wider than the real kerb-to-kerb)",
+  "examples": [
+   {
+    "id": "6-f97c34da57aa x Blågårdsgade",
+    "x": -353.8,
+    "z": -223.1,
+    "metric": "307 m2 pavement over carriageway"
+   },
+   {
+    "id": "d-2a825f761c76 x Linnésgade",
+    "x": 510.3,
+    "z": -121.0,
+    "metric": "150 m2 pavement over carriageway"
+   },
+   {
+    "id": "1-a83d41b331ed x Bispetorvet",
+    "x": 642.3,
+    "z": 353.2,
+    "metric": "109 m2 pavement over carriageway"
+   },
+   {
+    "id": "2-61494a0b5006 x Vævergade",
+    "x": -585.4,
+    "z": -565.4,
+    "metric": "102 m2 pavement over carriageway"
+   },
+   {
+    "id": "e-3c65f40a8d34 x Kapelvej",
+    "x": -715.8,
+    "z": -290.3,
+    "metric": "94 m2 pavement over carriageway"
+   },
+   {
+    "id": "8-54090e099aa5 x Farvergade",
+    "x": 717.5,
+    "z": 692.2,
+    "metric": "92 m2 pavement over carriageway"
+   },
+   {
+    "id": "d-659bc162d357 x Kapelvej",
+    "x": -616.2,
+    "z": -534.4,
+    "metric": "89 m2 pavement over carriageway"
+   },
+   {
+    "id": "9-b2cf0ff2a6d0 x Sortedam Dossering",
+    "x": 69.9,
+    "z": -611.9,
+    "metric": "86 m2 pavement over carriageway"
+   },
+   {
+    "id": "f-abfe4697815a x Vendersgade",
+    "x": 463.5,
+    "z": -134.9,
+    "metric": "82 m2 pavement over carriageway"
+   },
+   {
+    "id": "3-c69c736dcf42 x Murergade",
+    "x": -264.9,
+    "z": -158.2,
+    "metric": "82 m2 pavement over carriageway"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:flags",
+  "layer": "flags",
+  "title": "flags on a cycle track (>= 25% of footprint)",
+  "count": 18,
+  "total": 47,
+  "pct": 38.3,
+  "severity": "med",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "flags[9]",
+    "x": 430.4,
+    "z": -281.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[39]",
+    "x": 62.6,
+    "z": 718.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[42]",
+    "x": -430.4,
+    "z": -502.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[6]",
+    "x": -553.5,
+    "z": 92.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[11]",
+    "x": 339.2,
+    "z": 276.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[14]",
+    "x": -577.9,
+    "z": -281.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[16]",
+    "x": 709.6,
+    "z": -735.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[29]",
+    "x": -488.7,
+    "z": -198.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[33]",
+    "x": 620.6,
+    "z": -128.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[34]",
+    "x": -445.6,
+    "z": -496.1,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:shelters",
+  "layer": "shelters",
+  "title": "shelters on a cycle track (>= 25% of footprint)",
+  "count": 8,
+  "total": 21,
+  "pct": 38.1,
+  "severity": "med",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "shelters[15]",
+    "x": 581.2,
+    "z": -564.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "shelters[14]",
+    "x": 622.7,
+    "z": -129.6,
+    "metric": "94% of footprint"
+   },
+   {
+    "id": "shelters[17]",
+    "x": 63.7,
+    "z": 715.9,
+    "metric": "86% of footprint"
+   },
+   {
+    "id": "shelters[4]",
+    "x": 338.8,
+    "z": 279.2,
+    "metric": "79% of footprint"
+   },
+   {
+    "id": "shelters[20]",
+    "x": 251.8,
+    "z": -374.5,
+    "metric": "76% of footprint"
+   },
+   {
+    "id": "shelters[1]",
+    "x": 96.6,
+    "z": 250.2,
+    "metric": "61% of footprint"
+   },
+   {
+    "id": "shelters[19]",
+    "x": -29.4,
+    "z": -561.8,
+    "metric": "57% of footprint"
+   },
+   {
+    "id": "shelters[2]",
+    "x": -560.7,
+    "z": 102.3,
+    "metric": "36% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "cycle-cycle-overlap",
+  "layer": "cycle tracks",
+  "title": "Two cycle tracks overlap (KK cykelsti vs road-side strips; >= 2 m2)",
+  "count": 239,
+  "total": 678,
+  "pct": 35.25,
+  "severity": "med",
+  "note": "doubled cycle track meshes at 0.12 / 0.118: coplanar z-fighting",
+  "examples": [
+   {
+    "id": "osm:way/27226010:left x kk:cykelsti:601",
+    "x": -95.8,
+    "z": 390.3,
+    "metric": "448 m2"
+   },
+   {
+    "id": "osm:way/27203876:right x kk:cykelsti:683",
+    "x": 324.8,
+    "z": -593.9,
+    "metric": "430 m2"
+   },
+   {
+    "id": "osm:way/27226010:right x kk:cykelsti:600",
+    "x": -82.4,
+    "z": 381.4,
+    "metric": "418 m2"
+   },
+   {
+    "id": "osm:way/1718351:left x kk:cykelsti:526",
+    "x": 66.5,
+    "z": -137.0,
+    "metric": "398 m2"
+   },
+   {
+    "id": "osm:way/1718351:right x kk:cykelsti:583",
+    "x": 76.8,
+    "z": -132.1,
+    "metric": "386 m2"
+   },
+   {
+    "id": "osm:way/209692779:right x kk:cykelsti:616",
+    "x": 587.5,
+    "z": -317.3,
+    "metric": "374 m2"
+   },
+   {
+    "id": "osm:way/209692779:left x kk:cykelsti:617",
+    "x": 581.7,
+    "z": -331.2,
+    "metric": "349 m2"
+   },
+   {
+    "id": "osm:way/27203876:left x kk:cykelsti:1805",
+    "x": 336.9,
+    "z": -631.8,
+    "metric": "321 m2"
+   },
+   {
+    "id": "osm:way/304123916:left x kk:cykelsti:517",
+    "x": 386.6,
+    "z": 197.7,
+    "metric": "205 m2"
+   },
+   {
+    "id": "osm:way/1355324240:right x kk:cykelsti:521",
+    "x": 359.9,
+    "z": 310.2,
+    "metric": "191 m2"
+   }
+  ]
+ },
+ {
+  "id": "rack-rows",
+  "layer": "bikeRacks",
+  "title": "Rack row (capacity x 0.5 m, centred on the point) >= 30% in a building / on the carriageway or in water",
+  "count": 275,
+  "total": 1035,
+  "pct": 26.57,
+  "severity": "med",
+  "note": "capacity median 8, p95 35, max 90; engine caps rows at 48 slots = 24 m, centred on the data point",
+  "examples": [
+   {
+    "id": "rack[545] cap 66",
+    "x": 541.0,
+    "z": -537.1,
+    "metric": "row 25 m: 0% in building, 100% on carriageway, 0% water"
+   },
+   {
+    "id": "rack[240] cap 38",
+    "x": 85.2,
+    "z": 58.3,
+    "metric": "row 20 m: 0% in building, 85% on carriageway, 0% water"
+   },
+   {
+    "id": "rack[541] cap 35",
+    "x": 506.0,
+    "z": 582.8,
+    "metric": "row 18 m: 0% in building, 91% on carriageway, 0% water"
+   },
+   {
+    "id": "rack[345] cap 41",
+    "x": 717.1,
+    "z": -207.4,
+    "metric": "row 21 m: 75% in building, 0% on carriageway, 0% water"
+   },
+   {
+    "id": "rack[552] cap 30",
+    "x": 683.6,
+    "z": 634.2,
+    "metric": "row 16 m: 0% in building, 100% on carriageway, 0% water"
+   },
+   {
+    "id": "rack[399] cap 30",
+    "x": 741.5,
+    "z": -93.3,
+    "metric": "row 16 m: 0% in building, 100% on carriageway, 0% water"
+   },
+   {
+    "id": "rack[341] cap 30",
+    "x": 720.0,
+    "z": -211.4,
+    "metric": "row 16 m: 94% in building, 0% on carriageway, 0% water"
+   },
+   {
+    "id": "rack[353] cap 28",
+    "x": 553.7,
+    "z": -27.0,
+    "metric": "row 15 m: 100% in building, 0% on carriageway, 0% water"
+   },
+   {
+    "id": "rack[352] cap 28",
+    "x": 551.7,
+    "z": -23.8,
+    "metric": "row 15 m: 100% in building, 0% on carriageway, 0% water"
+   },
+   {
+    "id": "rack[349] cap 28",
+    "x": 555.1,
+    "z": -30.4,
+    "metric": "row 15 m: 100% in building, 0% on carriageway, 0% water"
+   }
+  ]
+ },
+ {
+  "id": "on-carriageway:flags",
+  "layer": "flags",
+  "title": "flags on the capped carriageway (>= 25% of footprint)",
+  "count": 11,
+  "total": 47,
+  "pct": 23.4,
+  "severity": "med",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "flags[1]",
+    "x": 113.4,
+    "z": 313.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[4]",
+    "x": 60.0,
+    "z": 270.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[8]",
+    "x": 604.1,
+    "z": -155.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[10]",
+    "x": 463.9,
+    "z": -247.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[13]",
+    "x": -691.8,
+    "z": -251.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[17]",
+    "x": -514.1,
+    "z": 467.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[20]",
+    "x": 724.4,
+    "z": -251.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[27]",
+    "x": -646.7,
+    "z": -191.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[30]",
+    "x": 71.3,
+    "z": 528.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "flags[35]",
+    "x": -590.9,
+    "z": -369.3,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-carriageway:bikes",
+  "layer": "bikes",
+  "title": "bikes on the capped carriageway (>= 25% of footprint)",
+  "count": 1342,
+  "total": 7102,
+  "pct": 18.9,
+  "severity": "med",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "bikes[5002]",
+    "x": 680.8,
+    "z": 637.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[6981]",
+    "x": 740.1,
+    "z": -92.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[11]",
+    "x": 246.5,
+    "z": -102.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[18]",
+    "x": 225.2,
+    "z": -115.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[19]",
+    "x": 224.8,
+    "z": -115.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[155]",
+    "x": -175.5,
+    "z": -497.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[156]",
+    "x": -175.1,
+    "z": -497.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[157]",
+    "x": -174.2,
+    "z": -496.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[158]",
+    "x": -173.8,
+    "z": -496.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[165]",
+    "x": -170.7,
+    "z": -494.7,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-carriageway:meters",
+  "layer": "meters",
+  "title": "meters on the capped carriageway (>= 25% of footprint)",
+  "count": 7,
+  "total": 47,
+  "pct": 14.89,
+  "severity": "med",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "meters[26]",
+    "x": 580.9,
+    "z": 292.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "meters[32]",
+    "x": 216.4,
+    "z": -111.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "meters[45]",
+    "x": -11.9,
+    "z": 67.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "meters[9]",
+    "x": -461.5,
+    "z": -651.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "meters[23]",
+    "x": 138.7,
+    "z": 470.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "meters[29]",
+    "x": 431.1,
+    "z": 313.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "meters[25]",
+    "x": 670.3,
+    "z": 649.7,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-carriageway:hoops",
+  "layer": "hoops",
+  "title": "hoops on the capped carriageway (>= 25% of footprint)",
+  "count": 885,
+  "total": 6128,
+  "pct": 14.44,
+  "severity": "med",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "hoops[412]",
+    "x": 690.3,
+    "z": 719.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[413]",
+    "x": 691.1,
+    "z": 719.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[414]",
+    "x": 691.9,
+    "z": 718.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[415]",
+    "x": 692.3,
+    "z": 718.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[416]",
+    "x": 693.1,
+    "z": 717.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[417]",
+    "x": 693.9,
+    "z": 717.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[418]",
+    "x": 682.2,
+    "z": 725.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[419]",
+    "x": 683.0,
+    "z": 725.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[420]",
+    "x": 683.8,
+    "z": 724.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[423]",
+    "x": 680.2,
+    "z": 727.1,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "signal-no-junction",
+  "layer": "signals",
+  "title": "Signal point > 12 m from any road-graph junction node",
+  "count": 23,
+  "total": 164,
+  "pct": 14.02,
+  "severity": "med",
+  "note": "the engine matches signals to junction nodes; unmatched ones get no signal heads or phase",
+  "examples": [
+   {
+    "id": "signal[56]",
+    "x": 671.0,
+    "z": -190.3,
+    "metric": "44 m from the nearest road-graph junction (degree >= 3)"
+   },
+   {
+    "id": "signal[40]",
+    "x": 132.2,
+    "z": 615.1,
+    "metric": "28 m from the nearest road-graph junction (degree >= 3)"
+   },
+   {
+    "id": "signal[44]",
+    "x": 351.8,
+    "z": 674.3,
+    "metric": "20 m from the nearest road-graph junction (degree >= 3)"
+   },
+   {
+    "id": "signal[158]",
+    "x": -409.6,
+    "z": 479.4,
+    "metric": "19 m from the nearest road-graph junction (degree >= 3)"
+   },
+   {
+    "id": "Nørre Voldgade - Vendersgade",
+    "x": 574.2,
+    "z": -48.7,
+    "metric": "18 m from the nearest road-graph junction (degree >= 3)"
+   },
+   {
+    "id": "signal[38]",
+    "x": 99.8,
+    "z": 559.2,
+    "metric": "18 m from the nearest road-graph junction (degree >= 3)"
+   },
+   {
+    "id": "signal[159]",
+    "x": -429.0,
+    "z": 492.3,
+    "metric": "17 m from the nearest road-graph junction (degree >= 3)"
+   },
+   {
+    "id": "signal[41]",
+    "x": 151.2,
+    "z": 743.4,
+    "metric": "17 m from the nearest road-graph junction (degree >= 3)"
+   },
+   {
+    "id": "signal[157]",
+    "x": -396.3,
+    "z": 501.2,
+    "metric": "16 m from the nearest road-graph junction (degree >= 3)"
+   },
+   {
+    "id": "signal[74]",
+    "x": 711.2,
+    "z": -273.4,
+    "metric": "16 m from the nearest road-graph junction (degree >= 3)"
+   }
+  ]
+ },
+ {
+  "id": "surf-surf-diffclass",
+  "layer": "surfaces",
+  "title": "Two ground-material polygons of different class overlap (>= 2 m2)",
+  "count": 30,
+  "total": 229,
+  "pct": 13.1,
+  "severity": "med",
+  "note": "the later polygon wins per triangle; the loser leaks through as z-fighting patches (both at y 0.014)",
+  "examples": [
+   {
+    "id": "ay/123204483 (setts) x ay/549545292 (cobbles)",
+    "x": 632.0,
+    "z": 733.8,
+    "metric": "1932 m2"
+   },
+   {
+    "id": "d060a06537#0 (asphalt_road) x ay/168134399 (cobbles)",
+    "x": 436.1,
+    "z": -66.9,
+    "metric": "1201 m2"
+   },
+   {
+    "id": "ay/549543686 (cobbles) x ay/827602453 (raadhus)",
+    "x": 426.4,
+    "z": 628.3,
+    "metric": "1008 m2"
+   },
+   {
+    "id": "ay/667398483 (cobbles) x y/1173375110 (raadhus)",
+    "x": 204.9,
+    "z": -446.5,
+    "metric": "452 m2"
+   },
+   {
+    "id": "ay/667398483 (cobbles) x y/1081381422 (raadhus)",
+    "x": 202.5,
+    "z": -370.3,
+    "metric": "330 m2"
+   },
+   {
+    "id": "7eeb695764#0 (gravel) x ay/667398483 (cobbles)",
+    "x": 149.9,
+    "z": -390.4,
+    "metric": "266 m2"
+   },
+   {
+    "id": "ay/667398483 (cobbles) x y/1173373425 (raadhus)",
+    "x": 178.4,
+    "z": -391.6,
+    "metric": "234 m2"
+   },
+   {
+    "id": "de663a4936#0 (cobbles) x f883b7f00b#0 (gravel)",
+    "x": 283.1,
+    "z": 301.7,
+    "metric": "136 m2"
+   },
+   {
+    "id": "d6a33e3632#0 (cobbles) x way/27256158 (raadhus)",
+    "x": 197.0,
+    "z": 710.1,
+    "metric": "129 m2"
+   },
+   {
+    "id": "f6a05e0a00#0 (cobbles) x f883b7f00b#0 (gravel)",
+    "x": 311.2,
+    "z": 220.2,
+    "metric": "32 m2"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:glass",
+  "layer": "glass",
+  "title": "glass on a cycle track (>= 25% of footprint)",
+  "count": 3,
+  "total": 23,
+  "pct": 13.04,
+  "severity": "med",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "glass[16]",
+    "x": 356.9,
+    "z": 245.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "glass[18]",
+    "x": 472.6,
+    "z": -225.8,
+    "metric": "53% of footprint"
+   },
+   {
+    "id": "glass[15]",
+    "x": -11.2,
+    "z": 417.0,
+    "metric": "48% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:bins",
+  "layer": "bins",
+  "title": "bins on a cycle track (>= 25% of footprint)",
+  "count": 64,
+  "total": 539,
+  "pct": 11.87,
+  "severity": "med",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "bins[107]",
+    "x": 362.5,
+    "z": -187.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[144]",
+    "x": 452.4,
+    "z": 22.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[168]",
+    "x": -110.1,
+    "z": 706.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[252]",
+    "x": 674.1,
+    "z": -208.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[259]",
+    "x": 464.6,
+    "z": 29.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[289]",
+    "x": -261.4,
+    "z": 21.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[390]",
+    "x": -665.6,
+    "z": -342.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[533]",
+    "x": -582.5,
+    "z": -363.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[40]",
+    "x": 442.0,
+    "z": 335.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[53]",
+    "x": 114.1,
+    "z": 321.6,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "bld-height-sanity",
+  "layer": "buildings",
+  "title": "Height implausible: > 60 m, < 2.5 m, or > 6.5 / < 2.0 m per storey",
+  "count": 298,
+  "total": 2517,
+  "pct": 11.84,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "gdk:1064712326",
+    "x": 708.2,
+    "z": 318.0,
+    "metric": "h 24.6 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064710530",
+    "x": -307.6,
+    "z": -48.4,
+    "metric": "h 24.1 m, 2 storeys, measured"
+   },
+   {
+    "id": "gdk:1213434780",
+    "x": -83.5,
+    "z": 795.1,
+    "metric": "h 23.6 m, 19 storeys, measured"
+   },
+   {
+    "id": "gdk:1064714062",
+    "x": 631.1,
+    "z": -232.9,
+    "metric": "h 22.1 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064714130",
+    "x": 579.5,
+    "z": -150.0,
+    "metric": "h 21.5 m, 12 storeys, measured"
+   },
+   {
+    "id": "gdk:1064813456",
+    "x": 649.2,
+    "z": -45.8,
+    "metric": "h 20.3 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064714568",
+    "x": 178.6,
+    "z": -22.2,
+    "metric": "h 20.1 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064714265",
+    "x": 700.6,
+    "z": -679.4,
+    "metric": "h 19.9 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1064713699",
+    "x": -591.4,
+    "z": -474.1,
+    "metric": "h 19.8 m, 3 storeys, measured"
+   },
+   {
+    "id": "gdk:1213781523",
+    "x": -578.9,
+    "z": -436.7,
+    "metric": "h 19.5 m, 3 storeys, measured"
+   }
+  ]
+ },
+ {
+  "id": "busstop-far-from-road",
+  "layer": "bus stops",
+  "title": "Stop flag > 5 m from the nearest carriageway edge",
+  "count": 5,
+  "total": 47,
+  "pct": 10.64,
+  "severity": "med",
+  "note": "nearest road classes: {'secondary': 39, 'service': 3, 'residential': 5}",
+  "examples": [
+   {
+    "id": "stop[0] Gothersgade",
+    "x": 486.7,
+    "z": -407.6,
+    "metric": "flag 7.9 m from the nearest carriageway edge (secondary Øster Farimagsgade)"
+   },
+   {
+    "id": "stop[24] Nørreport St.",
+    "x": 637.5,
+    "z": -167.4,
+    "metric": "flag 7.0 m from the nearest carriageway edge (secondary Nørre Voldgade)"
+   },
+   {
+    "id": "stop[31] Kommunehospitalet",
+    "x": 583.3,
+    "z": -541.8,
+    "metric": "flag 6.2 m from the nearest carriageway edge (secondary Øster Farimagsgade)"
+   },
+   {
+    "id": "stop[38] Blågårdsgade",
+    "x": -455.1,
+    "z": -211.7,
+    "metric": "flag 5.9 m from the nearest carriageway edge (secondary Åboulevard)"
+   },
+   {
+    "id": "stop[23] Åboulevard",
+    "x": -663.6,
+    "z": -183.4,
+    "metric": "flag 5.0 m from the nearest carriageway edge (secondary H.C. Ørsteds Vej)"
+   }
+  ]
+ },
+ {
+  "id": "surf-under-road",
+  "layer": "surfaces",
+  "title": "Pavement-class ground polygon overlaps a carriageway (>= 5 m2)",
+  "count": 15,
+  "total": 143,
+  "pct": 10.49,
+  "severity": "med",
+  "note": "ground at 0.014 under asphalt at 0.02: 6 mm apart, z-fighting at distance",
+  "examples": [
+   {
+    "id": "osm:way/1355324246",
+    "x": 283.0,
+    "z": 376.8,
+    "metric": "cobbles: 13544 m2 under carriageway"
+   },
+   {
+    "id": "osm:way/549543686",
+    "x": 409.3,
+    "z": 691.1,
+    "metric": "cobbles: 6348 m2 under carriageway"
+   },
+   {
+    "id": "osm:way/667398483",
+    "x": 195.0,
+    "z": -409.2,
+    "metric": "cobbles: 3346 m2 under carriageway"
+   },
+   {
+    "id": "osm:way/782307470",
+    "x": 83.7,
+    "z": 493.2,
+    "metric": "cobbles: 3097 m2 under carriageway"
+   },
+   {
+    "id": "osm:way/743674704",
+    "x": -593.0,
+    "z": 454.5,
+    "metric": "cobbles: 3056 m2 under carriageway"
+   },
+   {
+    "id": "osm:way/168134399",
+    "x": 372.6,
+    "z": -78.3,
+    "metric": "cobbles: 2244 m2 under carriageway"
+   },
+   {
+    "id": "osm:way/549545292",
+    "x": 657.9,
+    "z": 741.6,
+    "metric": "cobbles: 745 m2 under carriageway"
+   },
+   {
+    "id": "osm:way/25822563",
+    "x": 708.5,
+    "z": 444.4,
+    "metric": "setts: 598 m2 under carriageway"
+   },
+   {
+    "id": "osm:way/123204483",
+    "x": 653.3,
+    "z": 743.1,
+    "metric": "setts: 329 m2 under carriageway"
+   },
+   {
+    "id": "osm:way/26435520",
+    "x": 640.3,
+    "z": 345.6,
+    "metric": "cobbles: 248 m2 under carriageway"
+   }
+  ]
+ },
+ {
+  "id": "overlap:benches+benches",
+  "layer": "furniture",
+  "title": "benches overlaps benches (>= 20% of the smaller footprint)",
+  "count": 92,
+  "total": 938,
+  "pct": 9.81,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "benches[613] x benches[665]",
+    "x": 721.2,
+    "z": 353.6,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[614] x benches[663]",
+    "x": 729.0,
+    "z": 350.9,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[615] x benches[664]",
+    "x": 727.1,
+    "z": 351.6,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[616] x benches[668]",
+    "x": 718.5,
+    "z": 354.4,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[655] x benches[666]",
+    "x": 723.6,
+    "z": 353.3,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[656] x benches[662]",
+    "x": 725.3,
+    "z": 352.7,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[530] x benches[531]",
+    "x": 293.6,
+    "z": -55.3,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[22] x benches[26]",
+    "x": 658.1,
+    "z": 664.4,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[22] x benches[636]",
+    "x": 658.1,
+    "z": 664.4,
+    "metric": "0.99 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[22] x benches[651]",
+    "x": 658.1,
+    "z": 664.4,
+    "metric": "0.99 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:meters",
+  "layer": "meters",
+  "title": "meters on a cycle track (>= 25% of footprint)",
+  "count": 4,
+  "total": 47,
+  "pct": 8.51,
+  "severity": "med",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "meters[37]",
+    "x": 411.3,
+    "z": -156.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "meters[12]",
+    "x": 8.7,
+    "z": -724.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "meters[41]",
+    "x": 534.5,
+    "z": 44.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "meters[22]",
+    "x": 370.1,
+    "z": 226.7,
+    "metric": "50% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "cycle-carriageway",
+  "layer": "cycle tracks",
+  "title": "Cycle track strip overlaps another road's carriageway away from a junction (>= 3 m2)",
+  "count": 53,
+  "total": 678,
+  "pct": 7.82,
+  "severity": "med",
+  "note": "818 more are at junction mouths",
+  "examples": [
+   {
+    "id": "kk:cykelsti:10 x osm:way/128079756",
+    "x": 217.3,
+    "z": 110.5,
+    "metric": "593 m2"
+   },
+   {
+    "id": "kk:cykelsti:517 x osm:way/304123916",
+    "x": 385.2,
+    "z": 197.7,
+    "metric": "435 m2"
+   },
+   {
+    "id": "osm:way/1323685823:left x Gyldenløvesgade",
+    "x": -26.8,
+    "z": 188.3,
+    "metric": "193 m2"
+   },
+   {
+    "id": "osm:way/537418992:right x osm:way/1323685823",
+    "x": -24.3,
+    "z": 186.3,
+    "metric": "187 m2"
+   },
+   {
+    "id": "kk:cykelsti:131 x osm:way/44044768",
+    "x": 296.4,
+    "z": 508.0,
+    "metric": "181 m2"
+   },
+   {
+    "id": "osm:way/502189573:right x H.C. Andersens Boulevard",
+    "x": 165.6,
+    "z": 345.5,
+    "metric": "175 m2"
+   },
+   {
+    "id": "osm:way/127496823:right x Gyldenløvesgade",
+    "x": -166.9,
+    "z": 99.7,
+    "metric": "155 m2"
+   },
+   {
+    "id": "kk:cykelsti:631 x Hammerichsgade",
+    "x": 117.0,
+    "z": 668.8,
+    "metric": "133 m2"
+   },
+   {
+    "id": "kk:cykelsti:1313 x Vendersgade",
+    "x": 534.7,
+    "z": -82.7,
+    "metric": "120 m2"
+   },
+   {
+    "id": "osm:way/36244295:left x Nørrebrogade",
+    "x": -4.3,
+    "z": -533.4,
+    "metric": "105 m2"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:bollards",
+  "layer": "bollards",
+  "title": "bollards on a cycle track (>= 25% of footprint)",
+  "count": 28,
+  "total": 396,
+  "pct": 7.07,
+  "severity": "med",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "bollards[230]",
+    "x": 471.8,
+    "z": -131.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[246]",
+    "x": 158.5,
+    "z": -49.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[248]",
+    "x": 162.9,
+    "z": -48.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[61]",
+    "x": 538.3,
+    "z": 678.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[62]",
+    "x": 542.9,
+    "z": 681.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[63]",
+    "x": 552.4,
+    "z": 688.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[76]",
+    "x": 124.0,
+    "z": 479.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[129]",
+    "x": -406.7,
+    "z": -572.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[130]",
+    "x": -395.4,
+    "z": -568.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[194]",
+    "x": -425.3,
+    "z": -512.2,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "in-building-partial:stands",
+  "layer": "stands",
+  "title": "stands straddles a facade (25-90% of footprint inside a building)",
+  "count": 47,
+  "total": 740,
+  "pct": 6.35,
+  "severity": "med",
+  "note": "half inside the wall: visible poking through the facade",
+  "examples": [
+   {
+    "id": "stands[94]",
+    "x": 406.8,
+    "z": -358.4,
+    "metric": "89% of footprint"
+   },
+   {
+    "id": "stands[617]",
+    "x": -191.4,
+    "z": -196.5,
+    "metric": "88% of footprint"
+   },
+   {
+    "id": "stands[201]",
+    "x": 265.4,
+    "z": -314.2,
+    "metric": "87% of footprint"
+   },
+   {
+    "id": "stands[680]",
+    "x": 706.6,
+    "z": 69.9,
+    "metric": "87% of footprint"
+   },
+   {
+    "id": "stands[549]",
+    "x": 421.8,
+    "z": 361.2,
+    "metric": "84% of footprint"
+   },
+   {
+    "id": "stands[37]",
+    "x": -257.6,
+    "z": -304.6,
+    "metric": "83% of footprint"
+   },
+   {
+    "id": "stands[338]",
+    "x": 631.4,
+    "z": 613.0,
+    "metric": "83% of footprint"
+   },
+   {
+    "id": "stands[259]",
+    "x": 546.0,
+    "z": -295.2,
+    "metric": "82% of footprint"
+   },
+   {
+    "id": "stands[629]",
+    "x": 224.2,
+    "z": 680.9,
+    "metric": "82% of footprint"
+   },
+   {
+    "id": "stands[88]",
+    "x": -413.4,
+    "z": -622.0,
+    "metric": "81% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:benches",
+  "layer": "benches",
+  "title": "benches on a cycle track (>= 25% of footprint)",
+  "count": 51,
+  "total": 938,
+  "pct": 5.44,
+  "severity": "med",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "benches[31]",
+    "x": 430.4,
+    "z": -145.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[192]",
+    "x": 427.7,
+    "z": -147.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[657]",
+    "x": -714.2,
+    "z": -369.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[658]",
+    "x": -712.2,
+    "z": -368.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[935]",
+    "x": -265.3,
+    "z": 18.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[18]",
+    "x": -552.7,
+    "z": -278.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[19]",
+    "x": -734.5,
+    "z": -381.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[20]",
+    "x": -737.0,
+    "z": -383.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[52]",
+    "x": 151.4,
+    "z": 568.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "benches[90]",
+    "x": -596.1,
+    "z": -302.7,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:monuments",
+  "layer": "monuments",
+  "title": "monuments on a cycle track (>= 25% of footprint)",
+  "count": 3,
+  "total": 76,
+  "pct": 3.95,
+  "severity": "med",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "monuments[29]",
+    "x": -369.0,
+    "z": -95.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "monuments[60]",
+    "x": 612.5,
+    "z": -168.4,
+    "metric": "58% of footprint"
+   },
+   {
+    "id": "monuments[67]",
+    "x": 23.3,
+    "z": -511.0,
+    "metric": "43% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "ground-jump-centreline",
+  "layer": "ground height",
+  "title": "Height step > 0.15 m ALONG a carriageway centreline",
+  "count": 183,
+  "total": 4655,
+  "pct": 3.93,
+  "severity": "med",
+  "note": "cars/cyclists/pedestrians read this field: a step on the roadway = a pavement/cycle/surface slab covering the asphalt there",
+  "examples": [
+   {
+    "id": "osm:way/115912300",
+    "x": -640.6,
+    "z": -490.6,
+    "metric": " centreline dh +0.18"
+   },
+   {
+    "id": "osm:way/150878857",
+    "x": -453.2,
+    "z": 191.0,
+    "metric": " centreline dh +0.18"
+   },
+   {
+    "id": "osm:way/150894943",
+    "x": -610.3,
+    "z": -25.5,
+    "metric": "Steenwinkelsvej centreline dh -0.18"
+   },
+   {
+    "id": "osm:way/1073231248",
+    "x": 222.4,
+    "z": -315.3,
+    "metric": " centreline dh +0.18"
+   },
+   {
+    "id": "osm:way/1378864838",
+    "x": 688.7,
+    "z": 174.6,
+    "metric": " centreline dh +0.18"
+   },
+   {
+    "id": "osm:way/150917376",
+    "x": -357.3,
+    "z": 442.8,
+    "metric": " centreline dh +0.18"
+   },
+   {
+    "id": "osm:way/1378864835",
+    "x": 666.9,
+    "z": 292.8,
+    "metric": " centreline dh +0.18"
+   },
+   {
+    "id": "osm:way/150896583",
+    "x": -468.0,
+    "z": -119.2,
+    "metric": " centreline dh -0.18"
+   },
+   {
+    "id": "osm:way/1446346983",
+    "x": -553.7,
+    "z": -359.8,
+    "metric": " centreline dh +0.18"
+   },
+   {
+    "id": "osm:way/437649576",
+    "x": 492.8,
+    "z": 208.2,
+    "metric": "Sankt Petri Passage centreline dh -0.18"
+   }
+  ]
+ },
+ {
+  "id": "tree-crown-facade",
+  "layer": "trees",
+  "title": "Crown penetrates a facade by > 1 m (crown base below the eave)",
+  "count": 184,
+  "total": 4905,
+  "pct": 3.75,
+  "severity": "med",
+  "note": "leaf cards and the mid-LOD crown blob cut through walls; the engine places trees at data x,z and never moves them off buildings",
+  "examples": [
+   {
+    "id": "tree[1870] generic h13 r7.9",
+    "x": -396.5,
+    "z": -678.5,
+    "metric": "crown reaches 6.9 m into gdk:1064713388 (eave 22.0)"
+   },
+   {
+    "id": "tree[1648] lime h20 r7.9",
+    "x": 385.8,
+    "z": -467.5,
+    "metric": "crown reaches 5.9 m into gdk:1064713812 (eave 8.8)"
+   },
+   {
+    "id": "tree[4887] generic h12 r6.8",
+    "x": 547.5,
+    "z": 359.5,
+    "metric": "crown reaches 5.5 m into gdk:1215799882 (eave 4.6)"
+   },
+   {
+    "id": "tree[4849] generic h12 r6.7",
+    "x": 509.5,
+    "z": 216.5,
+    "metric": "crown reaches 5.4 m into gdk:1064712556 (eave 5.9)"
+   },
+   {
+    "id": "tree[4345] generic h8 r6.0",
+    "x": 524.5,
+    "z": -716.5,
+    "metric": "crown reaches 5.0 m into gdk:1220524988 (eave 7.0)"
+   },
+   {
+    "id": "tree[1628] lime h20 r7.9",
+    "x": 411.6,
+    "z": -443.5,
+    "metric": "crown reaches 4.9 m into gdk:1064713815 (eave 19.9)"
+   },
+   {
+    "id": "tree[4856] generic h18 r5.9",
+    "x": 610.5,
+    "z": 248.5,
+    "metric": "crown reaches 4.8 m into gdk:1064717929 (eave 19.7)"
+   },
+   {
+    "id": "tree[2471] generic h14 r6.3",
+    "x": -349.5,
+    "z": -120.5,
+    "metric": "crown reaches 4.8 m into gdk:1064802201 (eave 8.5)"
+   },
+   {
+    "id": "tree[1752] plane h22 r9.0",
+    "x": -391.0,
+    "z": -374.6,
+    "metric": "crown reaches 4.8 m into gdk:1064734687 (eave 15.8)"
+   },
+   {
+    "id": "tree[4341] generic h14 r7.6",
+    "x": 436.5,
+    "z": -728.5,
+    "metric": "crown reaches 4.7 m into gdk:1064781823 (eave 12.8)"
+   }
+  ]
+ },
+ {
+  "id": "rack-giant",
+  "layer": "bikeRacks",
+  "title": "Rack with capacity > 40 (> 20 m row, > 40 bikes)",
+  "count": 38,
+  "total": 1035,
+  "pct": 3.67,
+  "severity": "med",
+  "note": "one record per whole KK stand field; the engine lays a single straight row of up to 24 m",
+  "examples": [
+   {
+    "id": "rack[7] cap 48",
+    "x": 183.0,
+    "z": 666.1,
+    "metric": "24 m row"
+   },
+   {
+    "id": "rack[171] cap 80",
+    "x": -464.9,
+    "z": 26.4,
+    "metric": "24 m row"
+   },
+   {
+    "id": "rack[208] cap 52",
+    "x": 621.8,
+    "z": 693.4,
+    "metric": "24 m row"
+   },
+   {
+    "id": "rack[217] cap 80",
+    "x": 512.9,
+    "z": -122.0,
+    "metric": "24 m row"
+   },
+   {
+    "id": "rack[218] cap 54",
+    "x": 528.6,
+    "z": -146.2,
+    "metric": "24 m row"
+   },
+   {
+    "id": "rack[241] cap 64",
+    "x": 79.3,
+    "z": 68.6,
+    "metric": "24 m row"
+   },
+   {
+    "id": "rack[251] cap 52",
+    "x": 74.0,
+    "z": 71.9,
+    "metric": "24 m row"
+   },
+   {
+    "id": "rack[262] cap 90",
+    "x": 14.9,
+    "z": 333.2,
+    "metric": "24 m row"
+   },
+   {
+    "id": "rack[301] cap 52",
+    "x": 184.8,
+    "z": -273.9,
+    "metric": "24 m row"
+   },
+   {
+    "id": "rack[318] cap 52",
+    "x": 608.4,
+    "z": -63.2,
+    "metric": "24 m row"
+   }
+  ]
+ },
+ {
+  "id": "in-building-partial:bikes",
+  "layer": "bikes",
+  "title": "bikes straddles a facade (25-90% of footprint inside a building)",
+  "count": 256,
+  "total": 7102,
+  "pct": 3.6,
+  "severity": "med",
+  "note": "half inside the wall: visible poking through the facade",
+  "examples": [
+   {
+    "id": "bikes[2252]",
+    "x": 171.3,
+    "z": -245.3,
+    "metric": "90% of footprint"
+   },
+   {
+    "id": "bikes[581]",
+    "x": 590.9,
+    "z": -155.1,
+    "metric": "87% of footprint"
+   },
+   {
+    "id": "bikes[580]",
+    "x": 590.5,
+    "z": -155.3,
+    "metric": "87% of footprint"
+   },
+   {
+    "id": "bikes[579]",
+    "x": 589.2,
+    "z": -156.1,
+    "metric": "86% of footprint"
+   },
+   {
+    "id": "bikes[2828]",
+    "x": 584.5,
+    "z": -49.6,
+    "metric": "86% of footprint"
+   },
+   {
+    "id": "bikes[578]",
+    "x": 588.8,
+    "z": -156.4,
+    "metric": "86% of footprint"
+   },
+   {
+    "id": "bikes[86]",
+    "x": 157.4,
+    "z": 638.9,
+    "metric": "86% of footprint"
+   },
+   {
+    "id": "bikes[577]",
+    "x": 588.4,
+    "z": -156.7,
+    "metric": "85% of footprint"
+   },
+   {
+    "id": "bikes[576]",
+    "x": 587.9,
+    "z": -156.9,
+    "metric": "85% of footprint"
+   },
+   {
+    "id": "bikes[575]",
+    "x": 587.5,
+    "z": -157.2,
+    "metric": "85% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:trees",
+  "layer": "trees",
+  "title": "trees on a cycle track (>= 25% of footprint)",
+  "count": 173,
+  "total": 4905,
+  "pct": 3.53,
+  "severity": "med",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "trees[415]",
+    "x": 445.4,
+    "z": 115.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[707]",
+    "x": 220.0,
+    "z": -320.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[749]",
+    "x": -380.4,
+    "z": -67.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[800]",
+    "x": 532.9,
+    "z": -94.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[801]",
+    "x": 542.0,
+    "z": -88.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[1084]",
+    "x": 235.3,
+    "z": -306.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[1085]",
+    "x": 242.8,
+    "z": -299.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[1567]",
+    "x": 523.4,
+    "z": -100.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[1667]",
+    "x": 550.4,
+    "z": -83.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[1677]",
+    "x": -367.4,
+    "z": -93.2,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "in-building-hidden:bins",
+  "layer": "bins",
+  "title": "bins entirely inside a building footprint (>= 90%)",
+  "count": 18,
+  "total": 539,
+  "pct": 3.34,
+  "severity": "med",
+  "note": "hidden inside the wall volume (invisible, but a data/placement error and wasted instances)",
+  "examples": [
+   {
+    "id": "bins[236]",
+    "x": 608.5,
+    "z": -79.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[403]",
+    "x": -555.0,
+    "z": -474.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[407]",
+    "x": -555.0,
+    "z": -474.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[488]",
+    "x": 677.2,
+    "z": 519.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[19]",
+    "x": 651.6,
+    "z": 27.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[381]",
+    "x": 573.1,
+    "z": 513.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[396]",
+    "x": 585.9,
+    "z": -64.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[406]",
+    "x": -290.5,
+    "z": -322.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[410]",
+    "x": -290.5,
+    "z": -322.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bins[459]",
+    "x": -294.4,
+    "z": 45.6,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "lod2-spire",
+  "layer": "lod2",
+  "title": "LoD2 roof top > 8 m above geodata eave",
+  "count": 68,
+  "total": 2114,
+  "pct": 3.22,
+  "severity": "med",
+  "note": "tall pitched roofs / towers / vegetation points in the cloud",
+  "examples": [
+   {
+    "id": "gdk:1064813219",
+    "x": 548.8,
+    "z": 782.0,
+    "metric": "roof top 84.2 vs eave 27.4"
+   },
+   {
+    "id": "gdk:1064717929",
+    "x": 592.3,
+    "z": 252.7,
+    "metric": "roof top 60.6 vs eave 19.7"
+   },
+   {
+    "id": "gdk:1213434780",
+    "x": -83.5,
+    "z": 795.1,
+    "metric": "roof top 61.8 vs eave 23.0"
+   },
+   {
+    "id": "gdk:1064712326",
+    "x": 708.2,
+    "z": 318.0,
+    "metric": "roof top 60.6 vs eave 26.6"
+   },
+   {
+    "id": "gdk:1064712959",
+    "x": 498.2,
+    "z": 622.9,
+    "metric": "roof top 49.5 vs eave 22.6"
+   },
+   {
+    "id": "gdk:1064714130",
+    "x": 579.5,
+    "z": -150.0,
+    "metric": "roof top 48.5 vs eave 24.3"
+   },
+   {
+    "id": "gdk:1064712899",
+    "x": 588.1,
+    "z": 654.7,
+    "metric": "roof top 44.2 vs eave 20.2"
+   },
+   {
+    "id": "gdk:1107313127",
+    "x": 284.6,
+    "z": 766.9,
+    "metric": "roof top 64.9 vs eave 41.5"
+   },
+   {
+    "id": "gdk:1064712965",
+    "x": 335.2,
+    "z": 638.8,
+    "metric": "roof top 23.5 vs eave 3.4"
+   },
+   {
+    "id": "gdk:1064813533",
+    "x": -54.3,
+    "z": 761.4,
+    "metric": "roof top 23.7 vs eave 4.0"
+   }
+  ]
+ },
+ {
+  "id": "overlap:glass+stands",
+  "layer": "furniture",
+  "title": "glass overlaps stands (>= 20% of the smaller footprint)",
+  "count": 23,
+  "total": 763,
+  "pct": 3.01,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "glass[0] x stands[43]",
+    "x": -352.0,
+    "z": -599.8,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "glass[19] x stands[487]",
+    "x": 184.7,
+    "z": -337.4,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "glass[1] x stands[56]",
+    "x": -338.8,
+    "z": -445.0,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "glass[17] x stands[526]",
+    "x": -50.0,
+    "z": -605.0,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "glass[15] x stands[47]",
+    "x": -11.2,
+    "z": 417.0,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "glass[12] x stands[49]",
+    "x": 132.4,
+    "z": 18.4,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "glass[8] x stands[52]",
+    "x": -344.2,
+    "z": 40.0,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "glass[2] x stands[57]",
+    "x": -283.6,
+    "z": -367.8,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "glass[18] x stands[45]",
+    "x": 472.6,
+    "z": -225.8,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "glass[22] x stands[44]",
+    "x": -63.4,
+    "z": -437.2,
+    "metric": "1.37 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "road-road-overlap",
+  "layer": "roads",
+  "title": "Two carriageways overlap away from junctions / road ends (>= 3 m2)",
+  "count": 26,
+  "total": 931,
+  "pct": 2.79,
+  "severity": "med",
+  "note": "931 further overlaps are at junctions (expected); here: duplicate/parallel centrelines or an unmodelled bridge/underpass crossing",
+  "examples": [
+   {
+    "id": "osm:way/127496823 x Gyldenløvesgade",
+    "x": -167.8,
+    "z": 103.0,
+    "metric": "285 m2 away from any junction/road end"
+   },
+   {
+    "id": "osm:way/502189573 x H.C. Andersens Boulevard",
+    "x": 163.4,
+    "z": 346.4,
+    "metric": "186 m2 away from any junction/road end"
+   },
+   {
+    "id": "Nørrebrogade x Nørrebrogade",
+    "x": -6.4,
+    "z": -537.4,
+    "metric": "186 m2 away from any junction/road end"
+   },
+   {
+    "id": "osm:way/502189264 x Gyldenløvesgade",
+    "x": -133.2,
+    "z": 140.1,
+    "metric": "171 m2 away from any junction/road end"
+   },
+   {
+    "id": "Nørre Farimagsgade x Nørre Farimagsgade",
+    "x": 322.4,
+    "z": -157.4,
+    "metric": "157 m2 away from any junction/road end"
+   },
+   {
+    "id": "Nørre Søgade x Nørre Søgade",
+    "x": -54.0,
+    "z": 132.0,
+    "metric": "122 m2 away from any junction/road end"
+   },
+   {
+    "id": "Øster Farimagsgade x Øster Farimagsgade",
+    "x": 470.1,
+    "z": -404.5,
+    "metric": "121 m2 away from any junction/road end"
+   },
+   {
+    "id": "Gyldenløvesgade x osm:way/1323685823",
+    "x": -5.1,
+    "z": 199.9,
+    "metric": "120 m2 away from any junction/road end"
+   },
+   {
+    "id": "Nørre Farimagsgade x Nørre Farimagsgade",
+    "x": 152.9,
+    "z": 267.9,
+    "metric": "108 m2 away from any junction/road end"
+   },
+   {
+    "id": "Søtorvet x Søtorvet",
+    "x": 253.8,
+    "z": -500.2,
+    "metric": "101 m2 away from any junction/road end"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bins+bins",
+  "layer": "furniture",
+  "title": "bins overlaps bins (>= 20% of the smaller footprint)",
+  "count": 13,
+  "total": 539,
+  "pct": 2.41,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "bins[472] x bins[475]",
+    "x": 2.6,
+    "z": -724.6,
+    "metric": "0.27 m2 (100% of smaller)"
+   },
+   {
+    "id": "bins[163] x bins[408]",
+    "x": -186.2,
+    "z": -492.5,
+    "metric": "0.27 m2 (100% of smaller)"
+   },
+   {
+    "id": "bins[411] x bins[499]",
+    "x": -214.8,
+    "z": -458.7,
+    "metric": "0.27 m2 (100% of smaller)"
+   },
+   {
+    "id": "bins[406] x bins[410]",
+    "x": -290.5,
+    "z": -322.3,
+    "metric": "0.27 m2 (100% of smaller)"
+   },
+   {
+    "id": "bins[495] x bins[496]",
+    "x": 432.5,
+    "z": -36.8,
+    "metric": "0.27 m2 (100% of smaller)"
+   },
+   {
+    "id": "bins[4] x bins[5]",
+    "x": -384.6,
+    "z": -172.8,
+    "metric": "0.27 m2 (100% of smaller)"
+   },
+   {
+    "id": "bins[403] x bins[407]",
+    "x": -555.0,
+    "z": -474.0,
+    "metric": "0.27 m2 (100% of smaller)"
+   },
+   {
+    "id": "bins[481] x bins[482]",
+    "x": -19.3,
+    "z": 526.5,
+    "metric": "0.27 m2 (100% of smaller)"
+   },
+   {
+    "id": "bins[207] x bins[439]",
+    "x": -429.4,
+    "z": 19.1,
+    "metric": "0.27 m2 (100% of smaller)"
+   },
+   {
+    "id": "bins[207] x bins[474]",
+    "x": -429.4,
+    "z": 19.1,
+    "metric": "0.27 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "bld-carriageway",
+  "layer": "buildings",
+  "title": "Building footprint overlaps carriageway (>= 2 m2)",
+  "count": 52,
+  "total": 2517,
+  "pct": 2.07,
+  "severity": "med",
+  "note": "road asphalt/kerbs run through the building volume (visible where the road leaves the building)",
+  "examples": [
+   {
+    "id": "gdk:1064813295 x osm:way/243391201",
+    "x": 480.6,
+    "z": -625.8,
+    "metric": "222 m2 overlap"
+   },
+   {
+    "id": "gdk:1223240652 x osm:way/156945517",
+    "x": -736.2,
+    "z": -464.2,
+    "metric": "161 m2 overlap"
+   },
+   {
+    "id": "gdk:1222283192 x osm:way/330953504",
+    "x": -267.5,
+    "z": -159.2,
+    "metric": "82 m2 overlap"
+   },
+   {
+    "id": "gdk:1064813373 x osm:way/150895717",
+    "x": -322.4,
+    "z": 58.2,
+    "metric": "74 m2 overlap"
+   },
+   {
+    "id": "gdk:1064813527 x osm:way/1567559968",
+    "x": -22.4,
+    "z": 567.7,
+    "metric": "68 m2 overlap"
+   },
+   {
+    "id": "gdk:1064712809 x osm:way/1033304012",
+    "x": 22.9,
+    "z": 443.0,
+    "metric": "65 m2 overlap"
+   },
+   {
+    "id": "gdk:1064712554 x osm:way/1138533583",
+    "x": 521.2,
+    "z": 150.8,
+    "metric": "57 m2 overlap"
+   },
+   {
+    "id": "gdk:1064801959 x osm:way/266625734",
+    "x": -27.5,
+    "z": 365.7,
+    "metric": "57 m2 overlap"
+   },
+   {
+    "id": "gdk:1064712810 x osm:way/1033304018",
+    "x": 31.6,
+    "z": 406.2,
+    "metric": "54 m2 overlap"
+   },
+   {
+    "id": "gdk:1088186606 x osm:way/1097389002",
+    "x": 518.3,
+    "z": 185.2,
+    "metric": "52 m2 overlap"
+   }
+  ]
+ },
+ {
+  "id": "bld-cycletrack",
+  "layer": "buildings",
+  "title": "Building footprint overlaps cycletrack (>= 2 m2)",
+  "count": 52,
+  "total": 2517,
+  "pct": 2.07,
+  "severity": "med",
+  "note": "raised cycle track strip inside a footprint",
+  "examples": [
+   {
+    "id": "gdk:1107312571 x osm:way/752037426:left",
+    "x": 663.9,
+    "z": -173.9,
+    "metric": "85 m2 overlap"
+   },
+   {
+    "id": "gdk:1064716950 x osm:way/1338818818:right",
+    "x": 489.6,
+    "z": 24.7,
+    "metric": "57 m2 overlap"
+   },
+   {
+    "id": "gdk:1064712493 x osm:way/507087438:left",
+    "x": 740.2,
+    "z": 671.8,
+    "metric": "54 m2 overlap"
+   },
+   {
+    "id": "gdk:1064712492 x osm:way/507087438:left",
+    "x": 713.1,
+    "z": 692.4,
+    "metric": "36 m2 overlap"
+   },
+   {
+    "id": "gdk:1210579512 x osm:way/1931864:right",
+    "x": -53.3,
+    "z": -620.2,
+    "metric": "34 m2 overlap"
+   },
+   {
+    "id": "gdk:1064710699 x osm:way/23790349:right",
+    "x": -293.5,
+    "z": -127.3,
+    "metric": "33 m2 overlap"
+   },
+   {
+    "id": "gdk:1064710234 x osm:way/23790349:right",
+    "x": -304.0,
+    "z": -107.8,
+    "metric": "31 m2 overlap"
+   },
+   {
+    "id": "gdk:1064813295 x osm:way/36874118:right",
+    "x": 599.7,
+    "z": -641.8,
+    "metric": "27 m2 overlap"
+   },
+   {
+    "id": "gdk:1200206223 x osm:way/683542716:left",
+    "x": 6.8,
+    "z": 381.2,
+    "metric": "23 m2 overlap"
+   },
+   {
+    "id": "gdk:1064710492 x osm:way/1911236:right",
+    "x": -270.4,
+    "z": -15.7,
+    "metric": "19 m2 overlap"
+   }
+  ]
+ },
+ {
+  "id": "car-orientation",
+  "layer": "cars",
+  "title": "Parked car axis > 25 deg off the kerb for parallel bays, or < 35 deg for perpendicular bays",
+  "count": 48,
+  "total": 2694,
+  "pct": 1.78,
+  "severity": "med",
+  "note": "bay `yaw` is a kerb-line direction; the 90-degree convention of angled/perp bays is derived without the road side",
+  "examples": [
+   {
+    "id": "car[117] par",
+    "x": 729.1,
+    "z": 265.1,
+    "metric": "90 deg to the road (parallel bay)"
+   },
+   {
+    "id": "car[118] par",
+    "x": 734.0,
+    "z": 262.8,
+    "metric": "90 deg to the road (parallel bay)"
+   },
+   {
+    "id": "car[2054] perp",
+    "x": 141.8,
+    "z": 467.4,
+    "metric": "0 deg to the road (perpendicular bay)"
+   },
+   {
+    "id": "car[125] par",
+    "x": 738.8,
+    "z": 277.5,
+    "metric": "90 deg to the road (parallel bay)"
+   },
+   {
+    "id": "car[126] par",
+    "x": 743.3,
+    "z": 275.4,
+    "metric": "90 deg to the road (parallel bay)"
+   },
+   {
+    "id": "car[2050] perp",
+    "x": 168.6,
+    "z": 435.0,
+    "metric": "0 deg to the road (perpendicular bay)"
+   },
+   {
+    "id": "car[124] par",
+    "x": 733.7,
+    "z": 279.9,
+    "metric": "90 deg to the road (parallel bay)"
+   },
+   {
+    "id": "car[2676] par",
+    "x": 390.6,
+    "z": 240.3,
+    "metric": "90 deg to the road (parallel bay)"
+   },
+   {
+    "id": "car[110] par",
+    "x": 663.7,
+    "z": 294.6,
+    "metric": "89 deg to the road (parallel bay)"
+   },
+   {
+    "id": "car[1871] perp",
+    "x": 427.0,
+    "z": 164.3,
+    "metric": "1 deg to the road (perpendicular bay)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:stands+stands",
+  "layer": "furniture",
+  "title": "stands overlaps stands (>= 20% of the smaller footprint)",
+  "count": 12,
+  "total": 740,
+  "pct": 1.62,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "stands[72] x stands[73]",
+    "x": 529.0,
+    "z": 563.0,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "stands[421] x stands[422]",
+    "x": 369.0,
+    "z": -272.0,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "stands[165] x stands[166]",
+    "x": -493.0,
+    "z": -246.0,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "stands[668] x stands[669]",
+    "x": -71.5,
+    "z": 358.4,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "stands[606] x stands[607]",
+    "x": -343.7,
+    "z": -326.9,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "stands[395] x stands[397]",
+    "x": 526.0,
+    "z": -302.0,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "stands[385] x stands[387]",
+    "x": -632.0,
+    "z": -307.0,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "stands[385] x stands[386]",
+    "x": -632.0,
+    "z": -307.0,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "stands[386] x stands[387]",
+    "x": -632.0,
+    "z": -307.0,
+    "metric": "1.37 m2 (100% of smaller)"
+   },
+   {
+    "id": "stands[522] x stands[617]",
+    "x": -192.0,
+    "z": -196.5,
+    "metric": "0.58 m2 (43% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "water-surface",
+  "layer": "water",
+  "title": "Ground-material polygon overlaps open water after surface_cuts (>= 1 m2)",
+  "count": 3,
+  "total": 229,
+  "pct": 1.31,
+  "severity": "med",
+  "note": "register ground drawn at 0.014 above the sunk water",
+  "examples": [
+   {
+    "id": "kk:belaegning:bb45f9b8-c9eb-473c-bb66-19f883b7f00b#0",
+    "x": 264.0,
+    "z": 166.3,
+    "metric": "gravel: 17924 m2 over water (after the engine's surface_cuts)"
+   },
+   {
+    "id": "osm:way/168134399",
+    "x": 384.2,
+    "z": -53.9,
+    "metric": "cobbles: 305 m2 over water (after the engine's surface_cuts)"
+   },
+   {
+    "id": "kk:belaegning:deefb473-73d6-4a1c-9b96-523533f63736#0",
+    "x": 383.5,
+    "z": 16.3,
+    "metric": "gravel: 10 m2 over water (after the engine's surface_cuts)"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:stands",
+  "layer": "stands",
+  "title": "stands on a cycle track (>= 25% of footprint)",
+  "count": 6,
+  "total": 740,
+  "pct": 0.81,
+  "severity": "med",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "stands[523]",
+    "x": 356.9,
+    "z": 245.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[514]",
+    "x": 74.5,
+    "z": 85.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[641]",
+    "x": 73.4,
+    "z": 494.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[298]",
+    "x": 137.6,
+    "z": -258.8,
+    "metric": "87% of footprint"
+   },
+   {
+    "id": "stands[45]",
+    "x": 472.6,
+    "z": -225.8,
+    "metric": "54% of footprint"
+   },
+   {
+    "id": "stands[47]",
+    "x": -11.2,
+    "z": 417.0,
+    "metric": "46% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "in-water:lamp-poles",
+  "layer": "lamp-poles",
+  "title": "lamp-poles in open water (>= 25% of footprint)",
+  "count": 3,
+  "total": 467,
+  "pct": 0.64,
+  "severity": "med",
+  "note": "0 are more than 1 m from the shore; the rest sit on the quay edge. Items stand at y = ground field (0) while the water plane is 0.8 m lower",
+  "examples": [
+   {
+    "id": "lamp-poles[258]",
+    "x": 110.5,
+    "z": -452.9,
+    "metric": "0.1 m from shore"
+   },
+   {
+    "id": "lamp-poles[281]",
+    "x": 103.1,
+    "z": -457.4,
+    "metric": "0.1 m from shore"
+   },
+   {
+    "id": "lamp-poles[171]",
+    "x": 95.8,
+    "z": -462.0,
+    "metric": "0.0 m from shore"
+   }
+  ]
+ },
+ {
+  "id": "overlap:benches+lamp-poles",
+  "layer": "furniture",
+  "title": "benches overlaps lamp-poles (>= 20% of the smaller footprint)",
+  "count": 8,
+  "total": 1405,
+  "pct": 0.57,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "lamp-poles[404] x benches[864]",
+    "x": 547.5,
+    "z": 679.0,
+    "metric": "0.10 m2 (100% of smaller)"
+   },
+   {
+    "id": "lamp-poles[2] x benches[379]",
+    "x": 354.6,
+    "z": 20.2,
+    "metric": "0.08 m2 (83% of smaller)"
+   },
+   {
+    "id": "lamp-poles[434] x benches[863]",
+    "x": 554.8,
+    "z": 690.1,
+    "metric": "0.07 m2 (72% of smaller)"
+   },
+   {
+    "id": "lamp-poles[389] x benches[86]",
+    "x": 457.7,
+    "z": 715.6,
+    "metric": "0.06 m2 (58% of smaller)"
+   },
+   {
+    "id": "lamp-poles[413] x benches[862]",
+    "x": 560.4,
+    "z": 694.6,
+    "metric": "0.06 m2 (55% of smaller)"
+   },
+   {
+    "id": "lamp-poles[420] x benches[863]",
+    "x": 552.8,
+    "z": 688.6,
+    "metric": "0.05 m2 (51% of smaller)"
+   },
+   {
+    "id": "lamp-poles[400] x benches[783]",
+    "x": 599.0,
+    "z": 703.6,
+    "metric": "0.05 m2 (50% of smaller)"
+   },
+   {
+    "id": "lamp-poles[251] x benches[729]",
+    "x": -261.7,
+    "z": -398.6,
+    "metric": "0.05 m2 (48% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "tree-giant",
+  "layer": "trees",
+  "title": "Tree height > 28 m or crown radius > 9 m",
+  "count": 25,
+  "total": 4905,
+  "pct": 0.51,
+  "severity": "med",
+  "note": "height p50 8 p95 20 max 31; crown p50 3.5 p95 7.5 max 10.2",
+  "examples": [
+   {
+    "id": "tree[2581] generic",
+    "x": -597.5,
+    "z": 3.5,
+    "metric": "h 31 m, crown r 1.5 m"
+   },
+   {
+    "id": "tree[1005] chestnut",
+    "x": 336.7,
+    "z": 116.1,
+    "metric": "h 24 m, crown r 9.8 m"
+   },
+   {
+    "id": "tree[4413] generic",
+    "x": 359.5,
+    "z": -622.5,
+    "metric": "h 23 m, crown r 9.3 m"
+   },
+   {
+    "id": "tree[1524] maple",
+    "x": 359.0,
+    "z": 130.1,
+    "metric": "h 23 m, crown r 9.4 m"
+   },
+   {
+    "id": "tree[4525] generic",
+    "x": 599.5,
+    "z": -496.5,
+    "metric": "h 23 m, crown r 9.5 m"
+   },
+   {
+    "id": "tree[4691] generic",
+    "x": 527.5,
+    "z": -358.5,
+    "metric": "h 22 m, crown r 9.8 m"
+   },
+   {
+    "id": "tree[1036] generic",
+    "x": 449.0,
+    "z": 85.7,
+    "metric": "h 21 m, crown r 9.2 m"
+   },
+   {
+    "id": "tree[4433] generic",
+    "x": 574.5,
+    "z": -588.5,
+    "metric": "h 20 m, crown r 10.2 m"
+   },
+   {
+    "id": "tree[140] generic",
+    "x": 358.0,
+    "z": -4.2,
+    "metric": "h 20 m, crown r 9.2 m"
+   },
+   {
+    "id": "tree[1023] generic",
+    "x": 266.6,
+    "z": 344.0,
+    "metric": "h 20 m, crown r 9.1 m"
+   }
+  ]
+ },
+ {
+  "id": "overlap:benches+bins",
+  "layer": "furniture",
+  "title": "benches overlaps bins (>= 20% of the smaller footprint)",
+  "count": 7,
+  "total": 1477,
+  "pct": 0.47,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "benches[288] x bins[359]",
+    "x": 679.1,
+    "z": 280.9,
+    "metric": "0.25 m2 (92% of smaller)"
+   },
+   {
+    "id": "benches[68] x bins[292]",
+    "x": 703.9,
+    "z": 451.5,
+    "metric": "0.24 m2 (87% of smaller)"
+   },
+   {
+    "id": "benches[173] x bins[97]",
+    "x": 542.3,
+    "z": -85.5,
+    "metric": "0.13 m2 (47% of smaller)"
+   },
+   {
+    "id": "benches[602] x bins[369]",
+    "x": 219.1,
+    "z": 720.3,
+    "metric": "0.11 m2 (39% of smaller)"
+   },
+   {
+    "id": "benches[181] x bins[88]",
+    "x": 351.8,
+    "z": 165.4,
+    "metric": "0.10 m2 (35% of smaller)"
+   },
+   {
+    "id": "benches[799] x bins[84]",
+    "x": 551.6,
+    "z": 677.9,
+    "metric": "0.09 m2 (34% of smaller)"
+   },
+   {
+    "id": "benches[392] x bins[59]",
+    "x": 367.4,
+    "z": 109.6,
+    "metric": "0.08 m2 (31% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:benches+bikes",
+  "layer": "furniture",
+  "title": "benches overlaps bikes (>= 20% of the smaller footprint)",
+  "count": 31,
+  "total": 8040,
+  "pct": 0.39,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "benches[829] x bikes[5766]",
+    "x": -439.6,
+    "z": -550.3,
+    "metric": "0.29 m2 (33% of smaller)"
+   },
+   {
+    "id": "benches[872] x bikes[5761]",
+    "x": -506.3,
+    "z": -550.1,
+    "metric": "0.28 m2 (32% of smaller)"
+   },
+   {
+    "id": "benches[745] x bikes[1379]",
+    "x": -534.6,
+    "z": -442.0,
+    "metric": "0.28 m2 (32% of smaller)"
+   },
+   {
+    "id": "benches[745] x bikes[1380]",
+    "x": -534.6,
+    "z": -442.0,
+    "metric": "0.28 m2 (32% of smaller)"
+   },
+   {
+    "id": "benches[728] x bikes[5222]",
+    "x": -279.5,
+    "z": -369.8,
+    "metric": "0.28 m2 (32% of smaller)"
+   },
+   {
+    "id": "benches[728] x bikes[5221]",
+    "x": -279.5,
+    "z": -369.8,
+    "metric": "0.28 m2 (32% of smaller)"
+   },
+   {
+    "id": "benches[728] x bikes[403]",
+    "x": -279.5,
+    "z": -369.8,
+    "metric": "0.28 m2 (31% of smaller)"
+   },
+   {
+    "id": "benches[842] x bikes[5419]",
+    "x": -571.2,
+    "z": -569.5,
+    "metric": "0.28 m2 (31% of smaller)"
+   },
+   {
+    "id": "benches[841] x bikes[5416]",
+    "x": -592.7,
+    "z": -569.5,
+    "metric": "0.28 m2 (31% of smaller)"
+   },
+   {
+    "id": "benches[847] x bikes[5422]",
+    "x": -544.6,
+    "z": -563.1,
+    "metric": "0.28 m2 (31% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "in-building-hidden:cars",
+  "layer": "cars",
+  "title": "cars entirely inside a building footprint (>= 90%)",
+  "count": 10,
+  "total": 2694,
+  "pct": 0.37,
+  "severity": "med",
+  "note": "hidden inside the wall volume (invisible, but a data/placement error and wasted instances)",
+  "examples": [
+   {
+    "id": "cars[1073]",
+    "x": -359.2,
+    "z": -160.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[1074]",
+    "x": -366.0,
+    "z": -153.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[1075]",
+    "x": -369.5,
+    "z": -149.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[1076]",
+    "x": -376.6,
+    "z": -142.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[2093]",
+    "x": -743.5,
+    "z": -472.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[2094]",
+    "x": -741.3,
+    "z": -470.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[58]",
+    "x": -376.9,
+    "z": -168.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[59]",
+    "x": -366.2,
+    "z": -178.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[65]",
+    "x": -371.8,
+    "z": -173.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[2092]",
+    "x": -747.9,
+    "z": -474.6,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "overlap:benches+trees",
+  "layer": "furniture",
+  "title": "benches overlaps trees (>= 20% of the smaller footprint)",
+  "count": 18,
+  "total": 5843,
+  "pct": 0.31,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "trees[1788] x benches[726]",
+    "x": 395.0,
+    "z": -59.0,
+    "metric": "0.27 m2 (96% of smaller)"
+   },
+   {
+    "id": "trees[300] x benches[12]",
+    "x": 431.5,
+    "z": 627.0,
+    "metric": "0.27 m2 (95% of smaller)"
+   },
+   {
+    "id": "trees[528] x benches[785]",
+    "x": 578.3,
+    "z": 694.0,
+    "metric": "0.26 m2 (93% of smaller)"
+   },
+   {
+    "id": "trees[347] x benches[10]",
+    "x": 444.9,
+    "z": 643.9,
+    "metric": "0.25 m2 (89% of smaller)"
+   },
+   {
+    "id": "trees[837] x benches[723]",
+    "x": 415.9,
+    "z": -28.3,
+    "metric": "0.25 m2 (87% of smaller)"
+   },
+   {
+    "id": "trees[1149] x benches[712]",
+    "x": 410.1,
+    "z": -101.3,
+    "metric": "0.21 m2 (74% of smaller)"
+   },
+   {
+    "id": "trees[1584] x benches[14]",
+    "x": 411.1,
+    "z": 636.0,
+    "metric": "0.19 m2 (68% of smaller)"
+   },
+   {
+    "id": "trees[1658] x benches[681]",
+    "x": 407.3,
+    "z": -87.1,
+    "metric": "0.18 m2 (65% of smaller)"
+   },
+   {
+    "id": "trees[668] x benches[11]",
+    "x": 440.9,
+    "z": 632.1,
+    "metric": "0.14 m2 (48% of smaller)"
+   },
+   {
+    "id": "trees[1413] x benches[786]",
+    "x": 582.5,
+    "z": 696.1,
+    "metric": "0.12 m2 (44% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "in-building-partial:hoops",
+  "layer": "hoops",
+  "title": "hoops straddles a facade (25-90% of footprint inside a building)",
+  "count": 17,
+  "total": 6128,
+  "pct": 0.28,
+  "severity": "med",
+  "note": "half inside the wall: visible poking through the facade",
+  "examples": [
+   {
+    "id": "hoops[492]",
+    "x": 717.7,
+    "z": 180.4,
+    "metric": "89% of footprint"
+   },
+   {
+    "id": "hoops[329]",
+    "x": -314.6,
+    "z": -372.1,
+    "metric": "85% of footprint"
+   },
+   {
+    "id": "hoops[4956]",
+    "x": -496.8,
+    "z": -509.1,
+    "metric": "84% of footprint"
+   },
+   {
+    "id": "hoops[2710]",
+    "x": 720.5,
+    "z": -200.7,
+    "metric": "74% of footprint"
+   },
+   {
+    "id": "hoops[2672]",
+    "x": 715.8,
+    "z": -215.7,
+    "metric": "68% of footprint"
+   },
+   {
+    "id": "hoops[92]",
+    "x": 159.4,
+    "z": 642.4,
+    "metric": "68% of footprint"
+   },
+   {
+    "id": "hoops[916]",
+    "x": 531.4,
+    "z": -188.2,
+    "metric": "67% of footprint"
+   },
+   {
+    "id": "hoops[1959]",
+    "x": 171.5,
+    "z": -245.8,
+    "metric": "63% of footprint"
+   },
+   {
+    "id": "hoops[2757]",
+    "x": 545.9,
+    "z": -14.8,
+    "metric": "62% of footprint"
+   },
+   {
+    "id": "hoops[656]",
+    "x": 539.0,
+    "z": -695.0,
+    "metric": "48% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bikes+lamp-poles",
+  "layer": "furniture",
+  "title": "bikes overlaps lamp-poles (>= 20% of the smaller footprint)",
+  "count": 15,
+  "total": 7569,
+  "pct": 0.2,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "lamp-poles[72] x bikes[413]",
+    "x": -344.3,
+    "z": -433.0,
+    "metric": "0.10 m2 (100% of smaller)"
+   },
+   {
+    "id": "lamp-poles[52] x bikes[68]",
+    "x": 210.7,
+    "z": 705.5,
+    "metric": "0.10 m2 (98% of smaller)"
+   },
+   {
+    "id": "lamp-poles[142] x bikes[5219]",
+    "x": -275.4,
+    "z": -376.0,
+    "metric": "0.10 m2 (94% of smaller)"
+   },
+   {
+    "id": "lamp-poles[121] x bikes[148]",
+    "x": 160.2,
+    "z": 718.4,
+    "metric": "0.09 m2 (93% of smaller)"
+   },
+   {
+    "id": "lamp-poles[21] x bikes[473]",
+    "x": 714.0,
+    "z": 338.2,
+    "metric": "0.08 m2 (81% of smaller)"
+   },
+   {
+    "id": "lamp-poles[425] x bikes[2957]",
+    "x": 604.9,
+    "z": -27.4,
+    "metric": "0.08 m2 (81% of smaller)"
+   },
+   {
+    "id": "lamp-poles[453] x bikes[6691]",
+    "x": 588.7,
+    "z": -44.5,
+    "metric": "0.08 m2 (74% of smaller)"
+   },
+   {
+    "id": "lamp-poles[251] x bikes[5202]",
+    "x": -261.7,
+    "z": -398.6,
+    "metric": "0.07 m2 (70% of smaller)"
+   },
+   {
+    "id": "lamp-poles[251] x bikes[366]",
+    "x": -261.7,
+    "z": -398.6,
+    "metric": "0.07 m2 (66% of smaller)"
+   },
+   {
+    "id": "lamp-poles[451] x bikes[2594]",
+    "x": 600.5,
+    "z": -59.2,
+    "metric": "0.06 m2 (61% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:benches+hoops",
+  "layer": "furniture",
+  "title": "benches overlaps hoops (>= 20% of the smaller footprint)",
+  "count": 11,
+  "total": 7066,
+  "pct": 0.16,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "benches[841] x hoops[4598]",
+    "x": -592.7,
+    "z": -569.5,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[829] x hoops[4927]",
+    "x": -439.6,
+    "z": -550.3,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[826] x hoops[4924]",
+    "x": -483.2,
+    "z": -575.8,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[826] x hoops[4923]",
+    "x": -483.2,
+    "z": -575.8,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[845] x hoops[4600]",
+    "x": -558.8,
+    "z": -561.3,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[847] x hoops[4601]",
+    "x": -544.6,
+    "z": -563.1,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[842] x hoops[4599]",
+    "x": -571.2,
+    "z": -569.5,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[728] x hoops[348]",
+    "x": -279.5,
+    "z": -369.8,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[678] x hoops[170]",
+    "x": 658.0,
+    "z": 350.4,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "benches[142] x hoops[3046]",
+    "x": -661.7,
+    "z": -340.1,
+    "metric": "0.03 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bikes+trees",
+  "layer": "furniture",
+  "title": "bikes overlaps trees (>= 20% of the smaller footprint)",
+  "count": 14,
+  "total": 12007,
+  "pct": 0.12,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "trees[362] x bikes[149]",
+    "x": 159.5,
+    "z": 718.0,
+    "metric": "0.26 m2 (92% of smaller)"
+   },
+   {
+    "id": "trees[1126] x bikes[352]",
+    "x": -270.6,
+    "z": -385.1,
+    "metric": "0.26 m2 (91% of smaller)"
+   },
+   {
+    "id": "trees[206] x bikes[402]",
+    "x": -281.2,
+    "z": -368.0,
+    "metric": "0.24 m2 (86% of smaller)"
+   },
+   {
+    "id": "trees[197] x bikes[419]",
+    "x": -343.5,
+    "z": -436.1,
+    "metric": "0.19 m2 (67% of smaller)"
+   },
+   {
+    "id": "trees[444] x bikes[206]",
+    "x": 650.1,
+    "z": 353.6,
+    "metric": "0.19 m2 (66% of smaller)"
+   },
+   {
+    "id": "trees[314] x bikes[4673]",
+    "x": 69.5,
+    "z": 742.6,
+    "metric": "0.16 m2 (56% of smaller)"
+   },
+   {
+    "id": "trees[1506] x bikes[1208]",
+    "x": -448.6,
+    "z": 25.9,
+    "metric": "0.15 m2 (54% of smaller)"
+   },
+   {
+    "id": "trees[1283] x bikes[4700]",
+    "x": 68.5,
+    "z": 717.5,
+    "metric": "0.13 m2 (46% of smaller)"
+   },
+   {
+    "id": "trees[314] x bikes[4672]",
+    "x": 69.5,
+    "z": 742.6,
+    "metric": "0.13 m2 (46% of smaller)"
+   },
+   {
+    "id": "trees[1385] x bikes[4550]",
+    "x": 84.6,
+    "z": 600.5,
+    "metric": "0.11 m2 (39% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bikes+bollards",
+  "layer": "furniture",
+  "title": "bikes overlaps bollards (>= 20% of the smaller footprint)",
+  "count": 6,
+  "total": 7498,
+  "pct": 0.08,
+  "severity": "med",
+  "note": "",
+  "examples": [
+   {
+    "id": "bollards[22] x bikes[670]",
+    "x": 722.0,
+    "z": 269.4,
+    "metric": "0.04 m2 (47% of smaller)"
+   },
+   {
+    "id": "bollards[117] x bikes[220]",
+    "x": -219.8,
+    "z": -461.7,
+    "metric": "0.02 m2 (100% of smaller)"
+   },
+   {
+    "id": "bollards[297] x bikes[273]",
+    "x": -146.1,
+    "z": -585.6,
+    "metric": "0.02 m2 (100% of smaller)"
+   },
+   {
+    "id": "bollards[273] x bikes[5514]",
+    "x": 380.9,
+    "z": 259.5,
+    "metric": "0.02 m2 (100% of smaller)"
+   },
+   {
+    "id": "bollards[52] x bikes[5409]",
+    "x": -728.6,
+    "z": -527.7,
+    "metric": "0.02 m2 (100% of smaller)"
+   },
+   {
+    "id": "bollards[53] x bikes[5406]",
+    "x": -727.9,
+    "z": -528.9,
+    "metric": "0.02 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "lakelights-water",
+  "layer": "furniture",
+  "title": "Lake-path lights inside the lake or > 6 m from its edge",
+  "count": 0,
+  "total": 143,
+  "pct": 0.0,
+  "severity": "med",
+  "note": "0 are inside open water",
+  "examples": []
+ },
+ {
+  "id": "ground-jump-gt25cm",
+  "layer": "ground height",
+  "title": "Walking-height field steps by > 0.25 m over 1 m (carriageway edge/centre probes)",
+  "count": 0,
+  "total": 4655,
+  "pct": 0.0,
+  "severity": "med",
+  "note": "1063 steps > 0.15 m total, 183 on carriageway centrelines (should be 0: asphalt is flat at 0.02). Kerb steps are 0.10-0.18 m by design",
+  "examples": []
+ },
+ {
+  "id": "wire-too-low",
+  "layer": "lamps",
+  "title": "Wire or lantern lower than 5 m above ground (KK clearance 8.5 m published; modelled 8 m)",
+  "count": 0,
+  "total": 1239,
+  "pct": 0.0,
+  "severity": "med",
+  "note": "",
+  "examples": []
+ },
+ {
+  "id": "signal-in-building",
+  "layer": "signals",
+  "title": "Signal point inside a building",
+  "count": 0,
+  "total": 164,
+  "pct": 0.0,
+  "severity": "med",
+  "note": "",
+  "examples": []
+ },
+ {
+  "id": "busstop-in-building",
+  "layer": "bus stops",
+  "title": "Stop flag inside a building",
+  "count": 0,
+  "total": 47,
+  "pct": 0.0,
+  "severity": "med",
+  "note": "",
+  "examples": []
+ },
+ {
+  "id": "tree-generic-genus",
+  "layer": "trees",
+  "title": "Tree genus not resolved ('generic' look)",
+  "count": 3709,
+  "total": 4905,
+  "pct": 75.62,
+  "severity": "low",
+  "note": "genus mix {'maple': 60, 'generic': 3709, 'poplar': 48, 'chestnut': 171, 'robinia': 68, 'hawthorn': 180, 'conifer': 19, 'lime': 271, 'cherry': 148, 'elm': 74, 'birch': 6, 'oak': 40, 'ash': 19, 'plane': 49, 'willow': 43}",
+  "examples": []
+ },
+ {
+  "id": "on-carriageway:cars",
+  "layer": "cars",
+  "title": "cars on the capped carriageway (>= 25% of footprint)",
+  "count": 1752,
+  "total": 2694,
+  "pct": 65.03,
+  "severity": "low",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "cars[151]",
+    "x": -482.7,
+    "z": -620.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[18]",
+    "x": -154.3,
+    "z": -487.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[142]",
+    "x": 279.4,
+    "z": -450.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[160]",
+    "x": -466.0,
+    "z": -641.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[169]",
+    "x": 117.6,
+    "z": 685.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[177]",
+    "x": 122.2,
+    "z": 641.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[185]",
+    "x": 127.4,
+    "z": 687.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[191]",
+    "x": 130.3,
+    "z": 653.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[329]",
+    "x": -253.5,
+    "z": -277.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "cars[333]",
+    "x": -284.4,
+    "z": -296.4,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "in-building-hidden:stands",
+  "layer": "stands",
+  "title": "stands entirely inside a building footprint (>= 90%)",
+  "count": 317,
+  "total": 740,
+  "pct": 42.84,
+  "severity": "low",
+  "note": "hidden inside the wall volume (invisible, but a data/placement error and wasted instances)",
+  "examples": [
+   {
+    "id": "stands[69]",
+    "x": 626.2,
+    "z": -726.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[70]",
+    "x": 635.4,
+    "z": -736.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[74]",
+    "x": 583.6,
+    "z": 609.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[80]",
+    "x": 490.4,
+    "z": 511.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[112]",
+    "x": 148.8,
+    "z": 38.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[164]",
+    "x": -503.0,
+    "z": -252.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[165]",
+    "x": -493.0,
+    "z": -246.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[166]",
+    "x": -493.0,
+    "z": -246.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[170]",
+    "x": -353.2,
+    "z": -129.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "stands[172]",
+    "x": -354.6,
+    "z": -131.2,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "pavement-cycletrack",
+  "layer": "pavement",
+  "title": "Pavement polygon overlaps a cycle track (>= 2 m2; the engine cuts pavement where cycle tracks pass, so this is the area it removes)",
+  "count": 372,
+  "total": 983,
+  "pct": 37.84,
+  "severity": "low",
+  "note": "handled by `skip` in buildGroundBuckets; reported to show how much pavement the cycle layer deletes",
+  "examples": [
+   {
+    "id": "f-abfe4697815a x kk:cykelsti:590",
+    "x": 469.8,
+    "z": -133.0,
+    "metric": "325 m2"
+   },
+   {
+    "id": "d-2a825f761c76 x osm:way/1911242:right",
+    "x": 512.6,
+    "z": -120.4,
+    "metric": "228 m2"
+   },
+   {
+    "id": "6-e944d6392af8 x osm:way/1906290:right",
+    "x": -332.6,
+    "z": 56.1,
+    "metric": "216 m2"
+   },
+   {
+    "id": "9-b2cf0ff2a6d0 x osm:way/45394567:right",
+    "x": 69.1,
+    "z": -613.5,
+    "metric": "168 m2"
+   },
+   {
+    "id": "f-27c7a635820c x osm:way/1700503:left",
+    "x": 492.7,
+    "z": 588.7,
+    "metric": "161 m2"
+   },
+   {
+    "id": "8-c02a566e950c x osm:way/114787653:left",
+    "x": -576.1,
+    "z": -409.0,
+    "metric": "151 m2"
+   },
+   {
+    "id": "1-93c73bc7b6ce x osm:way/27206697:right",
+    "x": 131.7,
+    "z": 674.4,
+    "metric": "150 m2"
+   },
+   {
+    "id": "8-ff26f867b3bc x kk:cykelsti:624",
+    "x": 325.5,
+    "z": -226.4,
+    "metric": "149 m2"
+   },
+   {
+    "id": "7-46d21d57696c x osm:way/1166125402:left",
+    "x": -382.9,
+    "z": -589.5,
+    "metric": "147 m2"
+   },
+   {
+    "id": "3-6638196719a6 x osm:way/56328651:right",
+    "x": -575.4,
+    "z": -674.2,
+    "metric": "142 m2"
+   }
+  ]
+ },
+ {
+  "id": "on-carriageway:bollards",
+  "layer": "bollards",
+  "title": "bollards on the capped carriageway (>= 25% of footprint)",
+  "count": 141,
+  "total": 396,
+  "pct": 35.61,
+  "severity": "low",
+  "note": "standing in the roadway (cars/bollards/flags at the kerb are partly expected)",
+  "examples": [
+   {
+    "id": "bollards[102]",
+    "x": -200.4,
+    "z": -485.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[104]",
+    "x": -230.5,
+    "z": -436.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[114]",
+    "x": -224.8,
+    "z": -443.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[115]",
+    "x": -212.1,
+    "z": -474.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[116]",
+    "x": -209.4,
+    "z": -478.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[117]",
+    "x": -219.8,
+    "z": -461.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[118]",
+    "x": -194.8,
+    "z": -494.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[119]",
+    "x": -224.5,
+    "z": -452.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[241]",
+    "x": 130.1,
+    "z": 18.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[242]",
+    "x": 132.9,
+    "z": 16.4,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "road-width-cap",
+  "layer": "roads",
+  "title": "Engine carriageway is > 10 m narrower than the data width",
+  "count": 235,
+  "total": 931,
+  "pct": 25.24,
+  "severity": "low",
+  "note": "expected by design (width includes parking/cycle/pavement); the strip between the capped kerb and the facades is filled by pavement polygons or stays bare ground",
+  "examples": [
+   {
+    "id": "osm:way/44044768",
+    "x": 300.0,
+    "z": 513.9,
+    "metric": "- service: data width 30 m -> engine 3.6 m (1+0 lanes)"
+   },
+   {
+    "id": "osm:way/131449115",
+    "x": 366.8,
+    "z": 624.2,
+    "metric": "- service: data width 30 m -> engine 3.6 m (1+0 lanes)"
+   },
+   {
+    "id": "osm:way/131483869",
+    "x": 49.5,
+    "z": 207.9,
+    "metric": "- service: data width 30 m -> engine 3.6 m (1+0 lanes)"
+   },
+   {
+    "id": "osm:way/143856048",
+    "x": 565.9,
+    "z": 682.9,
+    "metric": "Rådhuspladsen service: data width 30 m -> engine 3.6 m (1+0 lanes)"
+   },
+   {
+    "id": "osm:way/304584578",
+    "x": -18.9,
+    "z": 627.7,
+    "metric": "- service: data width 30 m -> engine 3.6 m (1+0 lanes)"
+   },
+   {
+    "id": "osm:way/305430252",
+    "x": 542.7,
+    "z": -8.5,
+    "metric": "- service: data width 30 m -> engine 3.6 m (1+0 lanes)"
+   },
+   {
+    "id": "osm:way/305430253",
+    "x": 521.2,
+    "z": 25.0,
+    "metric": "- service: data width 30 m -> engine 3.6 m (1+0 lanes)"
+   },
+   {
+    "id": "osm:way/305430254",
+    "x": 525.3,
+    "z": 17.9,
+    "metric": "- service: data width 30 m -> engine 3.6 m (1+0 lanes)"
+   },
+   {
+    "id": "osm:way/305430255",
+    "x": 528.3,
+    "z": 12.4,
+    "metric": "- service: data width 30 m -> engine 3.6 m (1+0 lanes)"
+   },
+   {
+    "id": "osm:way/305430256",
+    "x": 531.6,
+    "z": 7.6,
+    "metric": "- service: data width 30 m -> engine 3.6 m (1+0 lanes)"
+   }
+  ]
+ },
+ {
+  "id": "busstop-in-carriageway",
+  "layer": "bus stops",
+  "title": "Stop flag inside the capped carriageway",
+  "count": 11,
+  "total": 47,
+  "pct": 23.4,
+  "severity": "low",
+  "note": "expected for kerbside poles on narrow caps",
+  "examples": [
+   {
+    "id": "stop[1] Vester Farimagsgade",
+    "x": 113.4,
+    "z": 313.5,
+    "metric": "flag inside the carriageway"
+   },
+   {
+    "id": "stop[4] Vester Farimagsgade",
+    "x": 60.0,
+    "z": 270.6,
+    "metric": "flag inside the carriageway"
+   },
+   {
+    "id": "stop[8] Nørreport St.",
+    "x": 604.1,
+    "z": -155.6,
+    "metric": "flag inside the carriageway"
+   },
+   {
+    "id": "stop[10] Nørre Farimagsgade",
+    "x": 463.9,
+    "z": -247.4,
+    "metric": "flag inside the carriageway"
+   },
+   {
+    "id": "stop[13] H. C. Ørsteds Vej",
+    "x": -691.8,
+    "z": -251.4,
+    "metric": "flag inside the carriageway"
+   },
+   {
+    "id": "stop[17] Danas Plads",
+    "x": -514.1,
+    "z": 467.0,
+    "metric": "flag inside the carriageway"
+   },
+   {
+    "id": "stop[20] Nørreport St.",
+    "x": 724.4,
+    "z": -251.7,
+    "metric": "flag inside the carriageway"
+   },
+   {
+    "id": "stop[27] Åboulevard",
+    "x": -646.7,
+    "z": -191.7,
+    "metric": "flag inside the carriageway"
+   },
+   {
+    "id": "stop[30] Vesterport St.",
+    "x": 71.3,
+    "z": 528.9,
+    "metric": "flag inside the carriageway"
+   },
+   {
+    "id": "stop[35] Rantzausgade",
+    "x": -590.9,
+    "z": -369.3,
+    "metric": "flag inside the carriageway"
+   }
+  ]
+ },
+ {
+  "id": "tree-crown-clamped",
+  "layer": "trees",
+  "title": "Crown radius > 0.75 x height (engine clamps to 0.75 h)",
+  "count": 741,
+  "total": 4905,
+  "pct": 15.11,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "tree[2484]",
+    "x": -525.5,
+    "z": -110.5,
+    "metric": "crown r 8.0 / h 2.0 = 4.00"
+   },
+   {
+    "id": "tree[3274]",
+    "x": -540.5,
+    "z": 620.5,
+    "metric": "crown r 7.5 / h 2.1 = 3.57"
+   },
+   {
+    "id": "tree[4377]",
+    "x": 651.5,
+    "z": -674.5,
+    "metric": "crown r 8.7 / h 2.6 = 3.35"
+   },
+   {
+    "id": "tree[4242]",
+    "x": -291.5,
+    "z": 451.5,
+    "metric": "crown r 8.2 / h 2.7 = 3.04"
+   },
+   {
+    "id": "tree[4328]",
+    "x": -137.5,
+    "z": 666.5,
+    "metric": "crown r 6.3 / h 2.2 = 2.86"
+   },
+   {
+    "id": "tree[3187]",
+    "x": -347.5,
+    "z": 539.5,
+    "metric": "crown r 8.3 / h 2.9 = 2.86"
+   },
+   {
+    "id": "tree[4387]",
+    "x": 597.5,
+    "z": -664.5,
+    "metric": "crown r 5.7 / h 2.0 = 2.85"
+   },
+   {
+    "id": "tree[3223]",
+    "x": -493.5,
+    "z": 585.5,
+    "metric": "crown r 7.1 / h 2.5 = 2.84"
+   },
+   {
+    "id": "tree[2330]",
+    "x": -487.5,
+    "z": -292.5,
+    "metric": "crown r 8.1 / h 2.9 = 2.79"
+   },
+   {
+    "id": "tree[3280]",
+    "x": -307.5,
+    "z": 623.5,
+    "metric": "crown r 6.9 / h 2.5 = 2.76"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:bikes",
+  "layer": "bikes",
+  "title": "bikes on a cycle track (>= 25% of footprint)",
+  "count": 1012,
+  "total": 7102,
+  "pct": 14.25,
+  "severity": "low",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "bikes[6646]",
+    "x": 594.0,
+    "z": -32.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[1585]",
+    "x": 495.6,
+    "z": -89.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[1587]",
+    "x": 496.1,
+    "z": -90.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[1588]",
+    "x": 496.4,
+    "z": -91.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[1590]",
+    "x": 496.9,
+    "z": -92.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[1592]",
+    "x": 497.4,
+    "z": -92.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[1594]",
+    "x": 498.2,
+    "z": -94.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[1596]",
+    "x": 499.0,
+    "z": -95.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[1695]",
+    "x": 473.1,
+    "z": -53.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[1696]",
+    "x": 473.4,
+    "z": -53.9,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:lamp-poles",
+  "layer": "lamp-poles",
+  "title": "lamp-poles on a cycle track (>= 25% of footprint)",
+  "count": 56,
+  "total": 467,
+  "pct": 11.99,
+  "severity": "low",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "lamp-poles[44]",
+    "x": 114.5,
+    "z": 718.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[49]",
+    "x": 118.3,
+    "z": 641.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[110]",
+    "x": 123.3,
+    "z": 616.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[126]",
+    "x": 115.0,
+    "z": 666.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[152]",
+    "x": 130.2,
+    "z": 591.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[236]",
+    "x": -117.8,
+    "z": 522.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[283]",
+    "x": 118.2,
+    "z": 740.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[287]",
+    "x": 113.7,
+    "z": 691.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[301]",
+    "x": -144.7,
+    "z": 540.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "lamp-poles[349]",
+    "x": 391.9,
+    "z": 740.2,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "on-cycletrack:hoops",
+  "layer": "hoops",
+  "title": "hoops on a cycle track (>= 25% of footprint)",
+  "count": 647,
+  "total": 6128,
+  "pct": 10.56,
+  "severity": "low",
+  "note": "blocks the track (bikes/hoops: racks laid over the track)",
+  "examples": [
+   {
+    "id": "hoops[5612]",
+    "x": 511.4,
+    "z": -120.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[5613]",
+    "x": 511.9,
+    "z": -121.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[5614]",
+    "x": 512.4,
+    "z": -121.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[5615]",
+    "x": 512.9,
+    "z": -122.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[5616]",
+    "x": 513.5,
+    "z": -123.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[5617]",
+    "x": 514.0,
+    "z": -124.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[5618]",
+    "x": 514.5,
+    "z": -125.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[5619]",
+    "x": 515.0,
+    "z": -126.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[5620]",
+    "x": 515.6,
+    "z": -127.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[5621]",
+    "x": 516.1,
+    "z": -127.8,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "in-building-hidden:monuments",
+  "layer": "monuments",
+  "title": "monuments entirely inside a building footprint (>= 90%)",
+  "count": 8,
+  "total": 76,
+  "pct": 10.53,
+  "severity": "low",
+  "note": "hidden inside the wall volume (invisible, but a data/placement error and wasted instances)",
+  "examples": [
+   {
+    "id": "monuments[2]",
+    "x": 547.3,
+    "z": 737.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "monuments[18]",
+    "x": 726.0,
+    "z": 106.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "monuments[54]",
+    "x": 563.0,
+    "z": 723.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "monuments[58]",
+    "x": 391.3,
+    "z": -570.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "monuments[68]",
+    "x": 541.8,
+    "z": 745.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "monuments[69]",
+    "x": 552.8,
+    "z": 730.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "monuments[70]",
+    "x": 559.0,
+    "z": 723.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "monuments[1]",
+    "x": 533.5,
+    "z": 743.2,
+    "metric": "99% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "in-building-hidden:hoops",
+  "layer": "hoops",
+  "title": "hoops entirely inside a building footprint (>= 90%)",
+  "count": 353,
+  "total": 6128,
+  "pct": 5.76,
+  "severity": "low",
+  "note": "hidden inside the wall volume (invisible, but a data/placement error and wasted instances)",
+  "examples": [
+   {
+    "id": "hoops[1373]",
+    "x": 461.5,
+    "z": 26.3,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[1374]",
+    "x": 460.7,
+    "z": 25.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[1375]",
+    "x": 459.8,
+    "z": 25.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[1376]",
+    "x": 459.0,
+    "z": 24.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[1377]",
+    "x": 458.2,
+    "z": 24.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[1378]",
+    "x": 457.3,
+    "z": 23.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[1379]",
+    "x": 456.5,
+    "z": 23.1,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[1380]",
+    "x": 455.6,
+    "z": 22.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[1381]",
+    "x": 454.8,
+    "z": 22.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "hoops[2758]",
+    "x": 546.5,
+    "z": -15.7,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "wire-no-span",
+  "layer": "lamps",
+  "title": "Wire-mounted lamp without span geometry (engine stands it on a 6.2 m tube pole)",
+  "count": 67,
+  "total": 1306,
+  "pct": 5.13,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "lamp",
+    "x": 599.0,
+    "z": 703.6,
+    "metric": "bracket on a tube pole"
+   },
+   {
+    "id": "lamp",
+    "x": 550.4,
+    "z": 678.0,
+    "metric": "bracket on a tube pole"
+   },
+   {
+    "id": "lamp",
+    "x": 647.3,
+    "z": 734.7,
+    "metric": "bracket on a tube pole"
+   },
+   {
+    "id": "lamp",
+    "x": -58.4,
+    "z": 124.9,
+    "metric": "bracket on a tube pole"
+   },
+   {
+    "id": "lamp",
+    "x": 547.5,
+    "z": 679.0,
+    "metric": "bracket on a tube pole"
+   },
+   {
+    "id": "lamp",
+    "x": -487.9,
+    "z": -220.9,
+    "metric": "bracket on a tube pole"
+   },
+   {
+    "id": "lamp",
+    "x": -229.8,
+    "z": 70.1,
+    "metric": "bracket on a tube pole"
+   },
+   {
+    "id": "lamp",
+    "x": 562.1,
+    "z": 684.2,
+    "metric": "bracket on a tube pole"
+   },
+   {
+    "id": "lamp",
+    "x": 589.6,
+    "z": 718.0,
+    "metric": "bracket on a tube pole"
+   },
+   {
+    "id": "lamp",
+    "x": 176.4,
+    "z": -419.9,
+    "metric": "bracket on a tube pole"
+   }
+  ]
+ },
+ {
+  "id": "in-building-hidden:bikes",
+  "layer": "bikes",
+  "title": "bikes entirely inside a building footprint (>= 90%)",
+  "count": 358,
+  "total": 7102,
+  "pct": 5.04,
+  "severity": "low",
+  "note": "hidden inside the wall volume (invisible, but a data/placement error and wasted instances)",
+  "examples": [
+   {
+    "id": "bikes[758]",
+    "x": 537.2,
+    "z": -692.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[3301]",
+    "x": 554.9,
+    "z": -28.9,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[388]",
+    "x": -314.9,
+    "z": -371.7,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[552]",
+    "x": 716.8,
+    "z": 180.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[719]",
+    "x": 575.9,
+    "z": -726.6,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[754]",
+    "x": 538.4,
+    "z": -694.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[757]",
+    "x": 537.5,
+    "z": -693.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[780]",
+    "x": 536.0,
+    "z": -695.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[813]",
+    "x": 576.1,
+    "z": -726.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bikes[816]",
+    "x": 573.4,
+    "z": -722.6,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "in-building-hidden:glass",
+  "layer": "glass",
+  "title": "glass entirely inside a building footprint (>= 90%)",
+  "count": 1,
+  "total": 23,
+  "pct": 4.35,
+  "severity": "low",
+  "note": "hidden inside the wall volume (invisible, but a data/placement error and wasted instances)",
+  "examples": [
+   {
+    "id": "glass[11]",
+    "x": 451.8,
+    "z": -7.9,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "mast-height-high",
+  "layer": "lamps",
+  "title": "Mast taller than 10 m (visual-refs: 5-9 m)",
+  "count": 16,
+  "total": 400,
+  "pct": 4.0,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "lamp",
+    "x": 423.8,
+    "z": 10.0,
+    "metric": "pole tube poleH 15"
+   },
+   {
+    "id": "lamp",
+    "x": 461.5,
+    "z": -51.2,
+    "metric": "pole tube poleH 15"
+   },
+   {
+    "id": "lamp",
+    "x": 478.4,
+    "z": -78.9,
+    "metric": "pole tube poleH 15"
+   },
+   {
+    "id": "lamp",
+    "x": 441.2,
+    "z": -18.2,
+    "metric": "pole tube poleH 15"
+   },
+   {
+    "id": "lamp",
+    "x": 350.3,
+    "z": -34.9,
+    "metric": "pole tube poleH 15"
+   },
+   {
+    "id": "lamp",
+    "x": 367.4,
+    "z": -62.9,
+    "metric": "pole tube poleH 15"
+   },
+   {
+    "id": "lamp",
+    "x": 387.9,
+    "z": -96.0,
+    "metric": "pole tube poleH 15"
+   },
+   {
+    "id": "lamp",
+    "x": 405.5,
+    "z": -124.9,
+    "metric": "pole tube poleH 15"
+   },
+   {
+    "id": "lamp",
+    "x": -289.4,
+    "z": 524.8,
+    "metric": "pole tube poleH 10.4"
+   },
+   {
+    "id": "lamp",
+    "x": -193.6,
+    "z": 535.0,
+    "metric": "pole tube poleH 10.4"
+   }
+  ]
+ },
+ {
+  "id": "surf-surf-sameclass",
+  "layer": "surfaces",
+  "title": "Duplicate / overlapping polygons of the same class (>= 2 m2)",
+  "count": 8,
+  "total": 229,
+  "pct": 3.49,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "ay/549543686 x y/1532751307 (cobbles)",
+    "x": 443.7,
+    "z": 668.3,
+    "metric": "259 m2"
+   },
+   {
+    "id": "27d7e44c1f#0 x f883b7f00b#0 (gravel)",
+    "x": 314.8,
+    "z": 5.1,
+    "metric": "211 m2"
+   },
+   {
+    "id": "3a31e066d3#0 x f883b7f00b#0 (gravel)",
+    "x": 276.8,
+    "z": -7.6,
+    "metric": "159 m2"
+   },
+   {
+    "id": "6fba7373f0#0 x f883b7f00b#0 (gravel)",
+    "x": 334.8,
+    "z": 0.7,
+    "metric": "133 m2"
+   },
+   {
+    "id": "2df2e3c6a9#0 x f883b7f00b#0 (gravel)",
+    "x": 299.0,
+    "z": 0.7,
+    "metric": "115 m2"
+   },
+   {
+    "id": "02aa13d4eb#0 x f883b7f00b#0 (gravel)",
+    "x": 367.0,
+    "z": 109.2,
+    "metric": "25 m2"
+   },
+   {
+    "id": "0f340ccd0a#0 x f883b7f00b#0 (gravel)",
+    "x": 291.7,
+    "z": -20.8,
+    "metric": "21 m2"
+   },
+   {
+    "id": "9909e9bdb2#0 x f883b7f00b#0 (gravel)",
+    "x": 284.7,
+    "z": -22.9,
+    "metric": "8 m2"
+   }
+  ]
+ },
+ {
+  "id": "in-building-hidden:meters",
+  "layer": "meters",
+  "title": "meters entirely inside a building footprint (>= 90%)",
+  "count": 1,
+  "total": 47,
+  "pct": 2.13,
+  "severity": "low",
+  "note": "hidden inside the wall volume (invisible, but a data/placement error and wasted instances)",
+  "examples": [
+   {
+    "id": "meters[43]",
+    "x": -390.4,
+    "z": -164.5,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "wire-too-short",
+  "layer": "lamps",
+  "title": "Wire span < 8 m",
+  "count": 24,
+  "total": 1239,
+  "pct": 1.94,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "lamp[1180]",
+    "x": 444.5,
+    "z": 607.4,
+    "metric": "span 6 m"
+   },
+   {
+    "id": "lamp[88]",
+    "x": 558.1,
+    "z": -332.0,
+    "metric": "span 6 m"
+   },
+   {
+    "id": "lamp[332]",
+    "x": 229.6,
+    "z": -402.4,
+    "metric": "span 6 m"
+   },
+   {
+    "id": "lamp[1160]",
+    "x": 156.3,
+    "z": 746.1,
+    "metric": "span 6 m"
+   },
+   {
+    "id": "lamp[259]",
+    "x": 536.6,
+    "z": -340.7,
+    "metric": "span 6 m"
+   },
+   {
+    "id": "lamp[488]",
+    "x": 538.9,
+    "z": -345.4,
+    "metric": "span 6 m"
+   },
+   {
+    "id": "lamp[119]",
+    "x": 117.7,
+    "z": -146.0,
+    "metric": "span 6 m"
+   },
+   {
+    "id": "lamp[468]",
+    "x": 474.5,
+    "z": 441.7,
+    "metric": "span 6 m"
+   },
+   {
+    "id": "lamp[847]",
+    "x": 297.3,
+    "z": -569.1,
+    "metric": "span 6 m"
+   },
+   {
+    "id": "lamp[626]",
+    "x": 258.3,
+    "z": -511.5,
+    "metric": "span 7 m"
+   }
+  ]
+ },
+ {
+  "id": "pavement-in-bld",
+  "layer": "pavement",
+  "title": "Pavement polygon overlaps a building footprint (>= 3 m2)",
+  "count": 19,
+  "total": 983,
+  "pct": 1.93,
+  "severity": "low",
+  "note": "mostly hidden inside the wall volume; matters where the building ground is below the pavement 0.2 m",
+  "examples": [
+   {
+    "id": "kk:fortovsmatrikel:6c1b2f07-85a0-40c9-9cf1-93c73bc7b6ce x gdk:1064713682",
+    "x": 149.3,
+    "z": 674.4,
+    "metric": "2453 m2 pavement inside a footprint"
+   },
+   {
+    "id": "kk:fortovsmatrikel:e78693de-9fa2-4927-9fe7-48df416b5423 x gdk:1210579512",
+    "x": -52.1,
+    "z": -622.9,
+    "metric": "56 m2 pavement inside a footprint"
+   },
+   {
+    "id": "kk:fortovsmatrikel:4913978e-bc99-428d-a763-c69c736dcf42 x gdk:1222283192",
+    "x": -263.3,
+    "z": -158.2,
+    "metric": "49 m2 pavement inside a footprint"
+   },
+   {
+    "id": "kk:fortovsmatrikel:b1169b6b-3bf0-409f-86f2-3990a7e6d894 x gdk:1222283192",
+    "x": -271.0,
+    "z": -161.5,
+    "metric": "48 m2 pavement inside a footprint"
+   },
+   {
+    "id": "kk:fortovsmatrikel:8c70ac65-95bc-40f7-a0e1-3a716c648800 x gdk:1064804562",
+    "x": 732.7,
+    "z": 556.2,
+    "metric": "46 m2 pavement inside a footprint"
+   },
+   {
+    "id": "kk:fortovsmatrikel:a6b531f0-5b30-47bb-bea1-7267ddefcd03 x gdk:1064805965",
+    "x": -426.6,
+    "z": -723.9,
+    "metric": "23 m2 pavement inside a footprint"
+   },
+   {
+    "id": "kk:fortovsmatrikel:0c1877bb-a463-4841-b673-81bfd178d8ee x gdk:1064781681",
+    "x": -327.6,
+    "z": -66.8,
+    "metric": "18 m2 pavement inside a footprint"
+   },
+   {
+    "id": "kk:fortovsmatrikel:777956ef-32fb-45ff-93c4-9ffcb35f5827 x gdk:1064811527",
+    "x": 3.3,
+    "z": 562.0,
+    "metric": "13 m2 pavement inside a footprint"
+   },
+   {
+    "id": "kk:fortovsmatrikel:ad01a6dc-5a61-4465-86a6-ea9220c927d0 x gdk:1107317022",
+    "x": 251.7,
+    "z": -202.6,
+    "metric": "8 m2 pavement inside a footprint"
+   },
+   {
+    "id": "kk:fortovsmatrikel:741625bd-ce5a-47ff-a162-1b5cc98444a2 x gdk:1064713714",
+    "x": 40.8,
+    "z": 717.3,
+    "metric": "7 m2 pavement inside a footprint"
+   }
+  ]
+ },
+ {
+  "id": "in-building-hidden:bollards",
+  "layer": "bollards",
+  "title": "bollards entirely inside a building footprint (>= 90%)",
+  "count": 4,
+  "total": 396,
+  "pct": 1.01,
+  "severity": "low",
+  "note": "hidden inside the wall volume (invisible, but a data/placement error and wasted instances)",
+  "examples": [
+   {
+    "id": "bollards[318]",
+    "x": -254.1,
+    "z": -158.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[275]",
+    "x": 559.9,
+    "z": -25.8,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[150]",
+    "x": -361.7,
+    "z": -356.0,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "bollards[217]",
+    "x": -368.3,
+    "z": -342.7,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "wire-too-long",
+  "layer": "lamps",
+  "title": "Wire span > 45 m (visual-refs 25-35 m)",
+  "count": 11,
+  "total": 1239,
+  "pct": 0.89,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "lamp[32]",
+    "x": -64.7,
+    "z": 174.5,
+    "metric": "span 85 m"
+   },
+   {
+    "id": "lamp[263]",
+    "x": -76.4,
+    "z": 167.3,
+    "metric": "span 85 m"
+   },
+   {
+    "id": "lamp[479]",
+    "x": -46.7,
+    "z": 185.4,
+    "metric": "span 85 m"
+   },
+   {
+    "id": "lamp[587]",
+    "x": -28.8,
+    "z": 196.4,
+    "metric": "span 85 m"
+   },
+   {
+    "id": "lamp[1011]",
+    "x": -15.1,
+    "z": 204.7,
+    "metric": "span 85 m"
+   },
+   {
+    "id": "lamp[192]",
+    "x": -103.5,
+    "z": -600.3,
+    "metric": "span 78 m"
+   },
+   {
+    "id": "lamp[597]",
+    "x": -126.2,
+    "z": -613.9,
+    "metric": "span 78 m"
+   },
+   {
+    "id": "lamp[1122]",
+    "x": -143.2,
+    "z": -624.0,
+    "metric": "span 78 m"
+   },
+   {
+    "id": "lamp[14]",
+    "x": -53.8,
+    "z": 197.9,
+    "metric": "span 70 m"
+   },
+   {
+    "id": "lamp[442]",
+    "x": -84.7,
+    "z": 179.1,
+    "metric": "span 70 m"
+   }
+  ]
+ },
+ {
+  "id": "water-paths",
+  "layer": "water",
+  "title": "Footway/cycleway centreline runs > 3 m through open water",
+  "count": 5,
+  "total": 987,
+  "pct": 0.51,
+  "severity": "low",
+  "note": "pedestrian/cyclist routes through the lake (OSM path across a bridge not in the bridge list)",
+  "examples": [
+   {
+    "id": "osm:way/26435304",
+    "x": 284.9,
+    "z": 194.7,
+    "metric": "footway : 24 m in water"
+   },
+   {
+    "id": "osm:way/300626114",
+    "x": -136.7,
+    "z": 54.3,
+    "metric": "footway : 18 m in water"
+   },
+   {
+    "id": "osm:way/300626115",
+    "x": -99.3,
+    "z": 63.6,
+    "metric": "footway : 17 m in water"
+   },
+   {
+    "id": "osm:way/564743824",
+    "x": 388.3,
+    "z": -9.9,
+    "metric": "footway : 7 m in water"
+   },
+   {
+    "id": "osm:way/1561313354",
+    "x": 369.9,
+    "z": 35.0,
+    "metric": "footway : 5 m in water"
+   }
+  ]
+ },
+ {
+  "id": "surf-under-bld",
+  "layer": "surfaces",
+  "title": "Ground-material polygon > 30% under buildings (and >= 5 m2)",
+  "count": 1,
+  "total": 229,
+  "pct": 0.44,
+  "severity": "low",
+  "note": "hidden by the wall volumes",
+  "examples": [
+   {
+    "id": "kk:belaegning:ff2cf081-7f44-44e9-ba4a-468e73008cd1#0",
+    "x": -599.9,
+    "z": -739.2,
+    "metric": "kbh_fortov: 12 m2 (71%) under buildings"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bollards+monuments",
+  "layer": "furniture",
+  "title": "bollards overlaps monuments (>= 20% of the smaller footprint)",
+  "count": 1,
+  "total": 472,
+  "pct": 0.21,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "bollards[260] x monuments[49]",
+    "x": 216.2,
+    "z": -121.7,
+    "metric": "0.02 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bins+lamp-poles",
+  "layer": "furniture",
+  "title": "bins overlaps lamp-poles (>= 20% of the smaller footprint)",
+  "count": 2,
+  "total": 1006,
+  "pct": 0.2,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "lamp-poles[196] x bins[369]",
+    "x": 219.3,
+    "z": 720.8,
+    "metric": "0.06 m2 (57% of smaller)"
+   },
+   {
+    "id": "lamp-poles[307] x bins[28]",
+    "x": 171.9,
+    "z": 684.7,
+    "metric": "0.03 m2 (32% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bins+glass",
+  "layer": "furniture",
+  "title": "bins overlaps glass (>= 20% of the smaller footprint)",
+  "count": 1,
+  "total": 562,
+  "pct": 0.18,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "bins[419] x glass[18]",
+    "x": 472.5,
+    "z": -226.2,
+    "metric": "0.27 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bollards+cars",
+  "layer": "furniture",
+  "title": "bollards overlaps cars (>= 20% of the smaller footprint)",
+  "count": 4,
+  "total": 3090,
+  "pct": 0.13,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "cars[114] x bollards[18]",
+    "x": 714.1,
+    "z": 271.8,
+    "metric": "0.05 m2 (53% of smaller)"
+   },
+   {
+    "id": "cars[116] x bollards[23]",
+    "x": 724.2,
+    "z": 267.3,
+    "metric": "0.03 m2 (34% of smaller)"
+   },
+   {
+    "id": "cars[126] x bollards[9]",
+    "x": 743.3,
+    "z": 275.4,
+    "metric": "0.03 m2 (34% of smaller)"
+   },
+   {
+    "id": "cars[855] x bollards[230]",
+    "x": 469.9,
+    "z": -132.4,
+    "metric": "0.02 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "in-building-hidden:trees",
+  "layer": "trees",
+  "title": "trees entirely inside a building footprint (>= 90%)",
+  "count": 6,
+  "total": 4905,
+  "pct": 0.12,
+  "severity": "low",
+  "note": "hidden inside the wall volume (invisible, but a data/placement error and wasted instances)",
+  "examples": [
+   {
+    "id": "trees[3908]",
+    "x": 328.5,
+    "z": -87.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[4302]",
+    "x": 238.5,
+    "z": 596.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[4844]",
+    "x": 578.5,
+    "z": 198.5,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[1322]",
+    "x": -5.2,
+    "z": 380.4,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[1633]",
+    "x": -6.2,
+    "z": 390.2,
+    "metric": "100% of footprint"
+   },
+   {
+    "id": "trees[2335]",
+    "x": -476.5,
+    "z": -286.5,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "in-building-hidden:benches",
+  "layer": "benches",
+  "title": "benches entirely inside a building footprint (>= 90%)",
+  "count": 1,
+  "total": 938,
+  "pct": 0.11,
+  "severity": "low",
+  "note": "hidden inside the wall volume (invisible, but a data/placement error and wasted instances)",
+  "examples": [
+   {
+    "id": "benches[802]",
+    "x": 558.7,
+    "z": 668.5,
+    "metric": "100% of footprint"
+   }
+  ]
+ },
+ {
+  "id": "overlap:lamp-poles+trees",
+  "layer": "furniture",
+  "title": "lamp-poles overlaps trees (>= 20% of the smaller footprint)",
+  "count": 5,
+  "total": 5372,
+  "pct": 0.09,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "trees[532] x lamp-poles[94]",
+    "x": 559.9,
+    "z": 692.5,
+    "metric": "0.07 m2 (73% of smaller)"
+   },
+   {
+    "id": "trees[1310] x lamp-poles[107]",
+    "x": 382.4,
+    "z": 172.6,
+    "metric": "0.03 m2 (30% of smaller)"
+   },
+   {
+    "id": "trees[1421] x lamp-poles[7]",
+    "x": 568.6,
+    "z": 688.9,
+    "metric": "0.03 m2 (27% of smaller)"
+   },
+   {
+    "id": "trees[1405] x lamp-poles[141]",
+    "x": 574.3,
+    "z": 695.9,
+    "metric": "0.03 m2 (25% of smaller)"
+   },
+   {
+    "id": "trees[1406] x lamp-poles[68]",
+    "x": 563.0,
+    "z": 692.6,
+    "metric": "0.02 m2 (22% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:benches+lakeLights",
+  "layer": "furniture",
+  "title": "benches overlaps lakeLights (>= 20% of the smaller footprint)",
+  "count": 1,
+  "total": 1081,
+  "pct": 0.09,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "benches[230] x lakeLights[56]",
+    "x": -116.0,
+    "z": 85.9,
+    "metric": "0.02 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bins+stands",
+  "layer": "furniture",
+  "title": "bins overlaps stands (>= 20% of the smaller footprint)",
+  "count": 1,
+  "total": 1279,
+  "pct": 0.08,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "bins[419] x stands[45]",
+    "x": 472.5,
+    "z": -226.2,
+    "metric": "0.19 m2 (72% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bikes+bins",
+  "layer": "furniture",
+  "title": "bikes overlaps bins (>= 20% of the smaller footprint)",
+  "count": 5,
+  "total": 7641,
+  "pct": 0.07,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "bins[370] x bikes[66]",
+    "x": 211.8,
+    "z": 705.4,
+    "metric": "0.22 m2 (81% of smaller)"
+   },
+   {
+    "id": "bins[328] x bikes[895]",
+    "x": 676.6,
+    "z": 446.1,
+    "metric": "0.15 m2 (54% of smaller)"
+   },
+   {
+    "id": "bins[328] x bikes[896]",
+    "x": 676.6,
+    "z": 446.1,
+    "metric": "0.13 m2 (47% of smaller)"
+   },
+   {
+    "id": "bins[328] x bikes[900]",
+    "x": 676.6,
+    "z": 446.1,
+    "metric": "0.10 m2 (37% of smaller)"
+   },
+   {
+    "id": "bins[395] x bikes[2914]",
+    "x": 607.6,
+    "z": -33.3,
+    "metric": "0.06 m2 (21% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:benches+bollards",
+  "layer": "furniture",
+  "title": "benches overlaps bollards (>= 20% of the smaller footprint)",
+  "count": 1,
+  "total": 1334,
+  "pct": 0.07,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "bollards[166] x benches[930]",
+    "x": -455.4,
+    "z": -664.0,
+    "metric": "0.02 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bikes+glass",
+  "layer": "furniture",
+  "title": "bikes overlaps glass (>= 20% of the smaller footprint)",
+  "count": 4,
+  "total": 7125,
+  "pct": 0.06,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "glass[17] x bikes[5428]",
+    "x": -50.0,
+    "z": -605.0,
+    "metric": "0.60 m2 (69% of smaller)"
+   },
+   {
+    "id": "glass[17] x bikes[5429]",
+    "x": -50.0,
+    "z": -605.0,
+    "metric": "0.60 m2 (69% of smaller)"
+   },
+   {
+    "id": "glass[17] x bikes[5430]",
+    "x": -50.0,
+    "z": -605.0,
+    "metric": "0.60 m2 (69% of smaller)"
+   },
+   {
+    "id": "glass[22] x bikes[4489]",
+    "x": -63.4,
+    "z": -437.2,
+    "metric": "0.23 m2 (26% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:trees+trees",
+  "layer": "furniture",
+  "title": "trees overlaps trees (>= 20% of the smaller footprint)",
+  "count": 3,
+  "total": 4905,
+  "pct": 0.06,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "trees[1503] x trees[1504]",
+    "x": 148.0,
+    "z": -273.4,
+    "metric": "0.28 m2 (100% of smaller)"
+   },
+   {
+    "id": "trees[1543] x trees[1544]",
+    "x": 150.7,
+    "z": -279.9,
+    "metric": "0.28 m2 (100% of smaller)"
+   },
+   {
+    "id": "trees[67] x trees[68]",
+    "x": -741.6,
+    "z": -650.8,
+    "metric": "0.28 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bins+cars",
+  "layer": "furniture",
+  "title": "bins overlaps cars (>= 20% of the smaller footprint)",
+  "count": 2,
+  "total": 3233,
+  "pct": 0.06,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "cars[2502] x bins[113]",
+    "x": 574.2,
+    "z": -235.9,
+    "metric": "0.27 m2 (99% of smaller)"
+   },
+   {
+    "id": "cars[1761] x bins[79]",
+    "x": -11.9,
+    "z": 651.9,
+    "metric": "0.08 m2 (28% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bikes+stands",
+  "layer": "furniture",
+  "title": "bikes overlaps stands (>= 20% of the smaller footprint)",
+  "count": 4,
+  "total": 7842,
+  "pct": 0.05,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "stands[526] x bikes[5428]",
+    "x": -50.0,
+    "z": -605.0,
+    "metric": "0.36 m2 (41% of smaller)"
+   },
+   {
+    "id": "stands[526] x bikes[5429]",
+    "x": -50.0,
+    "z": -605.0,
+    "metric": "0.36 m2 (41% of smaller)"
+   },
+   {
+    "id": "stands[513] x bikes[3338]",
+    "x": 523.8,
+    "z": 47.5,
+    "metric": "0.36 m2 (41% of smaller)"
+   },
+   {
+    "id": "stands[513] x bikes[3339]",
+    "x": 523.8,
+    "z": 47.5,
+    "metric": "0.36 m2 (41% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:glass+hoops",
+  "layer": "furniture",
+  "title": "glass overlaps hoops (>= 20% of the smaller footprint)",
+  "count": 3,
+  "total": 6151,
+  "pct": 0.05,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "glass[17] x hoops[4609]",
+    "x": -50.0,
+    "z": -605.0,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "glass[17] x hoops[4610]",
+    "x": -50.0,
+    "z": -605.0,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "glass[17] x hoops[4611]",
+    "x": -50.0,
+    "z": -605.0,
+    "metric": "0.03 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "tree-trunk-facade",
+  "layer": "trees",
+  "title": "Trunk < 0.5 m from a facade",
+  "count": 2,
+  "total": 4905,
+  "pct": 0.04,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "tree[3776]",
+    "x": -265.5,
+    "z": -315.5,
+    "metric": "trunk 0.01 m from facade"
+   },
+   {
+    "id": "tree[3798]",
+    "x": -204.5,
+    "z": -286.5,
+    "metric": "trunk 0.44 m from facade"
+   }
+  ]
+ },
+ {
+  "id": "overlap:cars+glass",
+  "layer": "furniture",
+  "title": "cars overlaps glass (>= 20% of the smaller footprint)",
+  "count": 1,
+  "total": 2717,
+  "pct": 0.04,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "cars[1587] x glass[17]",
+    "x": -51.0,
+    "z": -604.1,
+    "metric": "3.38 m2 (74% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:cars+meters",
+  "layer": "furniture",
+  "title": "cars overlaps meters (>= 20% of the smaller footprint)",
+  "count": 1,
+  "total": 2741,
+  "pct": 0.04,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "cars[1806] x meters[18]",
+    "x": 248.7,
+    "z": 16.3,
+    "metric": "0.15 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:hoops+trees",
+  "layer": "furniture",
+  "title": "hoops overlaps trees (>= 20% of the smaller footprint)",
+  "count": 3,
+  "total": 11033,
+  "pct": 0.03,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "trees[385] x hoops[3984]",
+    "x": 68.6,
+    "z": 709.2,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "trees[362] x hoops[134]",
+    "x": 159.5,
+    "z": 718.0,
+    "metric": "0.03 m2 (98% of smaller)"
+   },
+   {
+    "id": "trees[444] x hoops[178]",
+    "x": 650.1,
+    "z": 353.6,
+    "metric": "0.02 m2 (75% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bins+hoops",
+  "layer": "furniture",
+  "title": "bins overlaps hoops (>= 20% of the smaller footprint)",
+  "count": 2,
+  "total": 6667,
+  "pct": 0.03,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "bins[370] x hoops[70]",
+    "x": 211.8,
+    "z": 705.4,
+    "metric": "0.02 m2 (90% of smaller)"
+   },
+   {
+    "id": "bins[370] x hoops[5375]",
+    "x": 211.8,
+    "z": 705.4,
+    "metric": "0.02 m2 (74% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:hoops+stands",
+  "layer": "furniture",
+  "title": "hoops overlaps stands (>= 20% of the smaller footprint)",
+  "count": 2,
+  "total": 6868,
+  "pct": 0.03,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "stands[513] x hoops[2827]",
+    "x": 523.8,
+    "z": 47.5,
+    "metric": "0.03 m2 (100% of smaller)"
+   },
+   {
+    "id": "stands[526] x hoops[4610]",
+    "x": -50.0,
+    "z": -605.0,
+    "metric": "0.03 m2 (100% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:cars+lamp-poles",
+  "layer": "furniture",
+  "title": "cars overlaps lamp-poles (>= 20% of the smaller footprint)",
+  "count": 1,
+  "total": 3161,
+  "pct": 0.03,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "lamp-poles[76] x cars[113]",
+    "x": 706.5,
+    "z": 274.1,
+    "metric": "0.03 m2 (27% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:stands+trees",
+  "layer": "furniture",
+  "title": "stands overlaps trees (>= 20% of the smaller footprint)",
+  "count": 1,
+  "total": 5645,
+  "pct": 0.02,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "trees[3689] x stands[511]",
+    "x": 368.5,
+    "z": -439.5,
+    "metric": "0.22 m2 (79% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bins+trees",
+  "layer": "furniture",
+  "title": "bins overlaps trees (>= 20% of the smaller footprint)",
+  "count": 1,
+  "total": 5444,
+  "pct": 0.02,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "trees[3734] x bins[156]",
+    "x": 156.5,
+    "z": -376.5,
+    "metric": "0.16 m2 (59% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "overlap:bikes+meters",
+  "layer": "furniture",
+  "title": "bikes overlaps meters (>= 20% of the smaller footprint)",
+  "count": 1,
+  "total": 7149,
+  "pct": 0.01,
+  "severity": "low",
+  "note": "",
+  "examples": [
+   {
+    "id": "meters[25] x bikes[1567]",
+    "x": 670.3,
+    "z": 649.7,
+    "metric": "0.14 m2 (98% of smaller)"
+   }
+  ]
+ },
+ {
+  "id": "mast-height-low",
+  "layer": "lamps",
+  "title": "Mast with pole height < 2.5 m (park-type bollards, 'pole_h' 0 renders a head at ground level)",
+  "count": 0,
+  "total": 400,
+  "pct": 0.0,
+  "severity": "low",
+  "note": "",
+  "examples": []
+ },
+ {
+  "id": "dim-table",
+  "layer": "scale",
+  "title": "Prop dimensions vs visual-refs",
+  "table": [
+   [
+    "Pole mast head / lantern",
+    "pendant Ø0.46 x 0.36 (CGS441)",
+    "published 462 x 363 mm",
+    "ok"
+   ],
+   [
+    "Wire lantern height",
+    "model ~8.3 m (anchor 8.9 m, sag 3 %)",
+    "visual-refs 1a: 8 m",
+    "ok"
+   ],
+   [
+    "Mast height",
+    "median 4.0 m, max 15.0",
+    "SAB: 5-9 m (park posts lower)",
+    "check tails"
+   ],
+   [
+    "Lake post",
+    "0.98 m",
+    "est. 0.9-1.1 m",
+    "ok"
+   ],
+   [
+    "Round bollard",
+    "Ø0.15-0.16 x 0.82 m",
+    "published Ø89/114 mm x 800 mm",
+    "~35% fat"
+   ],
+   [
+    "Granite bollard",
+    "0.30 x 0.30 x 0.76 m",
+    "est. 0.25 x 0.25 x 0.8",
+    "ok"
+   ],
+   [
+    "Litter bin",
+    "Ø0.52 x 0.87 m",
+    "Københavnerkurv 0.68 m / Pizzakurv 0.65 x 0.65 x 1.1",
+    "ok-ish"
+   ],
+   [
+    "Glass container cluster",
+    "3 cylinders Ø1.16 x 1.8 m in a 3.8 x 1.2 m row",
+    "old cube 1.3 x 1.3 x 1.6 each",
+    "ok per unit; one record = 3"
+   ],
+   [
+    "Bin stand (wheelies)",
+    "3 bins 0.56 x 0.66 x 0.78 in a 1.9 m row",
+    "no source figure",
+    "plausible"
+   ],
+   [
+    "Bench",
+    "1.8 x 0.55 x 0.9 m, seat 0.46",
+    "Københavnerbænk 1.8-2.17 m",
+    "ok"
+   ],
+   [
+    "Bike",
+    "1.75 m long, rack pitch 0.5 m",
+    "est. 1.75-1.9 x 0.55-0.7 m",
+    "ok"
+   ],
+   [
+    "Parking meter",
+    "0.46 x 0.32 x 1.5 m",
+    "est. H1.5-1.8",
+    "ok"
+   ],
+   [
+    "Bus flag",
+    "3.9 m",
+    "published 3.87 m",
+    "ok"
+   ],
+   [
+    "Bus shelter",
+    "3.2 x 1.7 x 2.4 m",
+    "KK narrow model 1.2 x 3.85 m",
+    "ok"
+   ],
+   [
+    "Car",
+    "4.5 x 1.86 / 4.6 x 1.92 m",
+    "typical 4.4-4.7 x 1.8-1.9",
+    "ok"
+   ],
+   [
+    "Tree",
+    "height p50 8 m, p95 20 m, max 31 m",
+    "KK trae_basis",
+    "check tails"
+   ]
+  ],
+  "count": 0,
+  "total": 0,
+  "pct": 0,
+  "severity": "info",
+  "note": "",
+  "examples": []
+ }
+]
