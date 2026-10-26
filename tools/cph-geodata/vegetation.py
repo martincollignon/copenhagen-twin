@@ -36,6 +36,8 @@ from frame import LOCAL_BBOX, ORIGIN, flat, ring_to_local  # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data" / "raw" / "veg"
 OUT = ROOT / "data" / "cph-vegetation.json"
+ROAD_CLASSES = ("primary", "secondary", "residential", "service", "cycleway")
+ROAD_MARGIN = 0.3  # m: kerb
 HARD_CLASSES = ("asphalt_road", "kbh_fortov", "raadhus", "cobbles", "setts")
 NDVI_MIN = 0.04  # floor of the vegetation threshold (the CIR image is not radiometrically calibrated)
 SMOOTH = 3  # cells: window of the NDVI average
@@ -132,7 +134,23 @@ def main():
             hard_polys.append(LineString([(ORIGIN[0] + r["pts"][i], ORIGIN[1] - r["pts"][i + 1]) for i in range(0, len(r["pts"]), 2)]).buffer(min(r.get("width") or 8, 14) / 2 * 0.5))
     hard = unary_union([p for p in hard_polys if not p.is_empty])
     parks = unary_union([utm_poly(p["ring"], p.get("holes", [])) for p in geo["parks"] if ".161" not in p["id"]])
-    cut = unary_union([utm_poly(b["ring"], b.get("holes", [])).buffer(0.4) for b in geo["buildings"]]
+    # carriageways and their raised cycle strips, as the viewer lays them out (measured half width of cph-streets.json): no grass
+    # on a road, not even under tree crowns. Where the street document has no entry the OSM width stands in.
+    streets = json.loads((ROOT / "data" / "cph-streets.json").read_text())
+    road_polys = []
+    for r in geo["roads"]:
+        if r["class"] not in ROAD_CLASSES:
+            continue
+        rec = streets["roads"].get(r["id"])
+        if rec and rec.get("drop"):
+            continue
+        pts, hw = (rec["p"], rec["hw"] + max([rec[k][0] for k in ("cl", "cr") if rec.get(k)] + [0.0]) + ROAD_MARGIN) if rec else (r["pts"], min(r.get("width") or 6.0, 16.0) / 2 + ROAD_MARGIN)
+        road_polys.append((pts, hw))
+    for e in streets.get("extraRoads", []):
+        road_polys.append((e["p"], e["hw"] + max([e[k][0] for k in ("cl", "cr") if e.get(k)] + [0.0]) + ROAD_MARGIN))
+    road_polys += [(c["pts"], (c.get("width") or 2.2) / 2 + ROAD_MARGIN) for c in geo["cycleTracks"] if len(c["pts"]) >= 4]
+    roads = unary_union([LineString([(ORIGIN[0] + p[i], ORIGIN[1] - p[i + 1]) for i in range(0, len(p), 2)]).buffer(w, cap_style=2) for p, w in road_polys if len(p) >= 4])
+    cut = unary_union([roads] + [utm_poly(b["ring"], b.get("holes", [])).buffer(0.4) for b in geo["buildings"]]
                       + [utm_poly(s["ring"]) for s in geo["sidewalks"]]
                       + [utm_poly(s["ring"], s.get("holes", [])) for s in surf["surfaces"] if s["cls"] in HARD_CLASSES]  # gravel and "other" are left to the NDVI
                       + [utm_poly(l["ring"]).buffer(0.3) for l in lakes["lakes"]])
