@@ -5,9 +5,11 @@ const test = require('node:test');
 const vm = require('node:vm');
 
 const read = (path) => readFileSync(join(__dirname, '..', path), 'utf8');
-let TELEPORT_LOCATIONS, ISLAND_BOUNDS;
+let TELEPORT_LOCATIONS, ISLAND_BOUNDS, swanNavigationModule, lakeDoc;
 test.before(async () => {
   ({ TELEPORT_LOCATIONS, ISLAND_BOUNDS } = await import('../js/city-config.js'));
+  swanNavigationModule = await import('../js/swan-navigation.js');
+  lakeDoc = JSON.parse(read('data/cph-lakes.json'));
 });
 
 // Distance from (x, z) to the nearest roadGraph link carrying `name`
@@ -45,6 +47,18 @@ test('street teleports land on the street they name', () => {
     const p = TELEPORT_LOCATIONS[key];
     assert.ok(distanceToStreet(geo, street, p.x, p.z) < 12, `${key} is within 12 m of ${street}`);
   }
+});
+
+test('the swan spawn and six moored boats fit on Peblinge with Sortedams excluded', () => {
+  const navigation = swanNavigationModule.createSwanNavigation(lakeDoc);
+  const { SWAN_MOORINGS, SWAN_START, SWAN_STATIC_MOORINGS } = swanNavigationModule;
+  assert.equal(SWAN_MOORINGS.length, 7);
+  assert.equal(SWAN_STATIC_MOORINGS.length, 6);
+  assert.ok(navigation.isPositionLegal(SWAN_START.x, SWAN_START.z), 'the player starts on open water at Kaffesalonen');
+  for (const [index, point] of SWAN_MOORINGS.entries()) {
+    assert.ok(navigation.isPositionLegal(point.x, point.z), `mooring ${index + 1} leaves the pier and wall clearances`);
+  }
+  assert.equal(navigation.isPositionLegal(100, -520), false, 'the Dronning Louises Bro boundary excludes Sortedams Sø');
 });
 
 test('no New York destinations or labels remain in the teleport and camera menus', () => {

@@ -79,6 +79,7 @@ async function initApp() {
   // 4. Initialize Third-Person Controllers (Person, Car, both Bikes, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
   controllerManager.groundField = world.groundHeight || null;
+  controllerManager.setSwanWorldData(world.lakeData, world.lakes?.level);
   // Reuse teleport placement so saved players return at rest, close to their last positions.
   try {
     const saved = JSON.parse(localStorage.getItem('cph-player-state'));
@@ -86,10 +87,10 @@ async function initApp() {
       for (const mode of Object.keys(controllerManager.entities)) {
         const p = saved.entities?.[mode];
         if (!p || ![p.x, p.y, p.z, p.heading].every(Number.isFinite)) continue;
-        controllerManager.setMode(mode);
+        controllerManager.setMode(mode, { preserveSwanPosition: true });
         controllerManager.teleportActiveTo(p.x, p.z, p.heading, p.y);
       }
-      controllerManager.setMode(Object.hasOwn(controllerManager.entities, saved.activeMode) ? saved.activeMode : 'car');
+      controllerManager.setMode(Object.hasOwn(controllerManager.entities, saved.activeMode) ? saved.activeMode : 'car', { preserveSwanPosition: true });
     }
   } catch { /* Missing or unavailable storage does not prevent playing. */ }
 
@@ -212,7 +213,7 @@ async function initApp() {
   const elControlsHint = document.getElementById('hud-controls-hint');
   const gamepadControls = new GamepadControls(controllerManager, cameraSystem, {
     onCycleMode: (step) => {
-      const modes = ['person', 'car', 'cyclist', 'helicopter'];
+      const modes = ['person', 'car', 'cyclist', 'helicopter', 'swanboat'];
       const activeMode = controllerManager.activeMode === 'cargobike' ? 'cyclist' : controllerManager.activeMode;
       const nextMode = modes[(modes.indexOf(activeMode) + step + modes.length) % modes.length];
       selectMode(nextMode === 'cyclist' ? lastBikeMode : nextMode);
@@ -225,10 +226,11 @@ async function initApp() {
     person: [[['W', 'S'], 'Walk'], [['A', 'D'], 'Turn'], [['Shift'], 'Sprint'], [['Space'], 'Jump'], [['Drag'], 'Orbit']],
     car: [[['W', 'S'], 'Drive / Reverse'], [['A', 'D'], 'Steer'], [['Shift'], 'Boost'], [['B'], 'Horn'], [['Drag'], 'Orbit']],
     cyclist: [[['W', 'S'], 'Pedal / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Sprint'], [['Drag'], 'Orbit']],
-    helicopter: [[['W', 'S'], 'Pitch'], [['A', 'D'], 'Yaw'], [['Space', 'E'], 'Ascend'], [['Q', 'C'], 'Descend'], [['Shift'], 'Boost']]
+    helicopter: [[['W', 'S'], 'Pitch'], [['A', 'D'], 'Yaw'], [['Space', 'E'], 'Ascend'], [['Q', 'C'], 'Descend'], [['Shift'], 'Boost']],
+    swanboat: [[['W'], 'Pedal'], [['S'], 'Reverse'], [['A', 'D'], 'Steer'], [['Drag'], 'Orbit']]
   };
   // Top speeds in km/h set the full scale of the speed meter for each active vehicle.
-  const topSpeedKmh = { person: 30, car: 130, cyclist: 25, cargobike: 25, helicopter: 187 };
+  const topSpeedKmh = { person: 30, car: 130, cyclist: 25, cargobike: 25, helicopter: 187, swanboat: 6 };
 
   function renderControlHints(mode) {
     if (!elControlsHint) return;
@@ -259,6 +261,7 @@ async function initApp() {
 
   function selectMode(mode) {
     if (mode === 'cyclist' && lastBikeMode === 'cargobike') mode = lastBikeMode;
+    const previousMode = controllerManager.activeMode;
     controllerManager.setMode(mode);
     const activeMode = controllerManager.activeMode;
     const bikeActive = activeMode === 'cyclist' || activeMode === 'cargobike';
@@ -283,7 +286,10 @@ async function initApp() {
 
     // If currently on a static scenic camera, switch to 3rd-Person Chase so user sees their selected character/vehicle
     const currentCam = cameraSystem.getActivePreset();
-    if (currentCam.category !== 'follow') {
+    if (activeMode === 'swanboat' && previousMode !== activeMode) {
+      cameraSystem.resetForTeleport();
+      selectCamera('chase', true);
+    } else if (currentCam.category !== 'follow') {
       selectCamera('chase', false);
     }
   }
@@ -463,7 +469,7 @@ async function initApp() {
     });
   }
 
-  // Global keyboard shortcuts for modes (1-4), cameras (V / 5-0), and HUD (H)
+  // Global keyboard shortcuts for modes (1-5), cameras (V / 6-0), and HUD (H)
   window.addEventListener('keydown', (e) => {
     if (isTypingInField(e)) return;
     switch (e.code) {
@@ -480,7 +486,7 @@ async function initApp() {
         selectMode('helicopter');
         break;
       case 'Digit5':
-        selectCamera('chase', true);
+        selectMode('swanboat');
         break;
       case 'Digit6':
         selectCamera('action', true);

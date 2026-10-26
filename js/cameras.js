@@ -212,7 +212,7 @@ class CameraSystem {
         );
 
         const lookUpBias = entity.type === 'helicopter' ? 0.2
-          : entity.type === 'car' ? 0.52
+          : entity.type === 'car' || entity.type === 'swanboat' ? 0.52
             : entity.type === 'cargobike' ? 1.2 : 1.55;
         desiredLook.set(
           entity.position.x + Math.sin(entity.heading) * 5.2,

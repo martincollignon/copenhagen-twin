@@ -225,10 +225,10 @@ const nullTraffic = () => ({
 });
 
 // Road surfaces, the drivable network, traffic, pedestrians, cyclists and signal heads from the geodata
-async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null, terrain = null, debug = '' }) {
+async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null, lakesDoc = null, terrain = null, debug = '' }) {
   const surfaces = await buildCphRoadSurfaces(scene, geo, { surfaces: surfacesDoc, terrain });
   markInit('roadSurfaces');
-  const walk = createWalkSpace(geo);
+  const walk = createWalkSpace(geo, lakesDoc);
   let cyclists = null;
   const bikeLaneNear = (x, z, r) => !!cyclists && cyclists.network.lanes.some((l) => l.src && nearLane(l, x, z, r));
   const traffic = createTrafficSystem(scene, geo.points?.signals || [], {
@@ -371,7 +371,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   if (geo?.roadGraph && !debug.split(',').includes('noroads')) {
     vegetation = debug.split(',').includes('nograss') ? null : await loadCphVegetation();
     surfacesCut = applySurfaceCuts(withVegetation(await loadCphSurfaces(), vegetation), mergeSurfaceCuts(lakesDoc?.surface_cuts, geo.surfaceCuts));
-    traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: surfacesCut, terrain, debug });
+    traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: surfacesCut, lakesDoc, terrain, debug });
   }
 
   // grass tufts on the measured lawns near the camera (one draw call); `?debug=nograss` keeps the plain ground
@@ -397,7 +397,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     // the player's surroundings: buildings, lakes and street furniture stream in around the camera; `night` is the
     // lighting system's night factor (lamps switch on above ~0.1)
     update: (x, z, night = 0) => {
-      buildings?.update(x, z);
+      buildings?.update(x, z, night);
       lakes?.update(x, z);
       grass?.update(x, z);
       furniture?.update(x, z, night);
@@ -415,6 +415,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     buildings,
     attach: (context) => { buildings?.attach(context); lakes?.attach(context); },
     lakes,
+    lakeData: lakesDoc,
     grass,
     geo
   };
