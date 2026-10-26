@@ -97,27 +97,40 @@ export function slicePts(pts, s0, s1) {
       const t0 = Math.max(0, (s0 - s) / L);
       const t1 = Math.min(1, (s1 - s) / L);
       if (!out.length) out.push(ax + (bx - ax) * t0, az + (bz - az) * t0);
-      out.push(ax + (bx - ax) * t1, az + (bz - az) * t1);
+      const x = ax + (bx - ax) * t1;
+      const z = az + (bz - az) * t1;
+      // no zero-length pieces (a slice starting on a vertex used to repeat it): they have no normal
+      if (Math.hypot(x - out[out.length - 2], z - out[out.length - 1]) > 1e-3) out.push(x, z);
     }
     s += L;
   }
   return out;
 }
 
-// Per-vertex unit normals of a polyline (right-hand side positive offset: right of travel with z south is (-dz, dx))
+// Per-vertex unit normals of a polyline (right-hand side positive offset: right of travel with z south is (-dz, dx)).
+// Zero-length segments (repeated points, < 1 mm) carry no direction: a vertex takes the nearest real segment on each side, so a
+// repeated point never gets a zero normal (which pulled offsets, kerbs among them, back onto the centreline).
 export function rightNormals(pts) {
   const n = pts.length / 2;
   const out = new Array(n);
+  const segDir = (a) => { // unit direction of segment a..a+1, or null
+    const sx = pts[2 * a + 2] - pts[2 * a];
+    const sz = pts[2 * a + 3] - pts[2 * a + 1];
+    const l = Math.hypot(sx, sz);
+    return l > 1e-3 ? [sx / l, sz / l] : null;
+  };
   for (let i = 0; i < n; i++) {
     let dx = 0;
     let dz = 0;
-    for (const [a, b] of [[i - 1, i], [i, i + 1]]) {
-      if (a < 0 || b >= n) continue;
-      const sx = pts[2 * b] - pts[2 * a];
-      const sz = pts[2 * b + 1] - pts[2 * a + 1];
-      const l = Math.hypot(sx, sz) || 1;
-      dx += sx / l;
-      dz += sz / l;
+    for (const step of [-1, 1]) {
+      // the segment before (step -1) / after (step +1) vertex i, skipping zero-length ones
+      for (let a = step < 0 ? i - 1 : i; a >= 0 && a + 1 < n; a += step) {
+        const d = segDir(a);
+        if (!d) continue;
+        dx += d[0];
+        dz += d[1];
+        break;
+      }
     }
     const l = Math.hypot(dx, dz) || 1;
     out[i] = [-dz / l, dx / l];

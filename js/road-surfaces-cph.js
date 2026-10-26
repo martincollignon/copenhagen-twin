@@ -93,8 +93,69 @@ function wallStrip(layer, pts, o, y0, y1, u0 = 0) {
   }
 }
 
-// A granite kerb: top between offsets o0..o1 at yTop, with vertical faces to yLow on the `low` side(s)
-function kerbRun(layer, pts, o0, o1, yTop, yLowInner, yLowOuter, u0 = 0) {
+const KERB_CLIP_STEP = 0.25; // m between the samples that test a kerb line against the carriageways
+const KERB_CLIP_DEPTH = 0.05; // m: a kerb whose centre line is deeper than this inside a carriageway is not drawn there
+const KERB_MIN_PIECE = 0.3; // m: shorter kerb pieces left between two carriageways are dropped
+
+/**
+ * The arc-length pieces [[s0, s1], ...] of the kerb line at lateral offset o along pts that do not lie inside a
+ * carriageway (`depthAt` of createCarriagewayIndex). Offsets are interpolated per segment exactly as `ribbon` draws them.
+ */
+export function kerbPiecesOutside(pts, o, depthAt, step = KERB_CLIP_STEP) {
+  const nr = rightNormals(pts);
+  const buried = [];
+  const vs = [0]; // arc length at each vertex
+  let s = 0;
+  for (let i = 0; i + 3 < pts.length; i += 2) {
+    const k = i / 2;
+    const L = Math.hypot(pts[i + 2] - pts[i], pts[i + 3] - pts[i + 1]);
+    vs.push(vs[vs.length - 1] + L);
+    if (L < 1e-9) continue;
+    const ax = pts[i] + nr[k][0] * o;
+    const az = pts[i + 1] + nr[k][1] * o;
+    const bx = pts[i + 2] + nr[k + 1][0] * o;
+    const bz = pts[i + 3] + nr[k + 1][1] * o;
+    const n = Math.max(1, Math.ceil(Math.max(L, Math.hypot(bx - ax, bz - az)) / step)); // the offset line is longer round a bend
+    for (let j = 0; j <= n; j++) {
+      const t = j / n;
+      if (depthAt(ax + (bx - ax) * t, az + (bz - az) * t) <= KERB_CLIP_DEPTH) continue;
+      const at = s + L * t;
+      // a short segment whose offset swings far (a sharp bend, a stub at a road end) is cut whole
+      const half = Math.max(L / n / 2, step / 2);
+      const last = buried[buried.length - 1];
+      if (last && at - half <= last[1] + 1e-9) last[1] = Math.max(last[1], at + half);
+      else buried.push([at - half, at + half]);
+    }
+    s += L;
+  }
+  // a cut that ends just short of a vertex would leave a stub whose far end takes that vertex's (bend) normal: cut to the vertex
+  const snap = (a, dir) => {
+    for (const v of vs) if (v > 0 && v < s && (v - a) * dir > 0 && Math.abs(v - a) < step) return v;
+    return a;
+  };
+  return subtractIntervalLists([[0, s]], buried)
+    .map(([a, b]) => [a > 0 ? snap(a, 1) : a, b < s ? snap(b, -1) : b])
+    .filter(([a, b]) => b - a >= KERB_MIN_PIECE);
+}
+
+// A granite kerb: top between offsets o0..o1 at yTop, with vertical faces to yLow on the `low` side(s). A kerb stands
+// between a carriageway and what is beside it, so where its line runs inside a carriageway (its own on the inside of a
+// tight bend, another road's at a junction, a side-street mouth, a dual carriageway or an overlapping road) it is cut:
+// `layer.clip` is the carriageway index.
+function kerbRun(layer, pts, o0, o1, yTop, yLowInner, yLowOuter, u0 = 0, tag = null, pass = 0) {
+  if (layer.clip && pass < 8) {
+    const L = polyLength(pts);
+    const pieces = kerbPiecesOutside(pts, (o0 + o1) / 2, layer.clip.depthAt);
+    if (!(pieces.length === 1 && pieces[0][0] <= 1e-6 && pieces[0][1] >= L - 1e-6)) {
+      // a sliced piece gets its own end normals (slicePts + rightNormals), so it is tested again as drawn
+      for (const [a, b] of pieces) {
+        const q = slicePts(pts, a, b);
+        if (q.length >= 4) kerbRun(layer, q, o0, o1, yTop, yLowInner, yLowOuter, u0 + a, tag, pass + 1);
+      }
+      return;
+    }
+  }
+  if (layer.runs) layer.runs.push({ pts, o0, o1, ...tag }); // the kerb lines as drawn, for audits and tests
   ribbon(layer, pts, o0, o1, yTop, { u0 });
   if (yLowInner != null) wallStrip(layer, pts, o0, yLowInner, yTop, u0);
   if (yLowOuter != null) wallStrip(layer, pts, o1, yLowOuter, yTop, u0);
@@ -173,6 +234,58 @@ export function createSegmentIndex(cell = 16) {
   };
 }
 
+
+/**
+ * The asphalt carriageways as the engine draws them (the same per-vertex quads as `ribbon(asphalt, r.pts, -h, h)`), for
+ * "how deep inside a carriageway is this point". depthAt(x, z) = the largest distance to the side edges (the kerb lines)
+ * of any carriageway quad that contains the point, 0 when it is on no carriageway.
+ */
+export function createCarriagewayIndex(roads, cell = 16) {
+  const hash = new Map();
+  for (const r of roads || []) {
+    if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4 || r.drop) continue;
+    const h = carriagewayWidth(r) / 2;
+    const nr = rightNormals(r.pts);
+    for (let i = 0; i + 1 < r.pts.length / 2; i++) {
+      const p = (k, o) => [r.pts[2 * k] + nr[k][0] * o, r.pts[2 * k + 1] + nr[k][1] * o];
+      const q = [p(i, -h), p(i + 1, -h), p(i + 1, h), p(i, h)];
+      const xs = q.map((c) => c[0]);
+      const zs = q.map((c) => c[1]);
+      const item = { q, road: r };
+      for (let ix = Math.floor(Math.min(...xs) / cell); ix <= Math.floor(Math.max(...xs) / cell); ix++) {
+        for (let iz = Math.floor(Math.min(...zs) / cell); iz <= Math.floor(Math.max(...zs) / cell); iz++) {
+          const k = ix * 100003 + iz;
+          if (!hash.has(k)) hash.set(k, []);
+          hash.get(k).push(item);
+        }
+      }
+    }
+  }
+  const segDist = (x, z, a, b) => {
+    const dx = b[0] - a[0];
+    const dz = b[1] - a[1];
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz || 1)));
+    return Math.hypot(a[0] + dx * t - x, a[1] + dz * t - z);
+  };
+  const inside = (q, x, z) => {
+    let c = false;
+    for (let i = 0, j = 3; i < 4; j = i++) {
+      if ((q[i][1] > z) !== (q[j][1] > z) && x < ((q[j][0] - q[i][0]) * (z - q[i][1])) / (q[j][1] - q[i][1]) + q[i][0]) c = !c;
+    }
+    return c;
+  };
+  /** @returns {{ depth: number, road: object|null }} */
+  const at = (x, z) => {
+    let best = { depth: 0, road: null };
+    for (const it of hash.get(Math.floor(x / cell) * 100003 + Math.floor(z / cell)) || []) {
+      if (!inside(it.q, x, z)) continue;
+      const d = Math.min(segDist(x, z, it.q[0], it.q[1]), segDist(x, z, it.q[3], it.q[2]));
+      if (d > best.depth) best = { depth: d, road: it.road };
+    }
+    return best;
+  };
+  return { at, depthAt: (x, z) => at(x, z).depth };
+}
 
 // ---- contraflow cycle lanes: a solid white line 1.5 m in from the left kerb of a one-way street and a bicycle pictogram
 // every SYMBOL_EVERY m, upright for a rider coming towards the cars --------------------------------------------------------
@@ -339,11 +452,14 @@ export function buildGroundHeightField(geo, surfaces = null, terrain = null) {
 /**
  * @param {object} geo cph-geodata
  * @param {{ surfaces?: object|null, pavement?: boolean, terrain?: object|null }} [opts] surfaces = data/cph-surfaces.json (markings);
- *   pavement = pavements are built elsewhere (omit the flat sidewalk layer); terrain = js/terrain-cph.js (layers are draped on it)
+ *   pavement = pavements are built elsewhere (omit the flat sidewalk layer); terrain = js/terrain-cph.js (layers are draped on it);
+ *   clipKerbs = false keeps the kerb lines that run inside carriageways (for before/after audits only)
  */
-export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false, terrain = null } = {}) {
+export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false, terrain = null, clipKerbs = true } = {}) {
   const asphalt = new Layer(terrain);
   const kerb = new Layer(terrain);
+  kerb.runs = [];
+  kerb.clip = clipKerbs ? createCarriagewayIndex(geo.roads) : null;
   const sidewalk = new Layer(terrain);
   const cycle = new Layer(terrain);
   const paint = new Layer(terrain);
@@ -413,7 +529,7 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
       // not in the junction ends, where the blue crossing runs)
       const a = side * h;
       const plain = subtractIntervalLists(standing(lay, side, 'inner', kt0, L - kt1), sp ? [...ranges, [0, trim0], [L - trim1, L]] : []);
-      piecesOf(r.pts, plain, (q, a0) => kerbRun(kerb, q, Math.min(a, a + side * KERB_W), Math.max(a, a + side * KERB_W), pavementY + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.asphalt : null, side > 0 ? null : SURFACE_Y.asphalt, a0));
+      piecesOf(r.pts, plain, (q, a0) => kerbRun(kerb, q, Math.min(a, a + side * KERB_W), Math.max(a, a + side * KERB_W), pavementY + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.asphalt : null, side > 0 ? null : SURFACE_Y.asphalt, a0, { road: r, side, kind: 'plain' }));
       if (!sp) continue;
       // road kerb (cycle-track height), the cycle track, the outer kerb (pavement height)
       const o1 = h + KERB_W;
@@ -421,10 +537,10 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
       const sd = (p, q) => (side > 0 ? [p, q] : [-q, -p]);
       const inner = intersectIntervals(standing(lay, side, 'inner', trim0, L - trim1), ranges);
       const outer = intersectIntervals(standing(lay, side, 'outer', trim0, L - trim1), ranges);
-      piecesOf(r.pts, inner, (q, a0) => kerbRun(kerb, q, ...sd(h, o1), SURFACE_Y.cycle + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.asphalt : null, side > 0 ? null : SURFACE_Y.asphalt, a0));
+      piecesOf(r.pts, inner, (q, a0) => kerbRun(kerb, q, ...sd(h, o1), SURFACE_Y.cycle + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.asphalt : null, side > 0 ? null : SURFACE_Y.asphalt, a0, { road: r, side, kind: 'inner' }));
       piecesOf(r.pts, outer, (q, a0) => {
         ribbon(cycle, q, ...sd(o1, o2), SURFACE_Y.cycle, { u0: a0 });
-        kerbRun(kerb, q, ...sd(o2, o2 + KERB_W), pavementY + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.cycle : null, side > 0 ? null : SURFACE_Y.cycle, a0);
+        kerbRun(kerb, q, ...sd(o2, o2 + KERB_W), pavementY + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.cycle : null, side > 0 ? null : SURFACE_Y.cycle, a0, { road: r, side, kind: 'outer' });
       });
       // white edge line along the carriageway side of the track
       piecesOf(r.pts, inner, (q) => ribbon(paint, q, ...sd(o1 + 0.12, o1 + 0.12 + 0.1), SURFACE_Y.cyclePaint));
@@ -483,8 +599,8 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
         // the carriageway side of the arc: toward the junction centre
         const t = [arc[arc.length - 2] - arc[0], arc[arc.length - 1] - arc[1]];
         const toRoad = (-t[1]) * (m.mouth.x - arc[0]) + t[0] * (m.mouth.z - arc[1]);
-        if (toRoad > 0) kerbRun(kerb, arc, -KERB_W, 0, pavementY + SURFACE_Y.kerbTop, null, SURFACE_Y.asphalt);
-        else kerbRun(kerb, arc, 0, KERB_W, pavementY + SURFACE_Y.kerbTop, SURFACE_Y.asphalt, null);
+        if (toRoad > 0) kerbRun(kerb, arc, -KERB_W, 0, pavementY + SURFACE_Y.kerbTop, null, SURFACE_Y.asphalt, 0, { road: geo.roads[m.mouth.road], kind: 'arc', through: m.mouth });
+        else kerbRun(kerb, arc, 0, KERB_W, pavementY + SURFACE_Y.kerbTop, SURFACE_Y.asphalt, null, 0, { road: geo.roads[m.mouth.road], kind: 'arc', through: m.mouth });
       }
       for (const rp of m.ramps) {
         const q = [[rp.quad[0], rp.quad[1]], [rp.quad[2], rp.quad[3]], [rp.quad[4], rp.quad[5]], [rp.quad[6], rp.quad[7]]];
