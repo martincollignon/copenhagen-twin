@@ -322,7 +322,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   let lakes = null;
   let ground;
   if (lakesDoc?.lakes?.length) {
-    lakes = buildLakes(scene, lakesDoc, { groundMaterial: groundMaterial(), size: GROUND_SIZE, bbox: geo.frame?.bbox || CPH_FRAME.bbox, planar: water !== 'simple', terrain });
+    lakes = buildLakes(scene, lakesDoc, { groundMaterial: groundMaterial(), size: GROUND_SIZE, bbox: geo.frame?.bbox || CPH_FRAME.bbox, planar: water !== 'simple', terrain, parks: geo.parks || [] });
     scene.add(lakes.ground);
     ground = lakes.ground;
     markInit(`lakes(${lakes.stats.lakes})`);
@@ -357,7 +357,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     if (doc) {
       // ONE spatial constraint map (footprints, water, the measured carriageway, cycle strips, pavements) places every item
       const zones = streetsStats && !debug.split(',').includes('noplace') ? createZoneMap({ geo, lakes: lakesDoc, surfaces: surfacesCut }) : null;
-      furniture = createStreetFurniture(scene, doc, { groundHeight: traffic?.surfaces?.groundHeight || null, place: zones ? (d) => placeFurniture(d, { zones, geo }) : null });
+      furniture = createStreetFurniture(scene, doc, { groundHeight: traffic?.surfaces?.groundHeight || null, place: zones ? (d) => placeFurniture(d, { zones, geo }) : null, lakeDistance: lakes?.lakeDistance || null });
       markInit(`furniture(${furniture.plan.trees.length} trees, ${furniture.plan.lamps.length} lamps, ${furniture.plan.cars.length} cars${furniture.plan.report ? `, ${furniture.plan.report.dropped.length} dropped` : ''})`);
     }
   }

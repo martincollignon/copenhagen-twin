@@ -101,3 +101,44 @@ test('surface cuts replace or drop surface polygons', () => {
   assert.equal(out.surfaces[0].cls, 'gravel');
   assert.equal(doc2.surfaces.length, 3, 'input untouched');
 });
+
+// ---- water level / terrain consistency (data/cph-terrain.json + data/cph-lakes.json) ----
+import { createTerrain } from '../js/terrain-cph.js';
+const terrainDoc = JSON.parse(readFileSync(new URL('../data/cph-terrain.json', import.meta.url), 'utf8'));
+const realTerrain = createTerrain(terrainDoc);
+
+test('Sortedams Sø and Peblinge Sø are separate basins with their own measured level (0.84 m apart)', () => {
+  const basins = doc.basins.filter((b) => b.lake === 'lake:0');
+  assert.equal(basins.length, 2, 'the bridge strip splits the merged lake');
+  const [a, b] = basins.map((x) => x.level).sort((p, q) => p - q);
+  assert.ok(b - a > 0.5 && b - a < 1.2, `levels ${a} / ${b}`);
+  // the measured level is the DTM over the water: the terrain at an open-water point equals its basin's level
+  assert.ok(Math.abs(realTerrain.heightAt(-60, -200) - a) < 0.05, 'Peblinge');
+  assert.ok(Math.abs(realTerrain.heightAt(150, -650) - b) < 0.05, 'Sortedams');
+});
+
+test('lake walls: the quay of the Soerne stands 0.3-1.2 m over its own water, except at the bridge approach', () => {
+  const a = buildLakeArrays(doc, { terrain: realTerrain });
+  const soerne = a.freeboards.filter((f) => !f.natural && !f.abutment);
+  assert.ok(soerne.length > 1000);
+  const tall = soerne.filter((f) => f.free > 1.2);
+  assert.equal(tall.length, 0, `walls over 1.2 m: ${tall.slice(0, 5).map((f) => `${f.id} ${f.x},${f.z} ${f.free.toFixed(2)}`).join('; ')}`);
+  assert.ok(soerne.every((f) => f.free >= WATER.minFreeboard - 1e-9));
+  const sorted = soerne.map((f) => f.free).sort((p, q) => p - q);
+  const med = sorted[sorted.length >> 1];
+  assert.ok(med > 0.4 && med < 0.8, `median free-board ${med.toFixed(2)} m (visual-refs 8a: 0.3-0.8 m)`);
+});
+
+test('the bridge approach is the only place a Soerne wall may be taller than the deck allows', () => {
+  const a = buildLakeArrays(doc, { terrain: realTerrain });
+  const abut = a.freeboards.filter((f) => !f.natural && f.abutment);
+  assert.ok(abut.length > 20 && Math.max(...abut.map((f) => f.free)) < 4.2, 'bridge deck 1.62 m over a -0.94 m lake plus the coping');
+});
+
+test('natural park lakes get grassed banks, not quay walls with coping', () => {
+  const a = buildLakeArrays(doc, { terrain: realTerrain });
+  const kinds = new Set(a.walls.kind);
+  assert.ok(kinds.has(3), 'bank faces exist');
+  assert.ok(kinds.has(0) && kinds.has(1), 'quay wall + coping exist for the Soerne');
+  assert.ok(a.freeboards.filter((f) => f.natural).length > 0);
+});

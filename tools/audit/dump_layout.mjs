@@ -61,7 +61,7 @@ let lakeWalls = null;
 if (terrain && !terrain.flat) {
   const { buildLakeArrays } = await import('../../js/lakes-cph.js');
   const arrays = buildLakeArrays(read('data/cph-lakes.json'), { terrain });
-  lakeWalls = { level: arrays.level, freeboards: arrays.freeboards.map((f) => ({ id: f.id, x: +f.x.toFixed(1), z: +f.z.toFixed(1), free: +f.free.toFixed(2) })) };
+  lakeWalls = { level: arrays.level, freeboards: arrays.freeboards.map((f) => ({ id: f.id, x: +f.x.toFixed(1), z: +f.z.toFixed(1), free: +f.free.toFixed(2), natural: !!f.natural, abutment: !!f.abutment })), basins: arrays.basins };
 }
 
 // the placer: ONE spatial constraint map (footprints, water, carriageway, strips, pavements) places the furniture
@@ -71,7 +71,11 @@ if (zonesMod && placeMod && streetsDoc) {
   const { applySurfaceCuts } = await import('../../js/lakes-cph.js');
   zones = zonesMod.createZoneMap({ geo, lakes: lakesDoc, surfaces: applySurfaceCuts(surfaces, layoutMod.mergeSurfaceCuts(lakesDoc.surface_cuts, geo.surfaceCuts)) });
 }
-const plan = buildFurniturePlan(furniture, ground, { seed: 1, place: zones ? (d) => placeMod.placeFurniture(d, { zones, geo }) : null });
+// untyped crowns get the context genus the engine gives them (js/tree-species-cph.js; the Soerne avenues are lime / chestnut)
+const { resolveGenus } = await import('../../js/tree-species-cph.js').catch(() => ({}));
+const { groundField, lakeDistanceFrom } = await import('../../js/ground-field-cph.js').catch(() => ({}));
+const lakeDistance = groundField ? lakeDistanceFrom(groundField(read('data/cph-lakes.json'), [])) : null;
+const plan = buildFurniturePlan(furniture, ground, { seed: 1, place: zones ? (d) => placeMod.placeFurniture(d, { zones, geo }) : null, resolveTree: resolveGenus ? (t) => resolveGenus(t, { lakeDistance }) : null });
 const slim = (list, keys) => list.map((i) => Object.fromEntries(keys.map((k) => [k, i[k]])));
 const base = ['x', 'z', 'y', 'yaw'];
 // Buildings as the engine stands them: `ground`, and the height of the street (walking surface) just outside the outline
@@ -125,7 +129,7 @@ const layout = {
   lakeWalls,
   roads,
   plan: {
-    trees: slim(plan.trees, ['x', 'z', 'y', 'genus', 'height', 'crownR']),
+    trees: slim(plan.trees, ['x', 'z', 'y', 'genus', 'genusSource', 'height', 'crownR']),
     lamps: plan.lamps.map((l) => ({
       x: l.x, z: l.z, y: l.y, mount: l.mount, pole: l.pole, poleH: l.poleH, lampY: l.lampY, bracket: !!l.bracket,
       wire: l.wire ? { pts: l.wire.pts, wireY: l.wire.wireY, len: l.wire.len, t: l.wire.t } : null

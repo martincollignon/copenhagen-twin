@@ -14,15 +14,16 @@ import {
   Fn, float, vec2, vec3, vec4, attribute, positionWorld, normalWorldGeometry, fwidth, floor, fract, mod, min, max,
   mix, step, smoothstep, sin, dot, abs, length, pow, exp, clamp
 } from 'three/tsl';
+import { poolLightAt } from './pool-light-cph.js';
 
-const srgb = (r, g, b) => {
+export const srgb = (r, g, b) => {
   const c = new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
   return vec3(c.r, c.g, c.b);
 };
 
 const hash2D = Fn(([p]) => fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453)));
 const hash1D = Fn(([n]) => fract(sin(float(n).mul(127.1).add(311.7)).mul(43758.5453)));
-const noise2D = Fn(([p]) => {
+export const noise2D = Fn(([p]) => {
   const pv = vec2(p).toVar();
   const i = floor(pv).toVar();
   const f = fract(pv).toVar();
@@ -175,14 +176,16 @@ function stoneField(size, gapFrac, tint) {
 }
 
 // ---- gravel and plain concrete -----------------------------------------------------------------------------------
-const gravel = Fn(([u, v, seed, wp]) => {
+/** Fine pale gravel by world position only (shared by the gravel register polygons and the lake-path ground band: no seam). */
+export const gravelRGB = Fn(([wp]) => {
   const fpw = length(vec2(fwidth(wp.x), fwidth(wp.y)));
   const fine = float(1.0).sub(smoothstep(0.01, 0.08, fpw));
   const g = noise2D(wp.mul(70.0)).mul(0.5).add(noise2D(wp.mul(16.0)).mul(0.5));
   const big = noise2D(wp.mul(0.7));
-  const c = mix(srgb(150, 138, 118), srgb(176, 165, 146), big).mul(float(0.88).add(g.mul(0.24).mul(fine)));
-  return vec4(c, 0.98);
+  return mix(srgb(142, 130, 110), srgb(168, 156, 134), big).mul(float(0.88).add(g.mul(0.24).mul(fine)));
 });
+
+const gravel = Fn(([u, v, seed, wp]) => vec4(gravelRGB(wp), 0.98));
 
 const concrete = Fn(([u, v, seed, wp]) => {
   const fp = max(fwidth(u), fwidth(v)).max(0.0004);
@@ -249,6 +252,7 @@ export function createRoadSurfaceMaterials() {
     const out = fn(kuv.x, kuv.y, withSeed ? seed : float(0.25), wp);
     const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0, side });
     mat.colorNode = out.xyz;
+    mat.emissiveNode = out.xyz.mul(poolLightAt(positionWorld)); // street-light pools (js/pool-light-cph.js)
     mat.roughnessNode = out.w;
     if (polygonOffset) {
       mat.polygonOffset = true;
