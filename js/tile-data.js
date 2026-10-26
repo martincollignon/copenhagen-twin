@@ -4,9 +4,11 @@
 // same way the district build does, and assembles for a tile the CONTEXT its layers are built from: the items the tile owns
 // plus the items of the tiles around it (a junction, a kerb, a party wall or a placement zone reaches over a tile edge).
 //
-//   createCityGeo(...)     boot: the road layer of every tile assembled once, streets applied, bucketed by tile. The agent
-//                          systems (traffic, cyclists, pedestrians) and the ground shader read this whole-city document.
-//   createTileData(...)    the per-tile layer store with prepared (layout-applied) views and tileContext(id, ring)
+//   createBaseGeo(...)     the whole-city document without any tile's items: the road graph (with the street layout's node / width
+//                          fixes), the frame, the point layers' keys. Roads, pavements, cycle tracks and signals come per tile.
+//   createCityGeo(...)     the district-sized variant: every tile's road layer assembled at once (tests, small tile sets)
+//   createTileData(...)    the per-tile layer store with prepared (layout-applied) views, roadsOf(id) (the tile's roads with the
+//                          street layout applied, from its `roads` and `streets` layers) and tileContext(id, ring)
 
 import { createGeodataAssembler, createFurnitureAssembler, createSurfacesAssembler, createVegetationAssembler, createEntrancesAssembler, createVenuesAssembler } from './tile-store.js';
 import { applyStreets, applyTerrainGround, mergeSurfaceCuts } from './layout-cph.js';
@@ -27,6 +29,32 @@ const bboxCentre = (flat) => {
 
 /** Tile that owns a polyline / ring (centre of its bbox, as tile_split.py owns them). */
 export const ownerOfFlat = (flat) => (flat?.length >= 2 ? tileOfLocal(...bboxCentre(flat)) : null);
+
+/**
+ * The city document the tiles hang off: `meta.geodata` plus the road graph and empty lists (what the tiles bring is held per tile).
+ * `graphFix` (the street layout's node moves, link widths and dropped links, indices of THIS graph; tools/cph-geodata/tile_streets.py
+ * writes it for the citywide graph) is applied to the graph here.
+ */
+export function createBaseGeo(meta, roadGraph, graphFix = null) {
+  const asm = createGeodataAssembler(meta, roadGraph);
+  const geo = asm.doc();
+  const stats = graphFix ? applyStreets(geo, { version: 'cph-streets/1', roads: {}, graph: graphFix }) : null;
+  return { geo, stats };
+}
+
+/**
+ * The street layout's graph part for a graph it was not made for: the indices of data/city/streets.json refer to the district's
+ * road graph, so a citywide graph (different numbering) must not take them. Checks a sample of the nodes against `roadGraph`.
+ */
+export function graphFixFits(graph, roadGraph, tolerance = 30) {
+  if (!graph?.nodes?.length || !roadGraph?.nodes) return false;
+  const step = Math.max(1, Math.floor(graph.nodes.length / 40));
+  for (let k = 0; k < graph.nodes.length; k += step) {
+    const [i, x, z] = graph.nodes[k];
+    if (2 * i + 1 >= roadGraph.nodes.length || Math.hypot(roadGraph.nodes[2 * i] - x, roadGraph.nodes[2 * i + 1] - z) > tolerance) return false;
+  }
+  return true;
+}
 
 /**
  * The whole-city road document. `roadPayloads` = [[tileId, roads layer payload]]; `streets` = data/city/streets.json (or null).
@@ -62,28 +90,72 @@ function fixesFor(streets, ids) {
 /**
  * @param {{ index: object, meta: object, streets?: object|null, lakes?: object|null, geo: object, roadsByTile: Map, terrain: object, lod2?: object|null }} city
  */
-export function createTileData({ index, meta, streets = null, lakes = null, geo, roadsByTile, terrain, lod2 = null }) {
+export function createTileData({ index, meta, streets = null, lakes = null, geo, roadsByTile = null, terrain, lod2 = null }) {
   const exists = (id) => !!index.tiles[id];
   const entries = new Map(); // id -> { layers: Map(name -> payload), memo: {} }
-  const cuts = mergeSurfaceCuts(lakes?.surface_cuts, geo.surfaceCuts);
+  const cuts = mergeSurfaceCuts(lakes?.surface_cuts, geo.surfaceCuts, streets?.surfaceCuts);
+  // `streets` is either the whole street layout (data/city/streets.json: roads by id, pavements and cycle tracks bucketed here
+  // by the tile that owns them) or absent, in which case each tile brings its own `streets` layer (tile_streets.py)
+  const legacy = streets?.roads && !streets.tile ? streets : null;
+  const legacyBuckets = { sidewalks: new Map(), cycleTracks: new Map() };
+  if (legacy) {
+    for (const [key, field] of [['sidewalks', 'ring'], ['cycleTracks', 'pts']]) {
+      for (const item of legacy[key] || []) {
+        const tid = ownerOfFlat(item[field]);
+        if (!tid) continue;
+        if (!legacyBuckets[key].has(tid)) legacyBuckets[key].set(tid, []);
+        legacyBuckets[key].get(tid).push(item);
+      }
+    }
+  }
   const entry = (id) => {
     let e = entries.get(id);
     if (!e) entries.set(id, (e = { layers: new Map(), memo: {} }));
     return e;
   };
-  const roadsOf = (id) => roadsByTile.get(id) || { roads: [], sidewalks: [], cycleTracks: [] };
+  const EMPTY_ROADS = Object.freeze({ roads: [], sidewalks: [], cycleTracks: [], signals: [] });
+  /** The street layout that applies to a tile: its own `streets` layer, or the legacy whole-city document restricted to it. */
+  const streetsDocOf = (id, roads) => {
+    const layer = entries.get(id)?.layers.get('streets');
+    if (layer) return layer;
+    if (!legacy) return null;
+    const ids = new Set(roads.map((r) => r.id));
+    return {
+      roads: legacy.roads,
+      extraRoads: (legacy.extraRoads || []).filter((e) => ids.has(e.base)),
+      sidewalks: legacyBuckets.sidewalks.get(id) || null,
+      cycleTracks: legacyBuckets.cycleTracks.get(id) || null
+    };
+  };
+  const roadsOf = (id) => {
+    if (roadsByTile) return roadsByTile.get(id) || EMPTY_ROADS;
+    const e = entries.get(id);
+    const p = e?.layers.get('roads');
+    if (!p) return EMPTY_ROADS;
+    return (e.memo.roads ||= (() => {
+      // the tile's items with its street layout applied (the payload objects are updated in place, once per layer set)
+      const mini = { roads: [...(p.roads || [])], sidewalks: [...(p.sidewalks || [])], cycleTracks: [...(p.cycleTracks || [])] };
+      const doc = streetsDocOf(id, mini.roads);
+      if (doc) applyStreets(mini, { roads: doc.roads || {}, extraRoads: doc.extraRoads, sidewalks: doc.sidewalks?.length ? doc.sidewalks : null, cycleTracks: doc.cycleTracks?.length ? doc.cycleTracks : null });
+      return { roads: mini.roads, sidewalks: mini.sidewalks, cycleTracks: mini.cycleTracks, signals: p['points.signals'] || [] };
+    })());
+  };
 
   const api = {
     entries,
     has: (id, layer) => !!entries.get(id)?.layers.has(layer),
     layersOf: (id) => [...(entries.get(id)?.layers.keys() || [])],
     held: () => [...entries.keys()],
+    /** The tile's roads, pavements, cycle tracks (street layout applied) and signals; empty until its `roads` layer is held. */
+    roadsOf,
 
     /** Stores a fetched layer (null = the tile has none). Feeds the terrain and the LoD2 index right away. */
     setLayer(id, name, payload, { pin = false } = {}) {
       const e = entry(id);
       e.layers.set(name, payload);
-      e.memo = {}; // every prepared view may depend on the new layer
+      // every prepared view may depend on the new layer (the tile's roads only on its own roads and streets layers: applying the street
+      // layout twice would lose the survey centrelines)
+      e.memo = name === 'roads' || name === 'streets' || !e.memo.roads ? {} : { roads: e.memo.roads };
       if (name === 'terrain' && payload) terrain.addTile?.(payload, { pin });
       if (name === 'lod2' && payload) lod2?.addTile(id, payload);
     },
@@ -94,7 +166,7 @@ export function createTileData({ index, meta, streets = null, lakes = null, geo,
       if (!e?.layers.has(name)) return;
       const payload = e.layers.get(name);
       e.layers.delete(name);
-      e.memo = {};
+      e.memo = name === 'roads' || name === 'streets' || !e.memo.roads ? {} : { roads: e.memo.roads };
       if (name === 'terrain') terrain.removeTile?.(id, Object.keys(payload?.buildings || {}));
       if (name === 'lod2') lod2?.drop(id);
       if (!e.layers.size) entries.delete(id);
@@ -112,7 +184,8 @@ export function createTileData({ index, meta, streets = null, lakes = null, geo,
         const p = e.layers.get('buildings');
         const list = p?.buildings ? [...p.buildings] : [];
         const mini = { buildings: list, roads: [] };
-        if (streets) applyStreets(mini, { roads: {}, buildings: fixesFor(streets, new Set(list.map((b) => b.id))) });
+        const fixes = e.layers.get('streets')?.buildings || (streets ? fixesFor(streets, new Set(list.map((b) => b.id))) : null);
+        if (fixes) applyStreets(mini, { roads: {}, buildings: fixes });
         applyTerrainGround(mini, terrain);
         return mini.buildings;
       })());
@@ -127,7 +200,8 @@ export function createTileData({ index, meta, streets = null, lakes = null, geo,
         const veg = e.layers.get('vegetation');
         const own = [...(p?.surfaces || []), ...(veg?.surfaces || [])];
         const ids = new Set(own.map((s) => s.id));
-        const tileCuts = cuts.length ? cuts.filter((c) => ids.has(c.id)) : [];
+        const layerCuts = e.layers.get('streets')?.surfaceCuts;
+        const tileCuts = mergeSurfaceCuts(cuts.length ? cuts.filter((c) => ids.has(c.id)) : [], layerCuts);
         return { surfaces: applySurfaceCuts({ surfaces: own }, tileCuts).surfaces, markings: p?.markings || [] };
       })());
     },
@@ -151,6 +225,7 @@ export function createTileData({ index, meta, streets = null, lakes = null, geo,
         roads: cat((t) => roadsOf(t).roads),
         sidewalks: cat((t) => roadsOf(t).sidewalks),
         cycleTracks: cat((t) => roadsOf(t).cycleTracks),
+        points: { ...geo.points, signals: cat((t) => roadsOf(t).signals) },
         own: { roads: new Set(ownRoads.roads), sidewalks: new Set(ownRoads.sidewalks), cycleTracks: new Set(ownRoads.cycleTracks) }
       };
       const ids = new Set(ownBuildings.map((b) => b.id));

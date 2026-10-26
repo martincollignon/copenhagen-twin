@@ -22,6 +22,8 @@ ap.add_argument('--speed', type=float, default=140.0, help='camera speed, m/s')
 ap.add_argument('--height', type=float, default=22.0, help='camera height above the datum, m')
 ap.add_argument('--heap-pct', type=float, default=15.0)
 ap.add_argument('--query', default='', help='extra query string')
+ap.add_argument('--profile', action='store_true', help='record a CDP CPU profile of loop 1 and print the hottest functions')
+ap.add_argument('--path', default='', help='custom lap as x,z;x,z;... (local frame); default is the district lap')
 args = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 out = args.out if os.path.isabs(args.out) else os.path.join(root, args.out)
@@ -33,6 +35,8 @@ time.sleep(1)
 
 # the lap: NS37 -> north-west (the lakes) -> north-east -> south-east -> south-west -> NS37 (local frame, x east / z south)
 PATH = [(0, 0), (-620, -600), (620, -600), (620, 600), (-620, 600), (0, 0)]
+if args.path:
+    PATH = [tuple(float(v) for v in p.split(',')) for p in args.path.split(';')]
 
 FLY_JS = '''([path, speed, height]) => {
   const tw = globalThis.__twin;
@@ -72,6 +76,19 @@ SNAP_JS = '''() => { const t = globalThis.__twin; const s = t.stream.snapshot();
            ids: s.resident.ids }; }'''
 
 fails = []
+def summarize_profile(prof):
+    nodes = {n['id']: n for n in prof['nodes']}
+    dt = prof['timeDeltas']
+    self_us = {}
+    for nid, d in zip(prof['samples'], dt):
+        self_us[nid] = self_us.get(nid, 0) + d
+    agg = {}
+    for nid, us in self_us.items():
+        cf = nodes[nid]['callFrame']
+        k = (cf['functionName'] or '(anon)', cf['url'].split('/')[-1], cf['lineNumber'])
+        agg[k] = agg.get(k, 0) + us
+    rows = [{'name': k[0], 'url': k[1], 'line': k[2], 'self_ms': v / 1000} for k, v in agg.items()]
+    return sorted(rows, key=lambda r: -r['self_ms'])[:60]
 def check(name, ok, detail=''):
     print(('PASS' if ok else 'FAIL'), name, detail)
     if not ok: fails.append(name)
@@ -124,6 +141,8 @@ try:
             samples = []
             stop = {'v': False}
             # fly in the page; poll the streamer from here every ~1.5 s
+            if args.profile and loop == 1:
+                cdp.send('Profiler.enable'); cdp.send('Profiler.setSamplingInterval', {'interval': 500}); cdp.send('Profiler.start')
             page.evaluate(FLY_JS, [PATH, args.speed, args.height])
             t_loop = time.time()
             shots = 0
@@ -139,6 +158,11 @@ try:
                 if page.evaluate('() => !!globalThis.__twin.flyDone'): break
                 if time.time() - t_loop > 240: break
             timing = page.evaluate('() => globalThis.__twin.flyDone')
+            if args.profile and loop == 1:
+                prof = cdp.send('Profiler.stop')['profile']
+                json.dump(prof, open(f'{out}/loop1.cpuprofile', 'w'))
+                report['profile'] = summarize_profile(prof)
+                for row in report['profile'][:30]: print(f"  {row['self_ms']:8.0f} ms  {row['name']}  {row['url']}:{row['line']}")
             sn = settle()
             page.screenshot(path=f'{out}/loop{loop}-return.png')
             h = heap_mb()
@@ -168,7 +192,7 @@ try:
         slow = page.evaluate('() => globalThis.__twin.stream.stats.slow')
         lt = page.evaluate('() => globalThis.__twin.longTasks || []')
         report['slowLayerAdds'] = sorted(slow, key=lambda x: -x['ms'])[:12]
-        report['longTasks'] = {'count': len(lt), 'over100': sum(1 for x in lt if x['ms'] > 100), 'over500': sum(1 for x in lt if x['ms'] > 500), 'max': max([x['ms'] for x in lt] or [0])}
+        report['longTasks'] = {'count': len(lt), 'over50': sum(1 for x in lt if x['ms'] > 50), 'totalMs': sum(x['ms'] for x in lt), 'over100': sum(1 for x in lt if x['ms'] > 100), 'over500': sum(1 for x in lt if x['ms'] > 500), 'max': max([x['ms'] for x in lt] or [0])}
         print('long tasks', report['longTasks'], '| slowest layer adds', [(x['layer'], x['ring'], x['ms']) for x in report['slowLayerAdds'][:6]])
         print('\n'.join(l for l in logs if l.startswith(('warning', 'log: [init]')))[:1500])
         browser.close()

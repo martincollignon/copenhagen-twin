@@ -24,12 +24,17 @@ import { createRoadSurfaceLayer } from './road-surfaces-cph.js';
 import { createTiledHeightField } from './ground-height-cph.js';
 import { createTiledLawnMask } from './grass-layout-cph.js';
 import { tileOfLocal } from './tile-grid.js';
-import { createCityGeo, createTileData } from './tile-data.js';
+import { createBaseGeo, graphFixFits, createTileData } from './tile-data.js';
 import { createTileStreamer } from './tile-streamer.js';
-import { streamConfig, extentOfTiles } from './tile-rings.js';
+import { streamConfig, extentOfTiles, distanceToRect } from './tile-rings.js';
 import { createBuildingsLayer } from './buildings-stream.js';
 import { createSlicer, nextFrame } from './yield-frame.js';
 import { createGroundLayer } from './ground-stream.js';
+import { createAgentRegion, createLaneIndex } from './agent-region.js';
+import { buildRoadNetwork } from './road-network.js';
+import { buildCyclistNetworkFor } from './cyclists.js';
+import { loadFarLayer } from './far-lod.js';
+import { applyPlainGround } from './ground-shader-cph.js';
 
 // js/world.js
 // The Copenhagen world: a ground plane in the Copenhagen frame (docs/cph-geodata-schema.md) plus data/cph-geodata.json,
@@ -479,12 +484,14 @@ const ringsBbox = (rings) => {
 
 /**
  * The city from the tile store, kept resident around the camera by the tile streamer (js/tile-streamer.js).
- *   global (built once at boot):  the road graph and everything the agents read (traffic, cyclists, pedestrians, signals), the
- *                                 lakes and their water, the ground frame beyond the compiled area, the DLB bridge, the
- *                                 tiles' road layer (kept for the whole index: the agent systems need the roads of the city)
+ *   global (built once at boot):  the road graph, the lakes that have the district's water treatment (a level in the terrain header) and
+ *                                 the DLB bridge, the generic water of the rest (the far layer's polygons), the shared materials
  *   streamed per tile:            terrain heights, ground mesh, road surfaces + the ground-height chunk, buildings (facades,
  *                                 LoD2, doors in the near ring), street furniture and trees, the lawn mask of the grass,
- *                                 the footprints pedestrians cannot walk through
+ *                                 the footprints pedestrians cannot walk through, the tile's roads and street layout
+ *   regional (agent-region.js):   traffic, cyclists and pedestrians run on the road graph and the near-ring roads of a region around
+ *                                 the camera, rebuilt as the camera moves
+ *   far (far-lod.js):             block meshes for every tile that is not resident, the sea out to the horizon
  */
 async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDate, stream, start, adoptMesh = null }) {
   const flags = new Set(debug.split(','));
@@ -495,25 +502,39 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
 
   // the playable extent follows the index; the compiled data's own frame is what the water and the rasters are cut to
   setCityBounds(extentOfTiles(ids), { frame: index.frame?.bbox || undefined });
+  const cutHalf = city.meta.terrain?.cut?.half ?? 750;
+  // a citywide index reaches far beyond the area the lake cut grid and the ground field were made for (the district)
+  const citywide = (index.frame?.bbox?.[2] ?? cutHalf) > cutHalf + 1 || (index.frame?.bbox?.[0] ?? -cutHalf) < -cutHalf - 1;
 
-  // roads: every tile's road layer, assembled and laid out once (agents and the ground shader read the whole-city document)
-  const roadPayloads = (await Promise.all(ids.map(async (id) => [id, await store.fetchLayer(id, 'roads')]))).filter((p) => p[1]);
-  const { geo, roadsByTile, stats: streetsStats } = createCityGeo(city.meta, city.roadGraph, roadPayloads, flags.has('nostreets') ? null : city.streets);
+  // road graph (every tile's roads, pavements and cycle tracks stream with the tile): the street layout's graph fixes are the ones that
+  // belong to THIS graph (data/city/streets.json refers to the district's numbering, tile_streets.py renumbers it)
+  const legacyFix = city.streets?.graph && graphFixFits(city.streets.graph, city.roadGraph) ? city.streets.graph : null;
+  if (city.streets?.graph && !legacyFix) console.info('[cph] data/city/streets.json numbers another road graph: its graph fixes are skipped (tools/cph-geodata/tile_streets.py renumbers them)');
+  const { geo } = createBaseGeo(city.meta, city.roadGraph, flags.has('nostreets') ? null : city.streetsGraph || legacyFix);
   checkGeodata(geo);
   globalThis.CPH_GEO = geo;
-  markInit(`geodata(${geo.roads.length} roads)`);
-  if (streetsStats) markInit(`streets(${streetsStats.roads} roads, ${streetsStats.dropped} dropped, ${streetsStats.sidewalks} pavements)`);
+  markInit(`geodata(${geo.roadGraph.links.length} links)`);
 
   const terrain = city.meta.terrain && !flags.has('flat') ? createStreamTerrain(city.meta.terrain) : FLAT_TERRAIN;
   const lod2 = city.meta.lod2 && !flags.has('nolod2') ? createTileLod2(city.meta, store.fetchBin) : null;
-  const data = createTileData({ index, meta: city.meta, streets: flags.has('nostreets') ? null : city.streets, lakes: city.lakes, geo, roadsByTile, terrain, lod2 });
+  const streets = flags.has('nostreets') ? null : city.streets;
+  const data = createTileData({ index, meta: city.meta, streets, lakes: city.lakes, geo, terrain, lod2 });
   globalThis.CPH_TERRAIN = terrain;
 
-  // Lakes are global: their rims are baked into the water meshes, so the terrain under them is loaded once and pinned, and the
-  // furniture of the tiles under the bridges feeds the DLB model.
-  const lakesDoc = !flags.has('nowater') ? city.lakes : null;
+  // Lakes with a level in the terrain header get the district's water (walls, coping, the shore field, reflections); they are global:
+  // their rims are baked into the water meshes, so the terrain under them is loaded once and pinned, and the furniture of the tiles
+  // under the bridges feeds the DLB model. Every other lake, pond and the harbour is the far layer's flat water (js/far-lod.js).
+  const hasLevel = (kind, id) => terrain.flat || (kind === 'lake' ? terrain.lakeLevel(id) : kind === 'pond' ? terrain.pondLevel(id) : terrain.deckHeight(id)) != null;
+  const lakesDoc = city.lakes && !flags.has('nowater') ? {
+    ...city.lakes,
+    lakes: (city.lakes.lakes || []).filter((l) => hasLevel('lake', l.id)),
+    ponds: (city.lakes.ponds || []).filter((l) => hasLevel('pond', l.id)),
+    bridges: (city.lakes.bridges || []).filter((b) => hasLevel('bridge', b.id))
+  } : null;
+  const hasLakes = !!lakesDoc?.lakes?.length;
+  const waterDoc = !flags.has('nowater') ? city.lakes : null; // every lake, pond and bridge strip: where nothing may stand or walk
   let dlbFurniture = null;
-  if (lakesDoc && !terrain.flat) {
+  if (hasLakes && !terrain.flat) {
     const bb = ringsBbox([...(lakesDoc.lakes || []), ...(lakesDoc.ponds || []), ...(lakesDoc.bridges || [])].map((l) => l.ring));
     if (bb) {
       const pinned = store.tilesForLocalBbox(bb, 25);
@@ -521,7 +542,7 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
       markInit(`terrain(${pinned.length} pinned)`);
     }
   }
-  if (lakesDoc?.lakes?.length && !flags.has('nobridge') && !flags.has('nofurniture')) {
+  if (hasLakes && !flags.has('nobridge') && !flags.has('nofurniture')) {
     const bridges = (lakesDoc.bridges || []).map((b) => ringsBbox([b.ring])).filter(Boolean);
     const dlbTiles = new Set(bridges.flatMap((bb) => store.tilesForLocalBbox(bb, 10)));
     const asm = createFurnitureAssembler(city.meta);
@@ -531,21 +552,25 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
   markInit(terrain.flat ? 'terrain(flat)' : `terrain(${city.meta.terrain.min}..${city.meta.terrain.max} m)`);
 
   let bridgeDLB = null;
-  if (lakesDoc?.lakes?.length && !flags.has('nobridge')) {
+  if (hasLakes && !flags.has('nobridge')) {
     bridgeDLB = buildBridgeDLB(scene, geo, lakesDoc, { terrain, furnitureDoc: dlbFurniture });
     if (bridgeDLB) markInit(`dlb(${bridgeDLB.lamps.count} lamps, ${bridgeDLB.layout.arches.length} arches)`);
   }
 
   // water (global) and the ground material the tiles share
-  const sharedGround = groundMaterial();
+  const sharedGround = hasLakes ? groundMaterial() : applyPlainGround(new THREE.MeshStandardNodeMaterial());
   let lakes = null;
-  if (lakesDoc?.lakes?.length) {
-    lakes = buildLakes(scene, lakesDoc, { groundMaterial: sharedGround, size: GROUND_SIZE, bbox: getDataBbox(), planar: water !== 'simple', terrain,
-      parks: geo.parks || [], modelBridge: (bridge) => bridgeDLB?.layout.bridgeId === bridge.id, skipGround: true });
+  if (hasLakes) {
+    // the shore fields are rasters over the data frame: for a citywide index, over the lakes only (padded), not over 18 km of city
+    const lakeBox = ringsBbox([...lakesDoc.lakes, ...(lakesDoc.ponds || []), ...(lakesDoc.bridges || [])].map((l) => l.ring));
+    const frame = getDataBbox();
+    const waterBox = citywide && lakeBox ? [lakeBox[0] - 120, lakeBox[1] - 120, lakeBox[2] + 120, lakeBox[3] + 120] : frame;
+    lakes = buildLakes(scene, lakesDoc, { groundMaterial: sharedGround, size: GROUND_SIZE, bbox: waterBox, planar: water !== 'simple', terrain,
+      parks: [], modelBridge: (bridge) => bridgeDLB?.layout.bridgeId === bridge.id, skipGround: true });
     markInit(`lakes(${lakes.stats.lakes})`);
   }
   const tileBoundsMap = new Map(ids.map((id) => [id, index.tiles[id].local]));
-  const ground = createGroundLayer(scene, { terrain, material: sharedGround, size: GROUND_SIZE, tileBounds: tileBoundsMap, cut: city.meta.terrain?.cut });
+  const ground = createGroundLayer(scene, { terrain, material: sharedGround, size: GROUND_SIZE, tileBounds: tileBoundsMap, cut: city.meta.terrain?.cut, generic: citywide });
   markInit('ground');
 
   // the layers the streamer fills
@@ -554,19 +579,16 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
 
   const tiledHeight = createTiledHeightField(terrain.flat ? null : terrain, tileOfLocal);
   let roads = null;
-  let traffic = null;
   let walk = null;
   if (!flags.has('noroads')) {
     roads = await createRoadSurfaceLayer(scene, { terrain: terrain.flat ? null : terrain, tiledHeight });
-    walk = createWalkSpace(geo, lakesDoc);
+    walk = createWalkSpace(geo, waterDoc);
     layers.push({
       name: 'roads', rings: ['near', 'mid'], fidelity: true,
       add: (ctx, ring) => roads.addTile(ctx.id, ctx.geo, ring === 'near' ? ctx.surfaces : null, { bounds: ctx.bounds, near: ring === 'near', slice: createSlicer(8) }),
       remove: (id) => roads.removeTile(id)
     });
     layers.push({ name: 'walk', rings: ['near', 'mid'], add: (ctx) => walk.addBuildings(ctx.id, ctx.ownBuildings), remove: (id) => walk.removeBuildings(id) });
-    const roadSurfaces = { group: roads.group, stats: roads.stats, groundHeight: tiledHeight, terrain };
-    traffic = await buildCphTraffic(scene, geo, { markInit, lakesDoc, terrain, debug, roadSurfaces, walk });
   }
 
   let buildings = null;
@@ -589,7 +611,7 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
   let furniture = null;
   if (roads && !flags.has('nofurniture') && city.meta.furniture) {
     furniture = createStreetFurniture(scene, null, { streaming: true, treeDate, groundHeight: tiledHeight, lakeDistance: lakes?.lakeDistance || null, adoptMesh });
-    const zonesOn = streetsStats && !flags.has('noplace');
+    const zonesOn = !flags.has('noplace');
     const M = 30;
     layers.push({
       name: 'furniture', rings: ['near'],
@@ -598,7 +620,7 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
         if (!own) return;
         const doc = bridgeDLB ? filterDLBFurniture(own, bridgeDLB.layout) : own;
         // ONE spatial constraint map per tile (+ a margin): footprints, water, carriageways, cycle strips, pavements
-        const zones = zonesOn ? createZoneMap({ geo: ctx.geo, lakes: lakesDoc, surfaces: ctx.surfaces, bbox: [ctx.bounds[0] - M, ctx.bounds[1] - M, ctx.bounds[2] + M, ctx.bounds[3] + M] }) : null;
+        const zones = zonesOn ? createZoneMap({ geo: ctx.geo, lakes: waterDoc, surfaces: ctx.surfaces, bbox: [ctx.bounds[0] - M, ctx.bounds[1] - M, ctx.bounds[2] + M, ctx.bounds[3] + M] }) : null;
         await nextFrame(); // the zone raster and the placement are two slices of work
         furniture.addTile(ctx.id, doc, { place: zones ? (d) => placeFurniture(d, { zones, geo: ctx.geo }) : null });
       },
@@ -612,10 +634,74 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
   await streamer.settle(origin.x, origin.z);
   markInit(`stream(${streamer.snapshot().resident.near} near, ${streamer.snapshot().resident.mid} mid)`);
 
+  // the far ring: block meshes for the tiles that are not resident, the harbour and the sea (`?far=0` off; `?far` forces it on a district index)
+  let far = null;
+  if ((citywide || flags.has('far')) && !flags.has('nofar') && !(new URLSearchParams(globalThis.location?.search).get('far') === '0')) {
+    const skipWater = new Set([...(lakesDoc?.lakes || []), ...(lakesDoc?.ponds || [])].map((l) => l.id));
+    far = await loadFarLayer(scene, store, { isResident: (id) => streamer.isBuilt(id), skipWater });
+    if (far) { far.flush(origin.x, origin.z, 40); markInit(`far(${store.post.far.tiles} tiles, ${(far.stats.bytes / 1e6).toFixed(1)} MB, ${far.stats.builds} built)`); }
+  }
+
+  // agents: traffic, cyclists, pedestrians and signal heads on the region around the camera
+  let agents = null;
+  let traffic = null;
+  if (roads && !flags.has('noroads')) {
+    let cyclists = null;
+    let heads = null;
+    let laneIndex = null;
+    const bikeLaneNear = (x, z, r) => !!laneIndex && laneIndex.near(x, z, r);
+    const networkOptions = {
+      walkable: walk.walkable, onSidewalk: walk.onSidewalk, blockAt: walk.blockAt,
+      // pedestrians walk outside the cycle track beside a carriageway
+      extraOffset: (e, sign) => {
+        const mx = e.sx + e.dx * e.len * 0.5 + e.rx * sign * (e.half + 1.4);
+        const mz = e.sz + e.dz * e.len * 0.5 + e.rz * sign * (e.half + 1.4);
+        return bikeLaneNear(mx, mz, 1.6) ? 2.4 : 0;
+      }
+    };
+    const tileIdsAround = (x, z, r) => store.tilesForLocalBbox([x - r, z - r, x + r, z + r]).filter((id) => distanceToRect(x, z, index.tiles[id].local) <= r);
+    const region = createAgentRegion({
+      roadGraph: geo.roadGraph,
+      tilesAround: tileIdsAround,
+      roadsOf: (id) => data.roadsOf(id),
+      ready: (id) => data.has(id, 'roads') && data.has(id, 'streets'),
+      stages: {
+        network: (sub, signals) => buildRoadNetwork(signals, { roadGraph: sub, ...networkOptions }),
+        cyclists: (g, ctx) => buildCyclistNetworkFor(g, ctx.network.nodes.filter((n) => n.signal)),
+        apply: (ctx) => {
+          const signalNodes = ctx.network.nodes.filter((n) => n.signal);
+          laneIndex = createLaneIndex(ctx.cyclists.lanes);
+          if (!traffic) {
+            const system = createTrafficSystem(scene, [], { network: ctx.network, groundHeight: tiledHeight, debug: (globalThis.__cphDebug = {}), ...networkOptions });
+            cyclists = createCyclistSystem(scene, null, signalNodes, { groundHeight: tiledHeight, network: ctx.cyclists });
+            heads = buildSignalHeads(scene, signalNodes, { groundHeight: tiledHeight });
+            const trafficUpdate = system.update;
+            system.update = (dt, elapsed, focusPos, playerEntity, activeMode, camera) => {
+              trafficUpdate(dt, elapsed, focusPos, playerEntity, activeMode, camera);
+              cyclists.update(dt, elapsed, focusPos || { x: 0, z: 0 }, null);
+              heads.update(elapsed, focusPos);
+            };
+            traffic = system;
+          } else {
+            traffic.setNetwork(ctx.network);
+            cyclists.setNetwork(ctx.cyclists);
+            heads.setNodes(signalNodes);
+          }
+          Object.assign(traffic, { cyclists: cyclists.riders, cyclistSystem: cyclists, signalNodes });
+        }
+      }
+    });
+    agents = region;
+    region.buildNow(origin.x, origin.z);
+    markInit(`agents(${region.stats.links} links, ${region.stats.edges} edges, ${region.stats.lanes} bike lanes, ${region.stats.signals} signals)`);
+  }
+
   return {
     colliders: [],
     update: (x, z, night = 0) => {
       streamer.update(x, z);
+      agents?.update(x, z);
+      far?.update(x, z);
       buildings?.update(x, z, night);
       lakes?.update(x, z);
       grass?.update(x, z);
@@ -626,7 +712,7 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     furniture,
     audioSignals: [],
     locationLabel: createLocator(geo),
-    trafficSystem: traffic ? traffic.traffic : nullTraffic(),
+    trafficSystem: traffic || nullTraffic(),
     cullingRoots: ['CopenhagenDebugFootprints'],
     roadSurfaces: roads,
     groundHeight: roads ? tiledHeight : null,
@@ -637,11 +723,13 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     buildings,
     attach: (context) => { buildings?.attach(context); lakes?.attach(context); },
     lakes,
-    lakeData: lakesDoc,
+    lakeData: hasLakes ? lakesDoc : null,
     grass,
     geo,
     stream: streamer,
-    tileData: data
+    tileData: data,
+    far,
+    agents
   };
 }
 

@@ -81,30 +81,40 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
   // =========================================================================
   // Vehicles rest on the terrain (js/terrain-cph.js via the scene's ground model); 0 on the flat plane
   const groundAt = (x, z) => (options.groundHeight ? options.groundHeight.terrainAt(x, z) : 0);
-  const network = buildRoadNetwork(signalIntersections, options);
-  const { nodes, edges, connector, curvePoint } = network;
+  let network = null;
+  let nodes = [];
+  let edges = [];
+  let connector = null;
+  let curvePoint = null;
 
   // Where lane i of edge e meets a crosswalk, measured along the crosswalk: along its road's lateral axis
   const laneCoord = (e, i) => (e.sx + e.rx * e.lanes[i]) * e.clx + (e.sz + e.rz * e.lanes[i]) * e.clz;
 
-  for (const n of nodes) {
-    n.sigOffset = signalOffset(n.x, n.z);
-    n.sideGroup = [];
-    for (const a of n.arms || []) n.sideGroup[a.side] = a.group;
-    n.box = new Array(n.groupCount).fill(0); // vehicles crossing it from each road (group: the widest road is 0)
-    n.crossing = new Array(n.sideCount).fill(0); // vehicles crossing (or about to cross) the crosswalk on each side
-    n.approach = new Array(n.sideCount).fill(null); // the edge arriving over each side's crosswalk
-    n.road = new Array(n.sideCount).fill(null); // an edge arriving or leaving over each side's crosswalk: the road it spans
+  // The road network can be swapped while the system runs (setNetwork): a streamed city keeps the network of the region around the camera.
+  function bindNetwork(net) {
+    network = net;
+    ({ nodes, edges, connector, curvePoint } = net);
+    for (const n of nodes) {
+      n.sigOffset = signalOffset(n.x, n.z);
+      n.sideGroup = [];
+      for (const a of n.arms || []) n.sideGroup[a.side] = a.group;
+      n.box = new Array(n.groupCount).fill(0); // vehicles crossing it from each road (group: the widest road is 0)
+      n.crossing = new Array(n.sideCount).fill(0); // vehicles crossing (or about to cross) the crosswalk on each side
+      n.approach = new Array(n.sideCount).fill(null); // the edge arriving over each side's crosswalk
+      n.road = new Array(n.sideCount).fill(null); // an edge arriving or leaving over each side's crosswalk: the road it spans
+    }
+    for (const e of edges) {
+      e.occ = e.lanes.map(() => []); // vehicles in each lane, sorted by position
+      // e.inSide / e.outSide: the crosswalks crossed on the way into e.to / out of e.from; e.axisIndex: its group at e.to;
+      // e.opposite: the oncoming edge of its road there (road-network.js)
+      e.to.approach[e.inSide] = e;
+      e.to.road[e.inSide] = e.from.road[e.outSide] = e;
+      e.through = 0; // vehicles from e crossing e.to straight on or to the right
+      e.lefts = 0; // and to the left
+    }
   }
-  for (const e of edges) {
-    e.occ = e.lanes.map(() => []); // vehicles in each lane, sorted by position
-    // e.inSide / e.outSide: the crosswalks crossed on the way into e.to / out of e.from; e.axisIndex: its group at e.to;
-    // e.opposite: the oncoming edge of its road there (road-network.js)
-    e.to.approach[e.inSide] = e;
-    e.to.road[e.inSide] = e.from.road[e.outSide] = e;
-    e.through = 0; // vehicles from e crossing e.to straight on or to the right
-    e.lefts = 0; // and to the left
-  }
+  bindNetwork(options.network || buildRoadNetwork(signalIntersections, options));
+
   // Is the intersection box held by vehicles of any road but group g's?
   const boxBusy = (n, g) => {
     for (let k = 0; k < n.box.length; k++) if (k !== g && n.box[k] > 0) return true;
@@ -947,6 +957,24 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     v.conn = null;
   }
 
+  // Swaps the road network (a streamed city re-centres it on the camera): everyone is taken off the old one and placed afresh
+  // around the focus on the new one by the next updates.
+  function setNetwork(net) {
+    for (const v of vehicles) {
+      retire(v);
+      v.claimed = false;
+      v.trail = null;
+      v.commit = null;
+      v.yielding = false;
+    }
+    bindNetwork(net);
+    nearX = Infinity;
+    nearZ = Infinity;
+    nearEdges.length = 0;
+    nearSignals.length = 0;
+    pedestrianSystem.setNetwork(net);
+  }
+
   function leave(v) {
     v.s = v.cs - v.conn.len;
     v.edge = v.move.to;
@@ -1705,7 +1733,8 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     cars,
     buses,
     peds: pedestrianSystem.peds,
-    network,
+    get network() { return network; },
+    setNetwork,
     get jamRetired() { return jamRetired; }
   };
 }

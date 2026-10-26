@@ -51,3 +51,20 @@ export function applyGroundField(material, lakesDoc, parks, { bbox }) {
   });
   return { field, texture: tex };
 }
+
+/**
+ * The plain ground for a city without the lake field (the streamed city outside the district): quiet grey stone with the same fine
+ * speckle as the field shader's stone, no grid, no lake path.
+ */
+export function applyPlainGround(material) {
+  const wp = positionWorld.xz;
+  const fpw = length(vec2(fwidth(wp.x), fwidth(wp.y)));
+  const fine = float(1).sub(smoothstep(0.02, 0.2, fpw));
+  const big = noise2D(wp.mul(0.35));
+  const mid = noise2D(wp.mul(3.1));
+  const speck = noise2D(wp.mul(46.0)).sub(0.5).mul(0.16).mul(fine);
+  material.colorNode = mix(srgb(112, 109, 103), srgb(132, 128, 120), big).mul(float(0.94).add(mid.mul(0.1)).add(speck));
+  material.roughnessNode = float(0.95);
+  material.metalness = 0;
+  return material;
+}

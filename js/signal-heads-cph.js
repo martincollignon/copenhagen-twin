@@ -8,22 +8,14 @@ import { vehiclePhase } from './signal-plan.js';
 
 const COLORS = { green: new THREE.Color(0x2ee66a), amber: new THREE.Color(0xffb020), red: new THREE.Color(0xff2a2a) };
 
-export function buildSignalHeads(scene, signalNodes, { groundHeight = null } = {}) {
-  const approaches = [];
-  for (const n of signalNodes) {
-    for (const arm of n.arms || []) {
-      const e = arm.in;
-      if (!e || arm.lead !== arm) continue;
-      const stopX = e.sx + e.dx * e.len;
-      const stopZ = e.sz + e.dz * e.len;
-      // on the kerb to the right of the approach
-      const off = e.half + 0.9;
-      approaches.push({ n, group: arm.group ?? 0, x: stopX + e.rx * off, z: stopZ + e.rz * off, yaw: Math.atan2(-e.dx, -e.dz) });
-    }
-  }
+const HEAD_CAPACITY = 640; // approaches: a few hundred metres of a dense inner-city street grid hold well under this
+
+/** `setNodes(signalNodes)` re-seats the heads on a new set of junctions (the streamed city's region network changes). */
+export function buildSignalHeads(scene, signalNodes, { groundHeight = null, capacity = HEAD_CAPACITY } = {}) {
+  let approaches = [];
   const group = new THREE.Group();
   group.name = 'CopenhagenSignalHeads';
-  const count = Math.max(1, approaches.length);
+  const count = Math.max(1, capacity);
   const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.07, 3.6, 8).translate(0, 1.8, 0),
     new THREE.MeshStandardNodeMaterial({ color: 0x3b3f44, roughness: 0.6, metalness: 0.4 }), count);
   const boxes = new THREE.InstancedMesh(new THREE.BoxGeometry(0.34, 0.95, 0.3).translate(0, 3.75, 0),
@@ -33,21 +25,46 @@ export function buildSignalHeads(scene, signalNodes, { groundHeight = null } = {
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
-  approaches.forEach((a, i) => {
-    q.setFromAxisAngle(up, a.yaw);
-    m.compose(new THREE.Vector3(a.x, 0.15 + (groundHeight ? groundHeight.terrainAt(a.x, a.z) : 0), a.z), q, new THREE.Vector3(1, 1, 1));
-    poles.setMatrixAt(i, m);
-    boxes.setMatrixAt(i, m);
-    lamps.setMatrixAt(i, m);
-    lamps.setColorAt(i, COLORS.red);
-  });
+  const one = new THREE.Vector3(1, 1, 1);
+  const at = new THREE.Vector3();
   for (const mesh of [poles, boxes, lamps]) {
-    mesh.count = approaches.length;
     mesh.frustumCulled = false;
     mesh.castShadow = mesh !== lamps;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.count = 0;
   }
+  lamps.setColorAt(0, COLORS.red); // allocates the colour buffer at full capacity
   group.add(poles, boxes, lamps);
   scene.add(group);
+
+  function setNodes(nodes) {
+    approaches = [];
+    for (const n of nodes) {
+      for (const arm of n.arms || []) {
+        const e = arm.in;
+        if (!e || arm.lead !== arm || approaches.length >= count) continue;
+        const stopX = e.sx + e.dx * e.len;
+        const stopZ = e.sz + e.dz * e.len;
+        // on the kerb to the right of the approach
+        const off = e.half + 0.9;
+        approaches.push({ n, group: arm.group ?? 0, x: stopX + e.rx * off, z: stopZ + e.rz * off, yaw: Math.atan2(-e.dx, -e.dz) });
+      }
+    }
+    approaches.forEach((a, i) => {
+      q.setFromAxisAngle(up, a.yaw);
+      m.compose(at.set(a.x, 0.15 + (groundHeight ? groundHeight.terrainAt(a.x, a.z) : 0), a.z), q, one);
+      poles.setMatrixAt(i, m);
+      boxes.setMatrixAt(i, m);
+      lamps.setMatrixAt(i, m);
+      lamps.setColorAt(i, COLORS.red);
+    });
+    for (const mesh of [poles, boxes, lamps]) {
+      mesh.count = approaches.length;
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+    lamps.instanceColor.needsUpdate = true;
+    nextUpdate = 0;
+  }
 
   let nextUpdate = 0;
   function update(elapsed) {
@@ -56,5 +73,6 @@ export function buildSignalHeads(scene, signalNodes, { groundHeight = null } = {
     approaches.forEach((a, i) => lamps.setColorAt(i, COLORS[vehiclePhase(a.n.sigOffset, a.group, elapsed)]));
     lamps.instanceColor.needsUpdate = true;
   }
-  return { group, approaches, update };
+  setNodes(signalNodes);
+  return { group, get approaches() { return approaches; }, update, setNodes };
 }

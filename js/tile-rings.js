@@ -3,8 +3,8 @@
 // which fidelity, with hysteresis, and what has to be loaded, upgraded, downgraded, unloaded or aborted to get there.
 //
 //   near  full fidelity (facades, LoD2, surfaces, furniture, vegetation, grass, entrances, ground floor)
-//   mid   buildings and roads (no facade photos, doors, furniture, vegetation)
-//   far   nothing yet (C5 adds one block mesh per tile)
+//   mid   buildings and roads (tone-only walls, no facade photos, doors, furniture, vegetation)
+//   far   not a streamer ring: js/far-lod.js draws one block mesh per tile for every tile that is not resident
 //
 // A tile enters a ring when its nearest point is within the ring radius and leaves it only beyond radius + hysteresis, so a
 // camera standing on a ring edge does not load and unload the same tile every frame.
@@ -13,15 +13,15 @@ import { tileBoundsLocal, parseTileId, tileId } from './tile-grid.js';
 
 export const DEFAULT_STREAM = Object.freeze({ near: 750, mid: 2500, hysteresis: 250 });
 
-/** Layers (data/tiles/<id>/<layer>.json) a tile needs for what it is asked to be. `roads` is held for the whole index. */
+/** Layers (data/tiles/<id>/<layer>.json) a tile needs for what it is asked to be. `roads` and `streets` stream with the tile. */
 export const RING_LAYERS = Object.freeze({
-  near: ['buildings', 'terrain', 'lod2', 'surfaces', 'vegetation', 'furniture', 'entrances', 'groundfloor'],
-  mid: ['buildings', 'terrain', 'lod2']
+  near: ['buildings', 'terrain', 'lod2', 'surfaces', 'vegetation', 'furniture', 'entrances', 'groundfloor', 'roads', 'streets'],
+  mid: ['buildings', 'terrain', 'lod2', 'roads', 'streets']
 });
 /** What a neighbour contributes to the context (footprints, ground, surfaces) of a built tile. */
 export const CONTEXT_LAYERS = Object.freeze({
-  near: ['buildings', 'terrain', 'surfaces', 'vegetation', 'entrances', 'groundfloor'],
-  mid: ['buildings', 'terrain']
+  near: ['buildings', 'terrain', 'surfaces', 'vegetation', 'entrances', 'groundfloor', 'roads', 'streets'],
+  mid: ['buildings', 'terrain', 'roads', 'streets']
 });
 
 /** ?stream=<near> -> a config. Mid defaults to 10/3 of near (750 -> 2500) and the hysteresis to a third of it, at most 250 m. */

@@ -308,3 +308,73 @@ export function cutTouchesRegion(cut, region, { half = cut?.half ?? getDataBbox(
   for (const [i, j] of cut.pieces || []) if (inside(j * n + i)) return true;
   return false;
 }
+
+/**
+ * One tile's ground on the global lattice (origin -half, spacing cell: the lattice the district grid uses, so a tile of the
+ * district and one outside it share nodes). Cells whose centre lies in `region` [x0, z0, x1, z1] are meshed; inside the cut area
+ * (|x|, |z| < half) the lake cut cells are left out and replaced by their clipped pieces (js/terrain-cph.js buildTerrainMeshArrays),
+ * outside it every cell is plain ground. `step` 2, 4 ...: coarser quads (only valid where no cut cell lies).
+ * @returns {{ position: Float32Array, normal: Float32Array, uv: Float32Array, index: Uint32Array, stats: object }}
+ */
+export function buildTileGroundArrays(terrain, { cut = terrain.doc?.cut, region, step = 1, drop = TERRAIN_MESH_DROP, uvSize = 8000 } = {}) {
+  const half = cut?.half ?? getDataBbox()[2];
+  const cell = cut?.cell ?? 4;
+  const n = Math.round((2 * half) / cell);
+  const skip = new Set(cut?.skip || []);
+  const pieceCells = new Set((cut?.pieces || []).map((p) => p[1] * n + p[0]));
+  const pos = [];
+  const idx = [];
+  const OFF = 1 << 14;
+  const node = new Map();
+  const vert = (x, z) => { pos.push(x, terrain.heightAt(x, z) - drop, z); return pos.length / 3 - 1; };
+  const nodeAt = (i, j) => {
+    const k = (j + OFF) * (2 * OFF) + (i + OFF);
+    let v = node.get(k);
+    if (v === undefined) { v = vert(-half + i * cell, -half + j * cell); node.set(k, v); }
+    return v;
+  };
+  const up = (a, b, c) => {
+    const cross = (pos[3 * b + 2] - pos[3 * a + 2]) * (pos[3 * c] - pos[3 * a]) - (pos[3 * b] - pos[3 * a]) * (pos[3 * c + 2] - pos[3 * a + 2]);
+    if (cross > 0) idx.push(a, b, c); else idx.push(a, c, b);
+  };
+  // lattice blocks (multiples of `step`) whose centre lies in the region
+  const lo = (v) => Math.ceil(((v + half) / cell - step / 2) / step - 1e-9) * step;
+  const iStart = lo(region[0]);
+  const jStart = lo(region[1]);
+  let cells = 0;
+  for (let j = jStart; -half + (j + step / 2) * cell < region[3]; j += step) {
+    const mz = -half + (j + step / 2) * cell;
+    if (mz < region[1]) continue;
+    for (let i = iStart; -half + (i + step / 2) * cell < region[2]; i += step) {
+      const mx = -half + (i + step / 2) * cell;
+      if (mx < region[0]) continue;
+      if (i >= 0 && j >= 0 && i < n && j < n) {
+        const k = j * n + i;
+        if (skip.has(k) || pieceCells.has(k)) continue;
+      }
+      const a = nodeAt(i, j);
+      const b = nodeAt(i + step, j);
+      const c = nodeAt(i + step, j + step);
+      const d = nodeAt(i, j + step);
+      if (Math.abs(pos[3 * a + 1] - pos[3 * c + 1]) <= Math.abs(pos[3 * b + 1] - pos[3 * d + 1])) { up(a, b, c); up(a, c, d); } else { up(a, b, d); up(b, c, d); }
+      cells++;
+    }
+  }
+  for (const [pi, pj, ring] of cut?.pieces || []) {
+    const mx = -half + (pi + 0.5) * cell;
+    const mz = -half + (pj + 0.5) * cell;
+    if (mx < region[0] || mx >= region[2] || mz < region[1] || mz >= region[3]) continue;
+    const { pts, idx: tri } = triangulatePolygon(ring);
+    const base = pos.length / 3;
+    for (let i = 0; i < pts.length; i += 2) vert(pts[i], pts[i + 1]);
+    for (let t = 0; t < tri.length; t += 3) up(base + tri[t], base + tri[t + 1], base + tri[t + 2]);
+  }
+  const position = new Float32Array(pos);
+  const index = new Uint32Array(idx);
+  const uv = new Float32Array((position.length / 3) * 2);
+  for (let i = 0; i < position.length / 3; i++) {
+    uv[2 * i] = (position[3 * i] + uvSize / 2) / uvSize;
+    uv[2 * i + 1] = (uvSize / 2 - position[3 * i + 2]) / uvSize;
+  }
+  return { position, normal: vertexNormals(position, index), uv, index, stats: { cells, triangles: index.length / 3 } };
+}

@@ -192,16 +192,29 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
     return r.json();
   };
   const cityUrl = (rel) => `${baseUrl}/${rel}`;
+  const cityDir = String(index.city?.meta || '../city/meta.json').replace(/\/[^/]*$/, '');
+
+  // Post-process layers (data/city/post.json, written by tools/cph-geodata/far_lod.py and tile_streets.py after the tile compiler):
+  //   far      { header, bin }               the far-ring block meshes (js/far-lod.js)
+  //   streets  { graph, tiles: { id: bytes } }  the street layout bucketed per tile (a `streets` layer of those tiles) + the graph fix
+  let post = null;
+  try {
+    const doc = await json(`${baseUrl}/${cityDir}/post.json`);
+    if (doc?.version?.startsWith('cph-post/')) post = doc;
+  } catch { /* no post-process layers: the engine uses what the tile index and the city files hold */ }
 
   let cityPromise = null;
   const loadCity = () => {
     cityPromise ||= (async () => {
-      const [meta, roadGraph, streets, lakes] = await Promise.all([
+      // with a per-tile street layout the whole-city streets.json is not read at all (it is only meaningful for the tiles it covers)
+      const tiled = !!post?.streets;
+      const [meta, roadGraph, streets, streetsGraph, lakes] = await Promise.all([
         json(cityUrl(index.city.meta)), json(cityUrl(index.city.roadgraph)),
-        index.city.streets ? json(cityUrl(index.city.streets)).catch(() => null) : null,
+        !tiled && index.city.streets ? json(cityUrl(index.city.streets)).catch(() => null) : null,
+        tiled && post.streets.graph ? json(`${baseUrl}/${cityDir}/${post.streets.graph}`).catch(() => null) : null,
         index.city.lakes ? json(cityUrl(index.city.lakes)).catch(() => null) : null
       ]);
-      return { meta, roadGraph, streets, lakes };
+      return { meta, roadGraph, streets, streetsGraph, lakes };
     })();
     return cityPromise;
   };
@@ -209,7 +222,7 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
   const cache = new Map(); // tile id -> Promise<{ [layer]: payload }>
   const loadTile = (tid) => {
     if (!cache.has(tid)) {
-      const names = Object.keys(index.tiles[tid]?.layers || {}).filter((n) => !n.endsWith('.bin'));
+      const names = [...Object.keys(index.tiles[tid]?.layers || {}), ...(post?.streets?.tiles?.[tid] ? ['streets'] : [])].filter((n) => !n.endsWith('.bin'));
       cache.set(tid, Promise.all(names.map(async (n) => [n, await json(`${baseUrl}/${tid}/${n}.json`)])).then(Object.fromEntries));
     }
     return cache.get(tid);
@@ -220,13 +233,18 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
     return r.ok ? r.arrayBuffer() : null;
   };
   // The streamer (js/tile-streamer.js) keeps the payloads itself: one layer per request, abortable, never cached here.
-  const hasLayer = (tid, name) => !!index.tiles[tid]?.layers?.[name];
+  const layerSize = (tid, name) => index.tiles[tid]?.layers?.[name] || (name === 'streets' ? post?.streets?.tiles?.[tid] : 0) || 0;
+  const hasLayer = (tid, name) => !!index.tiles[tid] && layerSize(tid, name) > 0;
   const fetchLayer = (tid, name, signal) => (hasLayer(tid, name) ? json(`${baseUrl}/${tid}/${name}.json`, signal) : Promise.resolve(null));
-  const layerBytes = (tid, name) => index.tiles[tid]?.layers?.[name] || 0;
+  const layerBytes = layerSize;
 
   const ids = Object.keys(index.tiles).sort();
   return {
     index,
+    post,
+    cityUrl: (rel) => `${baseUrl}/${cityDir}/${rel}`,
+    fetchCityBin: async (rel) => { const r = await fetchImpl(`${baseUrl}/${cityDir}/${rel}`); if (!r.ok) throw new Error(`HTTP ${r.status} ${rel}`); return r.arrayBuffer(); },
+    fetchCityJson: (rel) => json(`${baseUrl}/${cityDir}/${rel}`),
     ids,
     tilesForLocalBbox: (bbox, margin = 0) => tilesForLocalBbox(bbox, margin).filter((id) => index.tiles[id]),
     loadCity,
@@ -238,7 +256,9 @@ export async function openTileStore({ baseUrl = TILES_URL, fetchImpl = globalThi
     /** Loads every tile touching a local bbox [xmin, zmin, xmax, zmax] (+ margin m) and assembles the layer documents. */
     async loadArea(bbox, margin = 25) {
       const tileIds = this.tilesForLocalBbox(bbox, margin);
-      const [city, loaded] = await Promise.all([loadCity(), Promise.all(tileIds.map(async (id) => [id, await loadTile(id)]))]);
+      const [city0, loaded] = await Promise.all([loadCity(), Promise.all(tileIds.map(async (id) => [id, await loadTile(id)]))]);
+      // an area document carries the whole street layout, even where the engine streams it per tile
+      const city = city0.streets || !index.city.streets ? city0 : { ...city0, streets: await json(cityUrl(index.city.streets)).catch(() => null) };
       const set = assembleArea(city, loaded, fetchBin);
       for (const id of tileIds) cache.delete(id); // the assembled documents own the data now; C2 will manage tile lifetimes
       return set;
@@ -277,6 +297,7 @@ export function assembleArea(city, loaded, fetchBin = async () => null) {
     venues: venues.venues(),
     terrain: terrain.doc(),
     streets: city.streets,
+    streetsGraph: city.streetsGraph,
     lakes: city.lakes,
     lod2
   };

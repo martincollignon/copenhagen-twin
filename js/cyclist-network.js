@@ -454,9 +454,9 @@ export function lanePoint(lane, s, out = { x: 0, z: 0, dx: 0, dz: 1 }) {
 
 // ---- cyclists -----------------------------------------------------------------------------------------------------
 export function createCyclists(network, { count = 60, random = Math.random } = {}) {
-  const { lanes } = network;
-  const usable = lanes.filter((l) => l.len > 12);
-  const totalLen = usable.reduce((s, l) => s + l.len, 0);
+  let lanes = network.lanes;
+  let usable = lanes.filter((l) => l.len > 12);
+  let totalLen = usable.reduce((s, l) => s + l.len, 0);
   const riders = [];
   let clock = 0;
 
@@ -468,7 +468,16 @@ export function createCyclists(network, { count = 60, random = Math.random } = {
     });
   }
 
+  /** Swaps the lane graph (streamed city: the region around the camera): every rider is placed afresh on it. */
+  function setNetwork(next) {
+    lanes = next.lanes;
+    usable = lanes.filter((l) => l.len > 12);
+    totalLen = usable.reduce((s, l) => s + l.len, 0);
+    for (const c of riders) { c.placed = false; c.lane = null; c.next = null; c.stuck = false; }
+  }
+
   function pickLane() {
+    if (!usable.length) return null;
     let r = random() * totalLen;
     for (const l of usable) {
       r -= l.len;
@@ -610,6 +619,7 @@ export function createCyclists(network, { count = 60, random = Math.random } = {
       budget--;
       for (let attempt = 0; attempt < 10; attempt++) {
         const lane = pickLane();
+        if (!lane) break;
         const s = random() * lane.len;
         lanePoint(lane, s, pt);
         if (focus && Math.hypot(pt.x - focus.x, pt.z - focus.z) > radius * 0.9) continue;
@@ -637,5 +647,5 @@ export function createCyclists(network, { count = 60, random = Math.random } = {
     c.lane.occ.push({ c, s: c.s });
   }
 
-  return { riders, update, get clock() { return clock; } };
+  return { riders, update, setNetwork, get clock() { return clock; } };
 }

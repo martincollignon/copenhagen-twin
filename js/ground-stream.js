@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { buildTerrainMeshArrays, cutTouchesRegion, TERRAIN_MESH_DROP } from './terrain-cph.js';
+import { buildTerrainMeshArrays, buildTileGroundArrays, cutTouchesRegion, TERRAIN_MESH_DROP } from './terrain-cph.js';
 import { getDataBbox } from './city-config.js';
 import { disposeTree } from './dispose-tree.js';
 
@@ -9,8 +9,12 @@ import { disposeTree } from './dispose-tree.js';
 // in the tile (neighbouring tiles share their edge nodes, so there is no crack), 4 m cells in the near ring and where the lakes
 // cut, 8 m cells in the mid ring. The frame polygon is built once. A tile of the index that is not resident gets a flat quad at
 // the datum, so the ground outside the loaded rings stays sane (it also hides the lakes there: water is a global layer for now).
+//
+// `generic` (a citywide index, which reaches far beyond the district the cut grid was made for): every tile is meshed on the same
+// lattice over its OWN bounds (cells outside the cut area are plain ground), there is no frame polygon and no datum stand-ins:
+// the tiles that are not resident are the far layer's (js/far-lod.js).
 
-export function createGroundLayer(scene, { terrain, material, size = 8000, tileBounds = new Map(), cut = terrain.doc?.cut } = {}) {
+export function createGroundLayer(scene, { terrain, material, size = 8000, tileBounds = new Map(), cut = terrain.doc?.cut, generic = false } = {}) {
   const group = new THREE.Group();
   group.name = 'CopenhagenGround';
   scene.add(group);
@@ -34,12 +38,14 @@ export function createGroundLayer(scene, { terrain, material, size = 8000, tileB
   };
 
   // the frame: everything outside the compiled area, with the lake corridors left open
-  const frame = toMesh(buildTerrainMeshArrays(terrain, { cut, frameOnly: true, uvSize: size }), 'ground-frame');
-  frame.frustumCulled = false;
-  group.add(frame);
+  const frame = generic ? null : toMesh(buildTerrainMeshArrays(terrain, { cut, frameOnly: true, uvSize: size }), 'ground-frame');
+  if (frame) {
+    frame.frustumCulled = false;
+    group.add(frame);
+  }
 
   // flat stand-ins for the tiles of the compiled area that are not resident
-  for (const [id, b] of tileBounds) {
+  for (const [id, b] of generic ? [] : tileBounds) {
     const x0 = Math.max(b[0], area[0]); const z0 = Math.max(b[1], area[1]);
     const x1 = Math.min(b[2], area[2]); const z1 = Math.min(b[3], area[3]);
     if (x1 <= x0 || z1 <= z0) continue;
@@ -61,6 +67,14 @@ export function createGroundLayer(scene, { terrain, material, size = 8000, tileB
     /** Builds (or rebuilds at the new fidelity) the ground of a tile. */
     addTile(id, bounds, { near = true } = {}) {
       this.removeTile(id);
+      if (generic) {
+        const mesh = toMesh(buildTileGroundArrays(terrain, { cut, region: bounds, step: near || cutTouchesRegion(cut, bounds) ? 1 : 2, uvSize: size }), `ground-${id}`);
+        group.add(mesh);
+        tiles.set(id, mesh);
+        this.stats.tiles = tiles.size;
+        this.stats.triangles += mesh.geometry.index.count / 3;
+        return;
+      }
       const region = [Math.max(bounds[0], area[0]), Math.max(bounds[1], area[1]), Math.min(bounds[2], area[2]), Math.min(bounds[3], area[3])];
       if (region[2] <= region[0] || region[3] <= region[1]) return;
       const step = near || cutTouchesRegion(cut, region) ? 1 : 2;
