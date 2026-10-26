@@ -12,7 +12,7 @@ import { setCalibration } from './appearance.js';
 import { applySurfaceCuts } from './lakes-cph.js';
 import { loadCphFurniture } from './street-furniture-data.js';
 import { loadCphTerrain, createTerrain, buildTerrainMeshArrays } from './terrain-cph.js';
-import { applyTerrainGround, applyStreets, loadCphStreets } from './layout-cph.js';
+import { applyTerrainGround, applyStreets, loadCphStreets, mergeSurfaceCuts } from './layout-cph.js';
 import { createStreetFurniture } from './street-furniture-cph.js';
 import { createZoneMap } from './zones-cph.js';
 import { placeFurniture } from './placement-cph.js';
@@ -343,7 +343,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   let traffic = null;
   let surfacesCut = null;
   if (geo?.roadGraph && !debug.split(',').includes('noroads')) {
-    surfacesCut = applySurfaceCuts(await loadCphSurfaces(), lakesDoc?.surface_cuts);
+    surfacesCut = applySurfaceCuts(await loadCphSurfaces(), mergeSurfaceCuts(lakesDoc?.surface_cuts, geo.surfaceCuts));
     traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: surfacesCut, terrain });
   }
 

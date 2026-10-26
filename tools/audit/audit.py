@@ -130,14 +130,14 @@ for _k, _v in (lay.get("placed") or {}).items():
     if _v is not None:
         fur[_k] = _v
 
-# buildings, as the engine stands them (terrain ground applied by js/layout-cph.js; see dump_layout.mjs)
-B = geo["buildings"]
-_lb = {b["id"]: b for b in lay.get("buildings", [])}
-for b in B:
-    if b["id"] in _lb:
-        b["ground"] = _lb[b["id"]]["ground"]
-        b["street"] = _lb[b["id"]]["street"]
-        b["terrain"] = _lb[b["id"]]["terrain"]
+# buildings, as the engine stands them: footprint errors resolved (drops / clips), terrain ground applied (js/layout-cph.js; see dump_layout.mjs)
+_data_b = {b["id"]: b for b in geo["buildings"]}
+B = []
+for lb in lay["buildings"]:
+    base = _data_b.get(lb["id"]) or _data_b[lb["id"].split("#")[0]]
+    b = dict(base)
+    b.update(id=lb["id"], ring=lb["ring"], holes=lb.get("holes") or [], ground=lb["ground"], street=lb["street"], terrain=lb["terrain"], fix=lb.get("fix"))
+    B.append(b)
 bpoly = [ring_poly(b["ring"], b.get("holes")) for b in B]
 bvalid = [i for i, p in enumerate(bpoly) if p is not None and not p.is_empty]
 bgeoms = [bpoly[i] for i in bvalid]
@@ -354,6 +354,8 @@ for bid, e in lod_index["buildings"].items():
     lod_meas += 1
     k = bid2i[bid]
     b = B[bvalid[k]]
+    if b.get("fix"):
+        continue  # a clipped footprint is not matched to its roofer record (the engine skips it too)
     poly = bgeoms[k]
     pos, idx, kind, top = parse_lod2(tile_buf(e["tile"]), e["offset"], e["length"])
     used = np.unique(idx[kind == 0]) if (kind == 0).any() else np.unique(idx)
@@ -412,12 +414,14 @@ for r in paths:
 check("water-paths", "water", "Footway/cycleway centreline runs > 3 m through open water", len(ex), len(paths), "low", ex, "pedestrian/cyclist routes through the lake (OSM path across a bridge not in the bridge list)", weight=1)
 
 # surfaces vs lakes
-cut_ids = {c["id"] for c in lakes["surface_cuts"]}
+_cuts = {c["id"]: c for c in lakes["surface_cuts"]}
+_cuts.update({c["id"]: c for c in lay.get("surfaceCuts", [])})  # the street layout's cuts replace the lake document's (js/layout-cph.js mergeSurfaceCuts)
+cut_ids = set(_cuts)
 S = surf["surfaces"]
 spoly, scls, sid = [], [], []
 for s in S:
     if s["id"] in cut_ids:
-        for rep in next(c for c in lakes["surface_cuts"] if c["id"] == s["id"])["replace"]:
+        for rep in _cuts[s["id"]]["replace"]:
             p = ring_poly(rep["ring"], rep.get("holes"))
             if p:
                 spoly.append(p); scls.append(rep.get("cls", s["cls"])); sid.append(rep["id"])

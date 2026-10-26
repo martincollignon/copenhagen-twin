@@ -832,8 +832,199 @@ def self_gap(pts, min_arc=20.0):
     return best
 
 
+# ---------------------------------------------------------------------------------------------------- data errors: footprints
+def gdk_number(bid):
+    """Numeric part of a GeoDanmark id ('gdk:1241239835' -> 1241239835): ids grow with the registration date, so the larger
+    one is the newer survey. Other sources (KK) rank below any GeoDanmark footprint."""
+    digits = "".join(c for c in str(bid) if c.isdigit())
+    return int(digits) if str(bid).startswith("gdk:") and digits else 0
+
+
+MIN_PIECE_M2 = 6.0
+
+
+def resolve_buildings(geo, water):
+    """Footprint errors, resolved by source precedence (newest GeoDanmark survey wins) and reported:
+      * a footprint lying in a lake is dropped (>= 50 % in the water) or clipped by the lake outline;
+      * a footprint that is >= 90 % inside one at least 4 x its size is hidden inside it: dropped (sheds drawn on the main roof);
+      * any other overlap: the older footprint loses the overlap (a remainder under max(6 m2, 15 %) is dropped);
+      * hero buildings (hand-built glTFs) are never changed, they win every overlap.
+    Returns {'drop': {id: reason}, 'clip': {id: {'rings': [...]}}, 'report': [...]}"""
+    heroes = {h.get("building_id") for h in geo.get("heroes", [])}
+    polys = {}
+    order = []
+    for b in geo["buildings"]:
+        p = poly_of(b["ring"], b.get("holes", ()))
+        if p is not None:
+            polys[b["id"]] = p
+            order.append(b["id"])
+    drop, clipped, report = {}, {}, []
+    orig_area = {k: v.area for k, v in polys.items()}
+
+    def apply_clip(bid, rest, reason, other):
+        pieces = [g for g in polys_of(rest) if g.area >= MIN_PIECE_M2]
+        if not pieces or sum(g.area for g in pieces) < max(MIN_PIECE_M2, 0.15 * orig_area[bid]):
+            drop[bid] = reason
+            polys.pop(bid, None)
+            report.append({"id": bid, "action": "drop", "reason": reason, "with": other})
+            return
+        pieces.sort(key=lambda g: -g.area)
+        clipped[bid] = {"reason": reason}
+        polys[bid] = pieces[0]
+        for k, g in enumerate(pieces[1:], 1):  # every piece is a footprint of its own from here on (later overlaps see it)
+            polys[f"{bid}#{k}"] = g
+            orig_area[f"{bid}#{k}"] = g.area
+        report.append({"id": bid, "action": "clip", "reason": reason, "with": other, "area": r2(orig_area[bid]), "kept": r2(sum(g.area for g in pieces))})
+
+    if not water.is_empty:
+        wtree = STRtree(polys_of(water))
+        wp = polys_of(water)
+        for bid in list(order):
+            p = polys.get(bid)
+            if p is None or bid in heroes:
+                continue
+            cand = [wp[j] for j in wtree.query(p)]
+            if not cand:
+                continue
+            wu = unary_union(cand)
+            a = p.intersection(wu).area
+            if a < 1.0:
+                continue
+            if a >= 0.5 * p.area:
+                drop[bid] = "in-water"
+                polys.pop(bid)
+                report.append({"id": bid, "action": "drop", "reason": "in-water", "area": r2(p.area)})
+            else:
+                apply_clip(bid, p.difference(wu), "in-water", None)
+    for _ in range(6):
+        ids = list(polys)
+        tree = STRtree([polys[i] for i in ids])
+        pairs = []
+        for ia, bid in enumerate(ids):
+            for jb in tree.query(polys[bid]):
+                if jb <= ia:
+                    continue
+                a, b = polys[bid], polys[ids[jb]]
+                inter = a.intersection(b).area
+                small = min(a.area, b.area)
+                if inter >= 1.0 and inter / small >= 0.05:
+                    pairs.append((inter, bid, ids[jb]))
+        if not pairs:
+            break
+        changed = False
+        for inter, x, y in sorted(pairs, key=lambda t: -t[0]):
+            if x not in polys or y not in polys:
+                continue
+            a, b = polys[x], polys[y]
+            if a.intersection(b).area < 1.0:
+                continue
+            small_id, big_id = (x, y) if a.area <= b.area else (y, x)
+            sp, bp = polys[small_id], polys[big_id]
+            inside = sp.intersection(bp).area / sp.area
+            if small_id in heroes and big_id in heroes:
+                continue
+            if inside >= 0.9 and bp.area >= 4 * sp.area and small_id not in heroes:
+                drop[small_id] = "inside-larger"
+                polys.pop(small_id)
+                report.append({"id": small_id, "action": "drop", "reason": "inside-larger", "with": big_id})
+                changed = True
+                continue
+            # winner: hero, else the newer GeoDanmark footprint (larger id), else the larger one
+            if x in heroes or y in heroes:
+                win, lose = (x, y) if x in heroes else (y, x)
+            else:
+                kx, ky = gdk_number(x), gdk_number(y)
+                win, lose = (x, y) if (kx, polys[x].area) >= (ky, polys[y].area) else (y, x)
+            apply_clip(lose, polys[lose].difference(polys[win]), "overlap-older", win)
+            changed = True
+        if not changed:
+            break
+    # the final pieces of every clipped footprint: its own id first, then id#1, id#2 ...
+    for bid, c in clipped.items():
+        c["pieces"] = [polys[k] for k in [bid] + [f"{bid}#{n}" for n in range(1, 20)] if k in polys]
+    return {"drop": drop, "clip": clipped, "report": report}
+
+
+def building_records(geo, res):
+    """The compact document form: drops and replacement rings (flat, geodata orientation)."""
+    out = {"drop": [{"id": k, "reason": v} for k, v in sorted(res["drop"].items())], "clip": []}
+    for bid, c in sorted(res["clip"].items()):
+        if bid in res["drop"]:
+            continue
+        rec = {"id": bid, "reason": c["reason"], "pieces": []}
+        for g in c["pieces"]:
+            rec["pieces"].append({"ring": ring_ccw_flat(g.exterior), **({"holes": [ring_cw_flat(h) for h in g.interiors if Polygon(h).area >= 0.5]} if list(g.interiors) else {})})
+        out["clip"].append(rec)
+    return out
+
+
+# ---------------------------------------------------------------------------------------------------- data errors: ground surfaces
+PRIORITY_ROAD = "asphalt_road"
+
+
+def compile_surfaces(surfaces, geo, lakes_water, carriage, strips, bpolys_union):
+    """The ground-material register (data/cph-surfaces.json) against the street layout.
+    A material polygon never lies on a carriageway or cycle strip, in a building or in the lake, and the huge OSM `place=square`
+    outlines (Raadhuspladsen 25 600 m2, Jarmers Plads 23 400 m2: they enclose streets, parks and blocks) lose all of that and the
+    KK park polygons too; where two polygons of different class overlap, the smaller (more specific) one keeps its ground and the
+    larger loses it. Returns [{id, replace: [{id, ring, holes}]}] for every polygon that changed (empty replace = dropped)."""
+    road_union = unary_union(list(carriage.values()) + [p for _, _, p in strips])
+    parks = unary_union([poly_of(p["ring"], p.get("holes", ())) for p in geo.get("parks", []) if p.get("ring") and (p.get("ring") or [])])
+    cut_street = unary_union([g for g in (road_union, bpolys_union, lakes_water) if not g.is_empty])
+    items = []
+    for sf in surfaces["surfaces"]:
+        p = poly_of(sf["ring"], sf.get("holes", ()))
+        if p is not None:
+            items.append((sf, p))
+    tree = STRtree([p for _, p in items])
+    cuts, stats = [], Counter()
+    # polygons that cover less than they overlap: smaller wins
+    for k, (sf, p) in enumerate(items):
+        cls = sf["cls"]
+        is_osm = str(sf["id"]).startswith("osm:")
+        sub = []
+        if cls != PRIORITY_ROAD:
+            sub.append(cut_street)
+        else:
+            sub += [g for g in (bpolys_union, lakes_water) if not g.is_empty]
+        if is_osm and not parks.is_empty:
+            sub.append(parks)
+        # more specific ground wins: every overlapping polygon of another class that is smaller (or a KK register polygon vs an OSM one)
+        for j in tree.query(p):
+            if j == k:
+                continue
+            sf2, q = items[j]
+            o_osm = str(sf2["id"]).startswith("osm:")
+            smaller = q.area < p.area or (is_osm and not o_osm)
+            if is_osm and not o_osm:
+                smaller = True  # the register beats OSM
+            elif o_osm and not is_osm:
+                smaller = False
+            # (a KK road-surface polygon only cuts an OSM square, never another KK polygon)
+            if smaller and q.intersection(p).area > 0.5 and (sf2["cls"] != PRIORITY_ROAD or is_osm):
+                sub.append(q)
+        if not sub:
+            continue
+        cutter = unary_union(sub)
+        if p.intersection(cutter).area < 1.0:
+            continue
+        rest = p.difference(cutter)
+        pieces = [g for g in polys_of(rest) if g.area >= 2.0]
+        replace = []
+        for n, g in enumerate(pieces):
+            rec = {"id": sf["id"] if len(pieces) == 1 else f"{sf['id']}~{n}", "ring": ring_ccw_flat(g.exterior)}
+            if list(g.interiors):
+                rec["holes"] = [ring_cw_flat(h) for h in g.interiors if Polygon(h).area >= 0.5]
+            replace.append(rec)
+        cuts.append({"id": sf["id"], "replace": replace})
+        stats["osm" if is_osm else "kk"] += 1
+        stats["dropped"] += 0 if replace else 1
+        stats["area_removed_m2"] += int(p.area - sum(g.area for g in pieces))
+    return cuts, dict(stats)
+
+
 # ---------------------------------------------------------------------------------------------------------- the document
-def build_doc(geo, lakes, vejkant, extra=None):
+def build_doc(geo, lakes, vejkant, extra=None, surfaces=None):
     roads_out, rows, ctx = compile_roads(geo, lakes, vejkant)
     new_nodes, widths, vertex_node = build_graph_update(geo, roads_out)
     newpts = finish_roads(geo, roads_out, new_nodes, vertex_node)
@@ -914,6 +1105,8 @@ def build_doc(geo, lakes, vejkant, extra=None):
                 if ctx.bld_solid_contains(m.x, m.y):
                     drop_links.add(li)
     prov = Counter(r["prov"].split("+")[0] for r in roads_out.values())
+    bres = resolve_buildings(geo, ctx.water_poly)
+    surface_cuts, surf_stats = ([], {}) if surfaces is None else compile_surfaces(surfaces, geo, ctx.water_poly, carriage, strips, unary_union(ctx.bpolys))
     doc = {
         "version": "cph-streets/1",
         "frame": {"epsg": 25832, "origin": list(ORIGIN), "axes": "x=east, z=south, y=up"},
@@ -923,9 +1116,12 @@ def build_doc(geo, lakes, vejkant, extra=None):
         "graph": {"nodes": [[ni, r2(x), r2(z)] for ni, (x, z) in sorted(new_nodes.items())], "widths": [[li, w] for li, w in sorted(widths.items())], "dropLinks": sorted(drop_links)},
         "sidewalks": sidewalks,
         "cycleTracks": cycle_tracks,
+        "buildings": building_records(geo, bres),
+        "buildingReport": bres["report"],
+        "surfaceCuts": surface_cuts,
         "stats": {"roads": len(roads) + len(extra_roads), "clampedToBuildings": clamped, "provenance": dict(prov), "passages": len(passages), "cutRoads": len(cuts), "extraPieces": len(extra_roads),
                   "nodesMoved": len(new_nodes), "linkWidths": len(widths), "droppedLinks": len(drop_links),
-                  "sidewalksBefore": len(geo["sidewalks"]), "sidewalksAfter": len(sidewalks), "sidewalkPiecesDropped": dropped_sw, "kkCycle": kk_stats,
+                  "buildingsDropped": len(bres["drop"]), "buildingsClipped": len(bres["clip"]), "surfaces": surf_stats, "sidewalksBefore": len(geo["sidewalks"]), "sidewalksAfter": len(sidewalks), "sidewalkPiecesDropped": dropped_sw, "kkCycle": kk_stats,
                   "cycleStrips": len(strips)},
     }
     if extra:
@@ -939,12 +1135,14 @@ def main(argv=None):
     ap.add_argument("--geodata", default=str(ROOT / "data" / "cph-geodata.json"))
     ap.add_argument("--lakes", default=str(ROOT / "data" / "cph-lakes.json"))
     ap.add_argument("--vejkant", default=str(RAW / "kk_vejkant.json"))
+    ap.add_argument("--surfaces", default=str(ROOT / "data" / "cph-surfaces.json"))
     a = ap.parse_args(argv)
     if not Path(a.vejkant).exists():
         raise SystemExit(f"{a.vejkant} missing: fetch KK `vejkant` with tools/cph-geodata/fetch.py kk_layer('vejkant')")
     geo = json.loads(Path(a.geodata).read_text())
     lakes = json.loads(Path(a.lakes).read_text())
-    doc = build_doc(geo, lakes, load_vejkant(a.vejkant))
+    surfaces = json.loads(Path(a.surfaces).read_text()) if Path(a.surfaces).exists() else None
+    doc = build_doc(geo, lakes, load_vejkant(a.vejkant), surfaces=surfaces)
     Path(a.out).write_text(json.dumps(doc, separators=(",", ":"), ensure_ascii=False))
     print(json.dumps(doc["stats"], ensure_ascii=False), file=sys.stderr)
 

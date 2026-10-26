@@ -116,3 +116,42 @@ test('the shipped layout: one cross-section, pavements clear of the carriageway'
   assert.ok(withCycle.length > 150 && withCycle.every((r) => cycleStrips(r).every((c) => c.w >= 1.3 && c.w <= 3.3 && c.ranges.length)));
   assert.ok(geo.roadGraph.links.every((l) => l[4] > 0));
 });
+
+test('applyStreets resolves footprint errors: drops, clips (older loses the overlap), pieces become copies; surface cuts merge by id', async () => {
+  const { mergeSurfaceCuts } = await import('../js/layout-cph.js');
+  const geo = {
+    roads: [], roadGraph: null, sidewalks: [], cycleTracks: [],
+    buildings: [{ id: 'a', ring: [0, 0, 0, 10, 10, 10, 10, 0], ground: 1 }, { id: 'b', ring: [0, 0, 0, 5, 5, 5, 5, 0], ground: 1 }, { id: 'c', ring: [20, 0, 20, 10, 40, 10, 40, 0], ground: 2 }]
+  };
+  const doc = {
+    version: 'cph-streets/1', roads: {},
+    buildings: { drop: [{ id: 'b', reason: 'inside-larger' }], clip: [{ id: 'c', reason: 'overlap-older', pieces: [{ ring: [20, 0, 20, 10, 30, 10, 30, 0] }, { ring: [35, 0, 35, 10, 40, 10, 40, 0], holes: [] }] }] },
+    surfaceCuts: [{ id: 's1', replace: [] }]
+  };
+  const st = applyStreets(geo, doc);
+  assert.deepEqual(geo.buildings.map((b) => b.id), ['a', 'c', 'c#1']);
+  assert.equal(st.buildingsDropped, 1);
+  assert.equal(st.buildingsClipped, 1);
+  const [, c, c1] = geo.buildings;
+  assert.equal(c.footprintFix, 'overlap-older');
+  assert.equal(c1.ground, 2, 'a piece keeps the attributes of its building');
+  assert.deepEqual(c.ringSurvey, [20, 0, 20, 10, 40, 10, 40, 0]);
+  assert.deepEqual(geo.surfaceCuts, doc.surfaceCuts);
+  const merged = mergeSurfaceCuts([{ id: 's1', replace: [{ id: 'lake' }] }, { id: 's2', replace: [] }], [{ id: 's1', replace: [] }]);
+  assert.deepEqual(merged.map((m) => [m.id, m.replace.length]), [['s1', 0], ['s2', 0]], 'the street layout wins for the same polygon');
+});
+
+test('the shipped layout: no overlapping footprints, nothing in the lake, no surface over a carriageway', () => {
+  const geo = JSON.parse(readFileSync(new URL('../data/cph-geodata.json', import.meta.url), 'utf8'));
+  const doc = JSON.parse(readFileSync(new URL('../data/cph-streets.json', import.meta.url), 'utf8'));
+  const n0 = geo.buildings.length;
+  const st = applyStreets(geo, doc);
+  assert.equal(geo.buildings.length, n0 - st.buildingsDropped + (doc.buildings.clip.reduce((a, c) => a + c.pieces.length - 1, 0)));
+  assert.ok(st.buildingsDropped >= 15 && st.buildingsDropped <= 30 && st.buildingsClipped >= 1);
+  for (const c of doc.buildings.clip) assert.ok(c.pieces.every((p) => p.ring.length >= 6));
+  const ids = new Set(geo.buildings.map((b) => b.id));
+  assert.equal(ids.size, geo.buildings.length, 'ids stay unique');
+  assert.ok(doc.surfaceCuts.length > 20 && doc.surfaceCuts.some((c) => c.replace.length === 0), 'some ground polygons were wholly on a road or in a building');
+  const big = Math.max(...geo.buildings.map((b) => b.ground));
+  assert.ok(Number.isFinite(big));
+});

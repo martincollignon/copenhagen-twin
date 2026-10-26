@@ -69,7 +69,7 @@ let zones = null;
 if (zonesMod && placeMod && streetsDoc) {
   const lakesDoc = read('data/cph-lakes.json');
   const { applySurfaceCuts } = await import('../../js/lakes-cph.js');
-  zones = zonesMod.createZoneMap({ geo, lakes: lakesDoc, surfaces: applySurfaceCuts(surfaces, lakesDoc.surface_cuts) });
+  zones = zonesMod.createZoneMap({ geo, lakes: lakesDoc, surfaces: applySurfaceCuts(surfaces, layoutMod.mergeSurfaceCuts(lakesDoc.surface_cuts, geo.surfaceCuts)) });
 }
 const plan = buildFurniturePlan(furniture, ground, { seed: 1, place: zones ? (d) => placeMod.placeFurniture(d, { zones, geo }) : null });
 const slim = (list, keys) => list.map((i) => Object.fromEntries(keys.map((k) => [k, i[k]])));
@@ -99,7 +99,7 @@ const buildingsOut = geo.buildings.map((b) => {
     street.push(ground.heightAt(mx + nx * 1.2, mz + nz * 1.2));
     terr.push(ground.terrainAt ? ground.terrainAt(mx, mz) : 0);
   }
-  return { id: b.id, ground: b.ground, eave: b.eave, street: medianOf(street), terrain: medianOf(terr) };
+  return { id: b.id, ring: b.ring, holes: b.holes || [], ground: b.ground, eave: b.eave, street: medianOf(street), terrain: medianOf(terr), fix: b.footprintFix || null };
 });
 
 // what the engine actually draws: the asphalt and cycle-strip triangles (x, z in centimetres), the cleaned pavement and cycle polygons
@@ -117,6 +117,7 @@ const layout = {
   cycleTracks: (geo.cycleTracks || []).map((c) => ({ id: c.id, pts: c.pts, width: c.width || null })),
   placed: { bikeRacks: plan.placedDoc.bikeRacks, parkingBays: plan.placedDoc.parkingBays, busStops: plan.placedDoc.busStops },
   placement: plan.report ? { counts: plan.report.counts, dropped: plan.report.dropped.length, moved: plan.report.moved.length } : null,
+  surfaceCuts: geo.surfaceCuts || [],
   roadGraph: { nodes: geo.roadGraph.nodes, links: geo.roadGraph.links },
   streets: streetsDoc ? { version: streetsDoc.version, stats: streetsDoc.stats } : null,
   terrain: terrain && !terrain.flat ? { min: terrainDoc.min, max: terrainDoc.max, lakes: terrainDoc.lakes } : null,

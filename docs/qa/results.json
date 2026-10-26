@@ -66,104 +66,20 @@
   ]
  },
  {
-  "id": "bld-bld-overlap",
-  "layer": "buildings",
-  "title": "Footprint overlaps another footprint (>= 1 m2 and >= 5% of the smaller)",
-  "count": 22,
-  "total": 2517,
-  "pct": 0.87,
-  "severity": "high",
-  "note": "1 pairs are near-duplicates (IoU > 0.8); 6 pairs have eaves within 0.3 m (coplanar roofs: z-fighting)",
-  "examples": [
-   {
-    "id": "gdk:1241239835 x gdk:1064813116",
-    "x": 743.3,
-    "z": -711.9,
-    "metric": "2167 m2 (100% of smaller), eave 20.6/17.8"
-   },
-   {
-    "id": "gdk:1241233804 x gdk:1064714047",
-    "x": 606.7,
-    "z": 56.9,
-    "metric": "429 m2 (100% of smaller), eave 22.0/21.9"
-   },
-   {
-    "id": "gdk:1241239838 x gdk:1064813116",
-    "x": 750.5,
-    "z": -686.5,
-    "metric": "317 m2 (100% of smaller), eave 6.4/17.8"
-   },
-   {
-    "id": "gdk:1107312570 x gdk:1108227800",
-    "x": 618.8,
-    "z": -90.5,
-    "metric": "138 m2 (100% of smaller), eave 8.5/8.5"
-   },
-   {
-    "id": "gdk:1107312549 x gdk:1107312571",
-    "x": 659.7,
-    "z": -158.7,
-    "metric": "106 m2 (100% of smaller), eave 8.1/8.1"
-   },
-   {
-    "id": "gdk:1064712431 x gdk:1064712430",
-    "x": 442.7,
-    "z": 427.5,
-    "metric": "72 m2 (100% of smaller), eave 15.9/12.2"
-   },
-   {
-    "id": "gdk:1107312569 x gdk:1108227800",
-    "x": 603.8,
-    "z": -87.0,
-    "metric": "48 m2 (100% of smaller), eave 8.5/8.5"
-   },
-   {
-    "id": "gdk:1241233805 x gdk:1064714047",
-    "x": 626.8,
-    "z": 62.0,
-    "metric": "22 m2 (100% of smaller), eave 5.4/21.9"
-   },
-   {
-    "id": "gdk:1064780389 x gdk:1107312287",
-    "x": 81.1,
-    "z": 712.6,
-    "metric": "15 m2 (100% of smaller), eave -1.1/3.2"
-   },
-   {
-    "id": "gdk:1064780389 x gdk:1107312288",
-    "x": 81.6,
-    "z": 696.6,
-    "metric": "13 m2 (100% of smaller), eave -1.1/3.2"
-   }
-  ]
- },
- {
   "id": "bld-ground-vs-street",
   "layer": "buildings",
   "title": "Building `ground` differs from the walking height just outside its outline by > 0.5 m (floating / sunken ground floor)",
-  "count": 18,
-  "total": 2517,
-  "pct": 0.72,
+  "count": 16,
+  "total": 2497,
+  "pct": 0.64,
   "severity": "high",
-  "note": "10 float more than 0.5 m above the street they face, 8 are sunk. Percentiles 5/50/95 of ground - street: -0.17 / -0.02 / 0.04. (Replaces bld-ground-vs-flat-plane and bld-ground-range, which compared the terrain `ground` with the flat plane y = 0.)",
+  "note": "8 float more than 0.5 m above the street they face, 8 are sunk. Percentiles 5/50/95 of ground - street: -0.17 / -0.02 / 0.04. (Replaces bld-ground-vs-flat-plane and bld-ground-range, which compared the terrain `ground` with the flat plane y = 0.)",
   "examples": [
    {
     "id": "gdk:1114558373",
     "x": 81.9,
     "z": 743.0,
     "metric": "ground -1.12 vs street -5.81 (+4.69 m)"
-   },
-   {
-    "id": "gdk:1107312569",
-    "x": 603.8,
-    "z": -87.0,
-    "metric": "ground +3.15 vs street +0.00 (+3.15 m)"
-   },
-   {
-    "id": "gdk:1107312570",
-    "x": 618.8,
-    "z": -90.5,
-    "metric": "ground +3.01 vs street +0.00 (+3.01 m)"
    },
    {
     "id": "gdk:1064804878",
@@ -206,6 +122,18 @@
     "x": 142.3,
     "z": 415.8,
     "metric": "ground +1.03 vs street +0.00 (+1.03 m)"
+   },
+   {
+    "id": "gdk:1064780701",
+    "x": 140.6,
+    "z": 414.2,
+    "metric": "ground +0.99 vs street +0.00 (+0.99 m)"
+   },
+   {
+    "id": "gdk:1064713496",
+    "x": 197.0,
+    "z": 325.4,
+    "metric": "ground +0.74 vs street +1.52 (-0.78 m)"
    }
   ]
  },
@@ -213,29 +141,17 @@
   "id": "bld-ground-terrain",
   "layer": "buildings",
   "title": "Building `ground` differs from the terrain model along its outline by > 0.5 m",
-  "count": 15,
-  "total": 2517,
-  "pct": 0.6,
+  "count": 13,
+  "total": 2497,
+  "pct": 0.52,
   "severity": "high",
-  "note": "ground min -6.35 max 4.22 median 1.14: one height model for buildings, roads, lakes and props means these agree",
+  "note": "ground min -6.27 max 4.22 median 1.14: one height model for buildings, roads, lakes and props means these agree",
   "examples": [
    {
     "id": "gdk:1114558373",
     "x": 81.9,
     "z": 743.0,
     "metric": "ground -1.12 vs terrain along outline -5.24"
-   },
-   {
-    "id": "gdk:1107312569",
-    "x": 603.8,
-    "z": -87.0,
-    "metric": "ground +3.15 vs terrain along outline +0.00"
-   },
-   {
-    "id": "gdk:1107312570",
-    "x": 618.8,
-    "z": -90.5,
-    "metric": "ground +3.01 vs terrain along outline +0.00"
    },
    {
     "id": "gdk:1064804878",
@@ -278,6 +194,18 @@
     "x": 142.3,
     "z": 415.8,
     "metric": "ground +1.03 vs terrain along outline +0.00"
+   },
+   {
+    "id": "gdk:1064780701",
+    "x": 140.6,
+    "z": 414.2,
+    "metric": "ground +0.99 vs terrain along outline +0.00"
+   },
+   {
+    "id": "gdk:1064713496",
+    "x": 197.0,
+    "z": 325.4,
+    "metric": "ground +0.74 vs terrain along outline +1.45"
    }
   ]
  },
@@ -286,7 +214,7 @@
   "layer": "buildings",
   "title": "Touching buildings whose `ground` differs by > 1.5 m (stepped base along one frontage)",
   "count": 5,
-  "total": 2517,
+  "total": 2497,
   "pct": 0.2,
   "severity": "high",
   "note": "a continuous Copenhagen block front gets a staircase of base lines / floating ground floors",
@@ -324,35 +252,33 @@
   ]
  },
  {
+  "id": "bld-bld-overlap",
+  "layer": "buildings",
+  "title": "Footprint overlaps another footprint (>= 1 m2 and >= 5% of the smaller)",
+  "count": 0,
+  "total": 2497,
+  "pct": 0.0,
+  "severity": "high",
+  "note": "0 pairs are near-duplicates (IoU > 0.8); 0 pairs have eaves within 0.3 m (coplanar roofs: z-fighting)",
+  "examples": []
+ },
+ {
   "id": "bld-water",
   "layer": "buildings",
   "title": "Building footprint overlaps a lake (>= 1 m2)",
-  "count": 2,
-  "total": 2517,
-  "pct": 0.08,
+  "count": 0,
+  "total": 2497,
+  "pct": 0.0,
   "severity": "high",
   "note": "walls rise out of the water / lake wall + building wall intersect (e.g. houses on the dossering over the lake edge)",
-  "examples": [
-   {
-    "id": "gdk:1216086107",
-    "x": -15.8,
-    "z": -414.3,
-    "metric": "25 m2 in lake"
-   },
-   {
-    "id": "gdk:1216086110",
-    "x": -8.0,
-    "z": -430.0,
-    "metric": "20 m2 in lake"
-   }
-  ]
+  "examples": []
  },
  {
   "id": "lod2-beyond-footprint",
   "layer": "lod2",
   "title": "LoD2 mesh has a vertex > 0.5 m outside its footprint",
   "count": 0,
-  "total": 2114,
+  "total": 2097,
   "pct": 0.0,
   "severity": "high",
   "note": "0 exceed 1.5 m; total roof area outside footprints 0 m2. Roofer eave overhangs / neighbour points; the facade walls stop at the footprint so the roof overhangs or floats",
@@ -439,9 +365,9 @@
   "id": "lod2-eave-mismatch",
   "layer": "lod2",
   "title": "LoD2 median eave differs from geodata eave by > 2 m",
-  "count": 1138,
-  "total": 2114,
-  "pct": 53.83,
+  "count": 1128,
+  "total": 2097,
+  "pct": 53.79,
   "severity": "med",
   "note": "facade walls are cut to the LoD2 eave per edge, so this changes the wall height silently",
   "examples": [
@@ -511,9 +437,9 @@
   "id": "bld-height-sanity",
   "layer": "buildings",
   "title": "Height implausible: > 60 m, < 2.5 m, or > 6.5 / < 2.0 m per storey",
-  "count": 429,
-  "total": 2517,
-  "pct": 17.04,
+  "count": 426,
+  "total": 2497,
+  "pct": 17.06,
   "severity": "med",
   "note": "",
   "examples": [
@@ -628,78 +554,6 @@
   ]
  },
  {
-  "id": "surf-surf-diffclass",
-  "layer": "surfaces",
-  "title": "Two ground-material polygons of different class overlap (>= 2 m2)",
-  "count": 30,
-  "total": 229,
-  "pct": 13.1,
-  "severity": "med",
-  "note": "the later polygon wins per triangle; the loser leaks through as z-fighting patches (both at y 0.014)",
-  "examples": [
-   {
-    "id": "ay/123204483 (setts) x ay/549545292 (cobbles)",
-    "x": 632.0,
-    "z": 733.8,
-    "metric": "1932 m2"
-   },
-   {
-    "id": "d060a06537#0 (asphalt_road) x ay/168134399 (cobbles)",
-    "x": 436.1,
-    "z": -66.9,
-    "metric": "1201 m2"
-   },
-   {
-    "id": "ay/549543686 (cobbles) x ay/827602453 (raadhus)",
-    "x": 426.4,
-    "z": 628.3,
-    "metric": "1008 m2"
-   },
-   {
-    "id": "ay/667398483 (cobbles) x y/1173375110 (raadhus)",
-    "x": 204.9,
-    "z": -446.5,
-    "metric": "452 m2"
-   },
-   {
-    "id": "ay/667398483 (cobbles) x y/1081381422 (raadhus)",
-    "x": 202.5,
-    "z": -370.3,
-    "metric": "330 m2"
-   },
-   {
-    "id": "7eeb695764#0 (gravel) x ay/667398483 (cobbles)",
-    "x": 149.9,
-    "z": -390.4,
-    "metric": "266 m2"
-   },
-   {
-    "id": "ay/667398483 (cobbles) x y/1173373425 (raadhus)",
-    "x": 178.4,
-    "z": -391.6,
-    "metric": "234 m2"
-   },
-   {
-    "id": "de663a4936#0 (cobbles) x f883b7f00b#0 (gravel)",
-    "x": 283.1,
-    "z": 301.7,
-    "metric": "136 m2"
-   },
-   {
-    "id": "d6a33e3632#0 (cobbles) x way/27256158 (raadhus)",
-    "x": 197.0,
-    "z": 710.1,
-    "metric": "129 m2"
-   },
-   {
-    "id": "f6a05e0a00#0 (cobbles) x f883b7f00b#0 (gravel)",
-    "x": 311.2,
-    "z": 220.2,
-    "metric": "32 m2"
-   }
-  ]
- },
- {
   "id": "signal-no-junction",
   "layer": "signals",
   "title": "Signal point > 12 m from any road-graph junction node",
@@ -768,78 +622,6 @@
     "x": 711.2,
     "z": -273.4,
     "metric": "16 m from the nearest road-graph junction (degree >= 3)"
-   }
-  ]
- },
- {
-  "id": "surf-under-road",
-  "layer": "surfaces",
-  "title": "Pavement-class ground polygon overlaps a carriageway (>= 5 m2)",
-  "count": 16,
-  "total": 143,
-  "pct": 11.19,
-  "severity": "med",
-  "note": "ground at 0.014 under asphalt at 0.02: 6 mm apart, z-fighting at distance",
-  "examples": [
-   {
-    "id": "osm:way/1355324246",
-    "x": 290.4,
-    "z": 378.4,
-    "metric": "cobbles: 8453 m2 under carriageway"
-   },
-   {
-    "id": "osm:way/549543686",
-    "x": 539.2,
-    "z": 668.9,
-    "metric": "cobbles: 6523 m2 under carriageway"
-   },
-   {
-    "id": "osm:way/743674704",
-    "x": -592.8,
-    "z": 454.3,
-    "metric": "cobbles: 3056 m2 under carriageway"
-   },
-   {
-    "id": "osm:way/782307470",
-    "x": 78.5,
-    "z": 494.4,
-    "metric": "cobbles: 2522 m2 under carriageway"
-   },
-   {
-    "id": "osm:way/168134399",
-    "x": 461.6,
-    "z": -41.0,
-    "metric": "cobbles: 1890 m2 under carriageway"
-   },
-   {
-    "id": "osm:way/667398483",
-    "x": 208.1,
-    "z": -408.9,
-    "metric": "cobbles: 1501 m2 under carriageway"
-   },
-   {
-    "id": "osm:way/549545292",
-    "x": 656.2,
-    "z": 742.9,
-    "metric": "cobbles: 788 m2 under carriageway"
-   },
-   {
-    "id": "osm:way/25822563",
-    "x": 706.6,
-    "z": 444.1,
-    "metric": "setts: 663 m2 under carriageway"
-   },
-   {
-    "id": "osm:way/123204483",
-    "x": 656.9,
-    "z": 740.1,
-    "metric": "setts: 313 m2 under carriageway"
-   },
-   {
-    "id": "osm:way/24739672",
-    "x": 740.1,
-    "z": 486.3,
-    "metric": "setts: 240 m2 under carriageway"
    }
   ]
  },
@@ -991,9 +773,9 @@
   "id": "lod2-spire",
   "layer": "lod2",
   "title": "LoD2 roof top > 8 m above geodata eave",
-  "count": 68,
-  "total": 2114,
-  "pct": 3.22,
+  "count": 66,
+  "total": 2097,
+  "pct": 3.15,
   "severity": "med",
   "note": "tall pitched roofs / towers / vegetation points in the cloud",
   "examples": [
@@ -1204,42 +986,12 @@
   ]
  },
  {
-  "id": "water-surface",
-  "layer": "water",
-  "title": "Ground-material polygon overlaps open water after surface_cuts (>= 1 m2)",
-  "count": 3,
-  "total": 229,
-  "pct": 1.31,
-  "severity": "med",
-  "note": "register ground drawn at 0.014 above the sunk water",
-  "examples": [
-   {
-    "id": "kk:belaegning:bb45f9b8-c9eb-473c-bb66-19f883b7f00b#0",
-    "x": 264.0,
-    "z": 166.3,
-    "metric": "gravel: 17924 m2 over water (after the engine's surface_cuts)"
-   },
-   {
-    "id": "osm:way/168134399",
-    "x": 384.2,
-    "z": -53.9,
-    "metric": "cobbles: 305 m2 over water (after the engine's surface_cuts)"
-   },
-   {
-    "id": "kk:belaegning:deefb473-73d6-4a1c-9b96-523533f63736#0",
-    "x": 383.5,
-    "z": 16.3,
-    "metric": "gravel: 10 m2 over water (after the engine's surface_cuts)"
-   }
-  ]
- },
- {
   "id": "bld-carriageway",
   "layer": "buildings",
   "title": "Building footprint overlaps carriageway (>= 2 m2)",
   "count": 23,
-  "total": 2517,
-  "pct": 0.91,
+  "total": 2497,
+  "pct": 0.92,
   "severity": "med",
   "note": "road asphalt/kerbs run through the building volume (visible where the road leaves the building)",
   "examples": [
@@ -1436,10 +1188,21 @@
   "layer": "buildings",
   "title": "Building footprint overlaps cycletrack (>= 2 m2)",
   "count": 0,
-  "total": 2517,
+  "total": 2497,
   "pct": 0.0,
   "severity": "med",
   "note": "raised cycle track strip inside a footprint",
+  "examples": []
+ },
+ {
+  "id": "water-surface",
+  "layer": "water",
+  "title": "Ground-material polygon overlaps open water after surface_cuts (>= 1 m2)",
+  "count": 0,
+  "total": 309,
+  "pct": 0.0,
+  "severity": "med",
+  "note": "register ground drawn at 0.014 above the sunk water",
   "examples": []
  },
  {
@@ -1451,6 +1214,28 @@
   "pct": 0.0,
   "severity": "med",
   "note": "0 are inside open water",
+  "examples": []
+ },
+ {
+  "id": "surf-surf-diffclass",
+  "layer": "surfaces",
+  "title": "Two ground-material polygons of different class overlap (>= 2 m2)",
+  "count": 0,
+  "total": 309,
+  "pct": 0.0,
+  "severity": "med",
+  "note": "the later polygon wins per triangle; the loser leaks through as z-fighting patches (both at y 0.014)",
+  "examples": []
+ },
+ {
+  "id": "surf-under-road",
+  "layer": "surfaces",
+  "title": "Pavement-class ground polygon overlaps a carriageway (>= 5 m2)",
+  "count": 0,
+  "total": 227,
+  "pct": 0.0,
+  "severity": "med",
+  "note": "ground at 0.014 under asphalt at 0.02: 6 mm apart, z-fighting at distance",
   "examples": []
  },
  {
@@ -1802,66 +1587,6 @@
   ]
  },
  {
-  "id": "surf-surf-sameclass",
-  "layer": "surfaces",
-  "title": "Duplicate / overlapping polygons of the same class (>= 2 m2)",
-  "count": 8,
-  "total": 229,
-  "pct": 3.49,
-  "severity": "low",
-  "note": "",
-  "examples": [
-   {
-    "id": "ay/549543686 x y/1532751307 (cobbles)",
-    "x": 443.7,
-    "z": 668.3,
-    "metric": "259 m2"
-   },
-   {
-    "id": "27d7e44c1f#0 x f883b7f00b#0 (gravel)",
-    "x": 314.8,
-    "z": 5.1,
-    "metric": "211 m2"
-   },
-   {
-    "id": "3a31e066d3#0 x f883b7f00b#0 (gravel)",
-    "x": 276.8,
-    "z": -7.6,
-    "metric": "159 m2"
-   },
-   {
-    "id": "6fba7373f0#0 x f883b7f00b#0 (gravel)",
-    "x": 334.8,
-    "z": 0.7,
-    "metric": "133 m2"
-   },
-   {
-    "id": "2df2e3c6a9#0 x f883b7f00b#0 (gravel)",
-    "x": 299.0,
-    "z": 0.7,
-    "metric": "115 m2"
-   },
-   {
-    "id": "02aa13d4eb#0 x f883b7f00b#0 (gravel)",
-    "x": 367.0,
-    "z": 109.2,
-    "metric": "25 m2"
-   },
-   {
-    "id": "0f340ccd0a#0 x f883b7f00b#0 (gravel)",
-    "x": 291.7,
-    "z": -20.8,
-    "metric": "21 m2"
-   },
-   {
-    "id": "9909e9bdb2#0 x f883b7f00b#0 (gravel)",
-    "x": 284.7,
-    "z": -22.9,
-    "metric": "8 m2"
-   }
-  ]
- },
- {
   "id": "pavement-cycletrack",
   "layer": "pavement",
   "title": "Pavement polygon overlaps a cycle track (>= 2 m2; the engine cuts pavement where cycle tracks pass, so this is the area it removes)",
@@ -2048,24 +1773,6 @@
   ]
  },
  {
-  "id": "surf-under-bld",
-  "layer": "surfaces",
-  "title": "Ground-material polygon > 30% under buildings (and >= 5 m2)",
-  "count": 1,
-  "total": 229,
-  "pct": 0.44,
-  "severity": "low",
-  "note": "hidden by the wall volumes",
-  "examples": [
-   {
-    "id": "kk:belaegning:ff2cf081-7f44-44e9-ba4a-468e73008cd1#0",
-    "x": -599.9,
-    "z": -739.2,
-    "metric": "kbh_fortov: 12 m2 (71%) under buildings"
-   }
-  ]
- },
- {
   "id": "overlap:benches+lakeLights",
   "layer": "furniture",
   "title": "benches overlaps lakeLights (>= 20% of the smaller footprint)",
@@ -2092,6 +1799,28 @@
   "pct": 0.0,
   "severity": "low",
   "note": "mostly hidden inside the wall volume; matters where the building ground is below the pavement 0.2 m",
+  "examples": []
+ },
+ {
+  "id": "surf-surf-sameclass",
+  "layer": "surfaces",
+  "title": "Duplicate / overlapping polygons of the same class (>= 2 m2)",
+  "count": 0,
+  "total": 309,
+  "pct": 0.0,
+  "severity": "low",
+  "note": "",
+  "examples": []
+ },
+ {
+  "id": "surf-under-bld",
+  "layer": "surfaces",
+  "title": "Ground-material polygon > 30% under buildings (and >= 5 m2)",
+  "count": 0,
+  "total": 309,
+  "pct": 0.0,
+  "severity": "low",
+  "note": "hidden by the wall volumes",
   "examples": []
  },
  {

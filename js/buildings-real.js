@@ -341,7 +341,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
   if (lod2) {
     await lod2.prefetch();
     for (const b of buildings) {
-      if (heroIds.has(b.id)) continue;
+      if (heroIds.has(b.id) || b.footprintFix) continue; // a footprint the street layout clipped no longer matches its roofer edges
       const rec = await lod2.ready(b.id);
       if (rec) lod2Records.set(b.id, rec);
     }

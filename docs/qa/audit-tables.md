@@ -5,12 +5,12 @@
 | severity | check | layer | count | of | % |
 |---|---|---|---:|---:|---:|
 | high | `road-through-bld` | roads | 9 | 916 | 0.98 |
-| high | `bld-bld-overlap` | buildings | 22 | 2517 | 0.87 |
-| high | `bld-ground-vs-street` | buildings | 18 | 2517 | 0.72 |
-| high | `bld-ground-terrain` | buildings | 15 | 2517 | 0.6 |
-| high | `bld-ground-step-neighbours` | buildings | 5 | 2517 | 0.2 |
-| high | `bld-water` | buildings | 2 | 2517 | 0.08 |
-| high | `lod2-beyond-footprint` | lod2 | 0 | 2114 | 0.0 |
+| high | `bld-ground-vs-street` | buildings | 16 | 2497 | 0.64 |
+| high | `bld-ground-terrain` | buildings | 13 | 2497 | 0.52 |
+| high | `bld-ground-step-neighbours` | buildings | 5 | 2497 | 0.2 |
+| high | `bld-bld-overlap` | buildings | 0 | 2497 | 0.0 |
+| high | `bld-water` | buildings | 0 | 2497 | 0.0 |
+| high | `lod2-beyond-footprint` | lod2 | 0 | 2097 | 0.0 |
 | high | `water-carriageway` | water | 0 | 916 | 0.0 |
 | high | `water-cycletrack` | water | 0 | 583 | 0.0 |
 | high | `water-pavement` | water | 0 | 1026 | 0.0 |
@@ -18,24 +18,24 @@
 | high | `car-on-pavement` | cars | 0 | 1067 | 0.0 |
 | high | `car-in-moving-lane` | cars | 0 | 1067 | 0.0 |
 | high | `wire-through-building` | lamps | 0 | 502 | 0.0 |
-| med | `lod2-eave-mismatch` | lod2 | 1138 | 2114 | 53.83 |
-| med | `bld-height-sanity` | buildings | 429 | 2517 | 17.04 |
+| med | `lod2-eave-mismatch` | lod2 | 1128 | 2097 | 53.79 |
+| med | `bld-height-sanity` | buildings | 426 | 2497 | 17.06 |
 | med | `busstop-far-from-road` | bus stops | 6 | 41 | 14.63 |
-| med | `surf-surf-diffclass` | surfaces | 30 | 229 | 13.1 |
 | med | `signal-no-junction` | signals | 21 | 164 | 12.8 |
-| med | `surf-under-road` | surfaces | 16 | 143 | 11.19 |
 | med | `ground-jump-centreline` | ground height | 245 | 4690 | 5.22 |
 | med | `lake-wall-too-tall` | water | 62 | 1631 | 3.8 |
-| med | `lod2-spire` | lod2 | 68 | 2114 | 3.22 |
+| med | `lod2-spire` | lod2 | 66 | 2097 | 3.15 |
 | med | `ground-jump-gt25cm` | ground height | 117 | 4690 | 2.49 |
 | med | `road-road-overlap` | roads | 19 | 916 | 2.07 |
-| med | `water-surface` | water | 3 | 229 | 1.31 |
-| med | `bld-carriageway` | buildings | 23 | 2517 | 0.91 |
+| med | `bld-carriageway` | buildings | 23 | 2497 | 0.92 |
 | med | `cycle-carriageway` | cycle tracks | 3 | 583 | 0.51 |
 | med | `tree-giant` | trees | 25 | 4905 | 0.51 |
 | med | `on-cycletrack:benches` | benches | 2 | 860 | 0.23 |
-| med | `bld-cycletrack` | buildings | 0 | 2517 | 0.0 |
+| med | `bld-cycletrack` | buildings | 0 | 2497 | 0.0 |
+| med | `water-surface` | water | 0 | 309 | 0.0 |
 | med | `lakelights-water` | furniture | 0 | 143 | 0.0 |
+| med | `surf-surf-diffclass` | surfaces | 0 | 309 | 0.0 |
+| med | `surf-under-road` | surfaces | 0 | 227 | 0.0 |
 | med | `cycle-cycle-overlap` | cycle tracks | 0 | 583 | 0.0 |
 | med | `pavement-carriageway` | pavement | 0 | 1026 | 0.0 |
 | med | `tree-crown-facade` | trees | 0 | 4782 | 0.0 |
@@ -51,13 +51,13 @@
 | low | `tree-generic-genus` | trees | 3709 | 4905 | 75.62 |
 | low | `road-width-cap` | roads | 229 | 916 | 25.0 |
 | low | `tree-crown-clamped` | trees | 741 | 4905 | 15.11 |
-| low | `surf-surf-sameclass` | surfaces | 8 | 229 | 3.49 |
 | low | `pavement-cycletrack` | pavement | 22 | 1026 | 2.14 |
 | low | `mast-height-high` | lamps | 16 | 1188 | 1.35 |
 | low | `water-paths` | water | 5 | 987 | 0.51 |
-| low | `surf-under-bld` | surfaces | 1 | 229 | 0.44 |
 | low | `overlap:benches+lakeLights` | furniture | 1 | 1003 | 0.1 |
 | low | `pavement-in-bld` | pavement | 0 | 1026 | 0.0 |
+| low | `surf-surf-sameclass` | surfaces | 0 | 309 | 0.0 |
+| low | `surf-under-bld` | surfaces | 0 | 309 | 0.0 |
 | low | `tree-trunk-facade` | trees | 0 | 4782 | 0.0 |
 | low | `wire-too-long` | lamps | 0 | 502 | 0.0 |
 | low | `wire-too-short` | lamps | 0 | 502 | 0.0 |
@@ -81,60 +81,43 @@ Count **9** of 916 (0.98%). the road's capped width reaches into a house (centre
 | 8 | osm:way/1138533582 | 523.7, 158.4 | -: 10 m2 of the carriageway inside buildings |
 | 9 | osm:way/1217510946 | 75.8, 349.2 | -: 9 m2 of the carriageway inside buildings |
 
-#### `bld-bld-overlap` (high): Footprint overlaps another footprint (>= 1 m2 and >= 5% of the smaller)
-
-Count **22** of 2517 (0.87%). 1 pairs are near-duplicates (IoU > 0.8); 6 pairs have eaves within 0.3 m (coplanar roofs: z-fighting)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | gdk:1241239835 x gdk:1064813116 | 743.3, -711.9 | 2167 m2 (100% of smaller), eave 20.6/17.8 |
-| 2 | gdk:1241233804 x gdk:1064714047 | 606.7, 56.9 | 429 m2 (100% of smaller), eave 22.0/21.9 |
-| 3 | gdk:1241239838 x gdk:1064813116 | 750.5, -686.5 | 317 m2 (100% of smaller), eave 6.4/17.8 |
-| 4 | gdk:1107312570 x gdk:1108227800 | 618.8, -90.5 | 138 m2 (100% of smaller), eave 8.5/8.5 |
-| 5 | gdk:1107312549 x gdk:1107312571 | 659.7, -158.7 | 106 m2 (100% of smaller), eave 8.1/8.1 |
-| 6 | gdk:1064712431 x gdk:1064712430 | 442.7, 427.5 | 72 m2 (100% of smaller), eave 15.9/12.2 |
-| 7 | gdk:1107312569 x gdk:1108227800 | 603.8, -87.0 | 48 m2 (100% of smaller), eave 8.5/8.5 |
-| 8 | gdk:1241233805 x gdk:1064714047 | 626.8, 62.0 | 22 m2 (100% of smaller), eave 5.4/21.9 |
-| 9 | gdk:1064780389 x gdk:1107312287 | 81.1, 712.6 | 15 m2 (100% of smaller), eave -1.1/3.2 |
-| 10 | gdk:1064780389 x gdk:1107312288 | 81.6, 696.6 | 13 m2 (100% of smaller), eave -1.1/3.2 |
-
 #### `bld-ground-vs-street` (high): Building `ground` differs from the walking height just outside its outline by > 0.5 m (floating / sunken ground floor)
 
-Count **18** of 2517 (0.72%). 10 float more than 0.5 m above the street they face, 8 are sunk. Percentiles 5/50/95 of ground - street: -0.17 / -0.02 / 0.04. (Replaces bld-ground-vs-flat-plane and bld-ground-range, which compared the terrain `ground` with the flat plane y = 0.)
+Count **16** of 2497 (0.64%). 8 float more than 0.5 m above the street they face, 8 are sunk. Percentiles 5/50/95 of ground - street: -0.17 / -0.02 / 0.04. (Replaces bld-ground-vs-flat-plane and bld-ground-range, which compared the terrain `ground` with the flat plane y = 0.)
 
 | # | id | x, z | measure |
 |---:|---|---|---|
 | 1 | gdk:1114558373 | 81.9, 743.0 | ground -1.12 vs street -5.81 (+4.69 m) |
-| 2 | gdk:1107312569 | 603.8, -87.0 | ground +3.15 vs street +0.00 (+3.15 m) |
-| 3 | gdk:1107312570 | 618.8, -90.5 | ground +3.01 vs street +0.00 (+3.01 m) |
-| 4 | gdk:1064804878 | 503.0, 123.2 | ground +2.69 vs street +0.00 (+2.69 m) |
-| 5 | gdk:1107317699 | 668.9, -152.5 | ground +2.35 vs street +0.00 (+2.35 m) |
-| 6 | gdk:1064713314 | 188.7, 591.9 | ground -1.72 vs street +0.00 (-1.72 m) |
-| 7 | gdk:1064714269 | 419.7, -8.4 | ground +1.35 vs street +0.00 (+1.35 m) |
-| 8 | gdk:1064809760 | 28.2, 612.4 | ground +2.78 vs street +1.56 (+1.22 m) |
-| 9 | gdk:1114653087 | 714.9, 514.6 | ground -1.07 vs street +0.00 (-1.07 m) |
-| 10 | gdk:1064780700 | 142.3, 415.8 | ground +1.03 vs street +0.00 (+1.03 m) |
+| 2 | gdk:1064804878 | 503.0, 123.2 | ground +2.69 vs street +0.00 (+2.69 m) |
+| 3 | gdk:1107317699 | 668.9, -152.5 | ground +2.35 vs street +0.00 (+2.35 m) |
+| 4 | gdk:1064713314 | 188.7, 591.9 | ground -1.72 vs street +0.00 (-1.72 m) |
+| 5 | gdk:1064714269 | 419.7, -8.4 | ground +1.35 vs street +0.00 (+1.35 m) |
+| 6 | gdk:1064809760 | 28.2, 612.4 | ground +2.78 vs street +1.56 (+1.22 m) |
+| 7 | gdk:1114653087 | 714.9, 514.6 | ground -1.07 vs street +0.00 (-1.07 m) |
+| 8 | gdk:1064780700 | 142.3, 415.8 | ground +1.03 vs street +0.00 (+1.03 m) |
+| 9 | gdk:1064780701 | 140.6, 414.2 | ground +0.99 vs street +0.00 (+0.99 m) |
+| 10 | gdk:1064713496 | 197.0, 325.4 | ground +0.74 vs street +1.52 (-0.78 m) |
 
 #### `bld-ground-terrain` (high): Building `ground` differs from the terrain model along its outline by > 0.5 m
 
-Count **15** of 2517 (0.6%). ground min -6.35 max 4.22 median 1.14: one height model for buildings, roads, lakes and props means these agree
+Count **13** of 2497 (0.52%). ground min -6.27 max 4.22 median 1.14: one height model for buildings, roads, lakes and props means these agree
 
 | # | id | x, z | measure |
 |---:|---|---|---|
 | 1 | gdk:1114558373 | 81.9, 743.0 | ground -1.12 vs terrain along outline -5.24 |
-| 2 | gdk:1107312569 | 603.8, -87.0 | ground +3.15 vs terrain along outline +0.00 |
-| 3 | gdk:1107312570 | 618.8, -90.5 | ground +3.01 vs terrain along outline +0.00 |
-| 4 | gdk:1064804878 | 503.0, 123.2 | ground +2.69 vs terrain along outline +0.00 |
-| 5 | gdk:1107317699 | 668.9, -152.5 | ground +2.35 vs terrain along outline +0.00 |
-| 6 | gdk:1064713314 | 188.7, 591.9 | ground -1.72 vs terrain along outline +0.00 |
-| 7 | gdk:1064714269 | 419.7, -8.4 | ground +1.35 vs terrain along outline +0.00 |
-| 8 | gdk:1064809760 | 28.2, 612.4 | ground +2.78 vs terrain along outline +1.59 |
-| 9 | gdk:1114653087 | 714.9, 514.6 | ground -1.07 vs terrain along outline +0.00 |
-| 10 | gdk:1064780700 | 142.3, 415.8 | ground +1.03 vs terrain along outline +0.00 |
+| 2 | gdk:1064804878 | 503.0, 123.2 | ground +2.69 vs terrain along outline +0.00 |
+| 3 | gdk:1107317699 | 668.9, -152.5 | ground +2.35 vs terrain along outline +0.00 |
+| 4 | gdk:1064713314 | 188.7, 591.9 | ground -1.72 vs terrain along outline +0.00 |
+| 5 | gdk:1064714269 | 419.7, -8.4 | ground +1.35 vs terrain along outline +0.00 |
+| 6 | gdk:1064809760 | 28.2, 612.4 | ground +2.78 vs terrain along outline +1.59 |
+| 7 | gdk:1114653087 | 714.9, 514.6 | ground -1.07 vs terrain along outline +0.00 |
+| 8 | gdk:1064780700 | 142.3, 415.8 | ground +1.03 vs terrain along outline +0.00 |
+| 9 | gdk:1064780701 | 140.6, 414.2 | ground +0.99 vs terrain along outline +0.00 |
+| 10 | gdk:1064713496 | 197.0, 325.4 | ground +0.74 vs terrain along outline +1.45 |
 
 #### `bld-ground-step-neighbours` (high): Touching buildings whose `ground` differs by > 1.5 m (stepped base along one frontage)
 
-Count **5** of 2517 (0.2%). a continuous Copenhagen block front gets a staircase of base lines / floating ground floors
+Count **5** of 2497 (0.2%). a continuous Copenhagen block front gets a staircase of base lines / floating ground floors
 
 | # | id | x, z | measure |
 |---:|---|---|---|
@@ -144,18 +127,17 @@ Count **5** of 2517 (0.2%). a continuous Copenhagen block front gets a staircase
 | 4 | gdk:1064710550 / gdk:1064813295 | 530.5, -700.9 | party-wall neighbours' ground differ 1.6 m |
 | 5 | gdk:1064713317 / gdk:1064809760 | 32.4, 634.0 | party-wall neighbours' ground differ 1.6 m |
 
+#### `bld-bld-overlap` (high): Footprint overlaps another footprint (>= 1 m2 and >= 5% of the smaller)
+
+Count **0** of 2497 (0.0%). 0 pairs are near-duplicates (IoU > 0.8); 0 pairs have eaves within 0.3 m (coplanar roofs: z-fighting)
+
 #### `bld-water` (high): Building footprint overlaps a lake (>= 1 m2)
 
-Count **2** of 2517 (0.08%). walls rise out of the water / lake wall + building wall intersect (e.g. houses on the dossering over the lake edge)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | gdk:1216086107 | -15.8, -414.3 | 25 m2 in lake |
-| 2 | gdk:1216086110 | -8.0, -430.0 | 20 m2 in lake |
+Count **0** of 2497 (0.0%). walls rise out of the water / lake wall + building wall intersect (e.g. houses on the dossering over the lake edge)
 
 #### `lod2-beyond-footprint` (high): LoD2 mesh has a vertex > 0.5 m outside its footprint
 
-Count **0** of 2114 (0.0%). 0 exceed 1.5 m; total roof area outside footprints 0 m2. Roofer eave overhangs / neighbour points; the facade walls stop at the footprint so the roof overhangs or floats
+Count **0** of 2097 (0.0%). 0 exceed 1.5 m; total roof area outside footprints 0 m2. Roofer eave overhangs / neighbour points; the facade walls stop at the footprint so the roof overhangs or floats
 
 #### `water-carriageway` (high): Carriageway overlaps open water (>= 1 m2)
 
@@ -187,7 +169,7 @@ Count **0** of 502 (0.0%). the span is facade-to-facade `inferred` across the st
 
 #### `lod2-eave-mismatch` (med): LoD2 median eave differs from geodata eave by > 2 m
 
-Count **1138** of 2114 (53.83%). facade walls are cut to the LoD2 eave per edge, so this changes the wall height silently
+Count **1128** of 2097 (53.79%). facade walls are cut to the LoD2 eave per edge, so this changes the wall height silently
 
 | # | id | x, z | measure |
 |---:|---|---|---|
@@ -204,7 +186,7 @@ Count **1138** of 2114 (53.83%). facade walls are cut to the LoD2 eave per edge,
 
 #### `bld-height-sanity` (med): Height implausible: > 60 m, < 2.5 m, or > 6.5 / < 2.0 m per storey
 
-Count **429** of 2517 (17.04%). 
+Count **426** of 2497 (17.06%). 
 
 | # | id | x, z | measure |
 |---:|---|---|---|
@@ -232,23 +214,6 @@ Count **6** of 41 (14.63%). nearest road classes: {'secondary': 33, 'service': 3
 | 5 | stop[17] Elmegade | -210.8, -651.2 | flag 5.1 m from the nearest carriageway edge (secondary Nørrebrogade) |
 | 6 | stop[18] Åboulevard | -663.6, -183.4 | flag 5.0 m from the nearest carriageway edge (secondary H.C. Ørsteds Vej) |
 
-#### `surf-surf-diffclass` (med): Two ground-material polygons of different class overlap (>= 2 m2)
-
-Count **30** of 229 (13.1%). the later polygon wins per triangle; the loser leaks through as z-fighting patches (both at y 0.014)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | ay/123204483 (setts) x ay/549545292 (cobbles) | 632.0, 733.8 | 1932 m2 |
-| 2 | d060a06537#0 (asphalt_road) x ay/168134399 (cobbles) | 436.1, -66.9 | 1201 m2 |
-| 3 | ay/549543686 (cobbles) x ay/827602453 (raadhus) | 426.4, 628.3 | 1008 m2 |
-| 4 | ay/667398483 (cobbles) x y/1173375110 (raadhus) | 204.9, -446.5 | 452 m2 |
-| 5 | ay/667398483 (cobbles) x y/1081381422 (raadhus) | 202.5, -370.3 | 330 m2 |
-| 6 | 7eeb695764#0 (gravel) x ay/667398483 (cobbles) | 149.9, -390.4 | 266 m2 |
-| 7 | ay/667398483 (cobbles) x y/1173373425 (raadhus) | 178.4, -391.6 | 234 m2 |
-| 8 | de663a4936#0 (cobbles) x f883b7f00b#0 (gravel) | 283.1, 301.7 | 136 m2 |
-| 9 | d6a33e3632#0 (cobbles) x way/27256158 (raadhus) | 197.0, 710.1 | 129 m2 |
-| 10 | f6a05e0a00#0 (cobbles) x f883b7f00b#0 (gravel) | 311.2, 220.2 | 32 m2 |
-
 #### `signal-no-junction` (med): Signal point > 12 m from any road-graph junction node
 
 Count **21** of 164 (12.8%). the engine matches signals to junction nodes; unmatched ones get no signal heads or phase
@@ -265,23 +230,6 @@ Count **21** of 164 (12.8%). the engine matches signals to junction nodes; unmat
 | 8 | signal[41] | 151.2, 743.4 | 17 m from the nearest road-graph junction (degree >= 3) |
 | 9 | signal[157] | -396.3, 501.2 | 16 m from the nearest road-graph junction (degree >= 3) |
 | 10 | signal[74] | 711.2, -273.4 | 16 m from the nearest road-graph junction (degree >= 3) |
-
-#### `surf-under-road` (med): Pavement-class ground polygon overlaps a carriageway (>= 5 m2)
-
-Count **16** of 143 (11.19%). ground at 0.014 under asphalt at 0.02: 6 mm apart, z-fighting at distance
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | osm:way/1355324246 | 290.4, 378.4 | cobbles: 8453 m2 under carriageway |
-| 2 | osm:way/549543686 | 539.2, 668.9 | cobbles: 6523 m2 under carriageway |
-| 3 | osm:way/743674704 | -592.8, 454.3 | cobbles: 3056 m2 under carriageway |
-| 4 | osm:way/782307470 | 78.5, 494.4 | cobbles: 2522 m2 under carriageway |
-| 5 | osm:way/168134399 | 461.6, -41.0 | cobbles: 1890 m2 under carriageway |
-| 6 | osm:way/667398483 | 208.1, -408.9 | cobbles: 1501 m2 under carriageway |
-| 7 | osm:way/549545292 | 656.2, 742.9 | cobbles: 788 m2 under carriageway |
-| 8 | osm:way/25822563 | 706.6, 444.1 | setts: 663 m2 under carriageway |
-| 9 | osm:way/123204483 | 656.9, 740.1 | setts: 313 m2 under carriageway |
-| 10 | osm:way/24739672 | 740.1, 486.3 | setts: 240 m2 under carriageway |
 
 #### `ground-jump-centreline` (med): Height step > 0.15 m ALONG a carriageway centreline
 
@@ -319,7 +267,7 @@ Count **62** of 1631 (3.8%). free-board p5/p50/p95 0.30 / 0.82 / 1.75 m; the wat
 
 #### `lod2-spire` (med): LoD2 roof top > 8 m above geodata eave
 
-Count **68** of 2114 (3.22%). tall pitched roofs / towers / vegetation points in the cloud
+Count **66** of 2097 (3.15%). tall pitched roofs / towers / vegetation points in the cloud
 
 | # | id | x, z | measure |
 |---:|---|---|---|
@@ -368,19 +316,9 @@ Count **19** of 916 (2.07%). 892 further overlaps are at junctions (expected); h
 | 9 | osm:way/127496823 x Gyldenløvesgade | -158.9, 108.1 | 40 m2 away from any junction/road end |
 | 10 | osm:way/502189573 x H.C. Andersens Boulevard | 197.8, 382.3 | 32 m2 away from any junction/road end |
 
-#### `water-surface` (med): Ground-material polygon overlaps open water after surface_cuts (>= 1 m2)
-
-Count **3** of 229 (1.31%). register ground drawn at 0.014 above the sunk water
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | kk:belaegning:bb45f9b8-c9eb-473c-bb66-19f883b7f00b#0 | 264.0, 166.3 | gravel: 17924 m2 over water (after the engine's surface_cuts) |
-| 2 | osm:way/168134399 | 384.2, -53.9 | cobbles: 305 m2 over water (after the engine's surface_cuts) |
-| 3 | kk:belaegning:deefb473-73d6-4a1c-9b96-523533f63736#0 | 383.5, 16.3 | gravel: 10 m2 over water (after the engine's surface_cuts) |
-
 #### `bld-carriageway` (med): Building footprint overlaps carriageway (>= 2 m2)
 
-Count **23** of 2517 (0.91%). road asphalt/kerbs run through the building volume (visible where the road leaves the building)
+Count **23** of 2497 (0.92%). road asphalt/kerbs run through the building volume (visible where the road leaves the building)
 
 | # | id | x, z | measure |
 |---:|---|---|---|
@@ -433,11 +371,23 @@ Count **2** of 860 (0.23%). blocks the track (bikes/hoops: racks laid over the t
 
 #### `bld-cycletrack` (med): Building footprint overlaps cycletrack (>= 2 m2)
 
-Count **0** of 2517 (0.0%). raised cycle track strip inside a footprint
+Count **0** of 2497 (0.0%). raised cycle track strip inside a footprint
+
+#### `water-surface` (med): Ground-material polygon overlaps open water after surface_cuts (>= 1 m2)
+
+Count **0** of 309 (0.0%). register ground drawn at 0.014 above the sunk water
 
 #### `lakelights-water` (med): Lake-path lights inside the lake or > 6 m from its edge
 
 Count **0** of 143 (0.0%). 0 are inside open water
+
+#### `surf-surf-diffclass` (med): Two ground-material polygons of different class overlap (>= 2 m2)
+
+Count **0** of 309 (0.0%). the later polygon wins per triangle; the loser leaks through as z-fighting patches (both at y 0.014)
+
+#### `surf-under-road` (med): Pavement-class ground polygon overlaps a carriageway (>= 5 m2)
+
+Count **0** of 227 (0.0%). ground at 0.014 under asphalt at 0.02: 6 mm apart, z-fighting at distance
 
 #### `cycle-cycle-overlap` (med): Two cycle tracks overlap (KK cykelsti vs road-side strips; >= 2 m2)
 
@@ -538,21 +488,6 @@ Count **741** of 4905 (15.11%).
 | 9 | tree[2330] | -487.5, -292.5 | crown r 8.1 / h 2.9 = 2.79 |
 | 10 | tree[3280] | -307.5, 623.5 | crown r 6.9 / h 2.5 = 2.76 |
 
-#### `surf-surf-sameclass` (low): Duplicate / overlapping polygons of the same class (>= 2 m2)
-
-Count **8** of 229 (3.49%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | ay/549543686 x y/1532751307 (cobbles) | 443.7, 668.3 | 259 m2 |
-| 2 | 27d7e44c1f#0 x f883b7f00b#0 (gravel) | 314.8, 5.1 | 211 m2 |
-| 3 | 3a31e066d3#0 x f883b7f00b#0 (gravel) | 276.8, -7.6 | 159 m2 |
-| 4 | 6fba7373f0#0 x f883b7f00b#0 (gravel) | 334.8, 0.7 | 133 m2 |
-| 5 | 2df2e3c6a9#0 x f883b7f00b#0 (gravel) | 299.0, 0.7 | 115 m2 |
-| 6 | 02aa13d4eb#0 x f883b7f00b#0 (gravel) | 367.0, 109.2 | 25 m2 |
-| 7 | 0f340ccd0a#0 x f883b7f00b#0 (gravel) | 291.7, -20.8 | 21 m2 |
-| 8 | 9909e9bdb2#0 x f883b7f00b#0 (gravel) | 284.7, -22.9 | 8 m2 |
-
 #### `pavement-cycletrack` (low): Pavement polygon overlaps a cycle track (>= 2 m2; the engine cuts pavement where cycle tracks pass, so this is the area it removes)
 
 Count **22** of 1026 (2.14%). handled by `skip` in buildGroundBuckets; reported to show how much pavement the cycle layer deletes
@@ -599,14 +534,6 @@ Count **5** of 987 (0.51%). pedestrian/cyclist routes through the lake (OSM path
 | 4 | osm:way/564743824 | 388.3, -9.9 | footway : 7 m in water |
 | 5 | osm:way/1561313354 | 369.9, 35.0 | footway : 5 m in water |
 
-#### `surf-under-bld` (low): Ground-material polygon > 30% under buildings (and >= 5 m2)
-
-Count **1** of 229 (0.44%). hidden by the wall volumes
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | kk:belaegning:ff2cf081-7f44-44e9-ba4a-468e73008cd1#0 | -599.9, -739.2 | kbh_fortov: 12 m2 (71%) under buildings |
-
 #### `overlap:benches+lakeLights` (low): benches overlaps lakeLights (>= 20% of the smaller footprint)
 
 Count **1** of 1003 (0.1%). 
@@ -618,6 +545,14 @@ Count **1** of 1003 (0.1%).
 #### `pavement-in-bld` (low): Pavement polygon overlaps a building footprint (>= 3 m2)
 
 Count **0** of 1026 (0.0%). mostly hidden inside the wall volume; matters where the building ground is below the pavement 0.2 m
+
+#### `surf-surf-sameclass` (low): Duplicate / overlapping polygons of the same class (>= 2 m2)
+
+Count **0** of 309 (0.0%). 
+
+#### `surf-under-bld` (low): Ground-material polygon > 30% under buildings (and >= 5 m2)
+
+Count **0** of 309 (0.0%). hidden by the wall volumes
 
 #### `tree-trunk-facade` (low): Trunk < 0.5 m from a facade
 

@@ -215,58 +215,58 @@
  ],
  "squares": [
   {
-   "label": "Square gravel (52377 m2) 308,147",
+   "label": "Square cobbles (13905 m2) 499,717",
    "pos": [
-    322.2,
+    499.0,
     1.7,
-    147.2
+    731.0
    ],
    "look": [
-    308.2,
+    499.0,
     1.2,
-    147.2
+    717.0
    ],
    "fov": 68
   },
   {
-   "label": "Square cobbles (25645 m2) 497,704",
+   "label": "Square gravel (8464 m2) 219,146",
    "pos": [
-    497.4,
+    232.6,
     1.7,
-    718.1
+    146.3
    ],
    "look": [
-    497.4,
+    218.6,
     1.2,
-    704.1
+    146.3
    ],
    "fov": 68
   },
   {
-   "label": "Square cobbles (23390 m2) 225,375",
+   "label": "Square cobbles (8029 m2) 402,-77",
    "pos": [
-    224.9,
+    402.0,
     1.7,
-    388.8
+    -63.3
    ],
    "look": [
-    224.9,
+    402.0,
     1.2,
-    374.8
+    -77.3
    ],
    "fov": 68
   },
   {
-   "label": "Square cobbles (14819 m2) 424,-71",
+   "label": "Square cobbles (7807 m2) -300,-413",
    "pos": [
-    424.0,
+    -299.5,
     1.7,
-    -57.2
+    -399.2
    ],
    "look": [
-    424.0,
+    -299.5,
     1.2,
-    -71.2
+    -413.2
    ],
    "fov": 68
   },
@@ -312,57 +312,7 @@
    }
   },
   {
-   "label": "Worst #2: bld-water",
-   "pos": [
-    -26.9,
-    1.7,
-    -418.9
-   ],
-   "look": [
-    -15.8,
-    1.2,
-    -414.3
-   ],
-   "fov": 68,
-   "detail": {
-    "x": -15.806586961839546,
-    "z": -414.28999999999996,
-    "score": 25.3,
-    "checks": [
-     "bld-water"
-    ],
-    "what": "25 m2 in lake",
-    "id": "gdk:1216086107"
-   }
-  },
-  {
-   "label": "Worst #3: bld-bld-overlap, bld-carriageway, road-through-bld",
-   "pos": [
-    594.7,
-    1.7,
-    56.9
-   ],
-   "look": [
-    606.7,
-    1.2,
-    56.9
-   ],
-   "fov": 68,
-   "detail": {
-    "x": 606.6732567216286,
-    "z": 56.864999999999995,
-    "score": 428.61,
-    "checks": [
-     "bld-bld-overlap",
-     "bld-carriageway",
-     "road-through-bld"
-    ],
-    "what": "429 m2 (100% of smaller), eave 22.0/21.9",
-    "id": "gdk:1241233804 x gdk:1064714047"
-   }
-  },
-  {
-   "label": "Worst #4: bld-ground-step-neighbours, bld-bld-overlap, ground-jump-gt25cm",
+   "label": "Worst #2: bld-ground-step-neighbours, ground-jump-gt25cm",
    "pos": [
     69.2,
     1.7,
@@ -380,7 +330,6 @@
     "score": 5.15,
     "checks": [
      "bld-ground-step-neighbours",
-     "bld-bld-overlap",
      "ground-jump-gt25cm"
     ],
     "what": "party-wall neighbours' ground differ 5.1 m",
@@ -388,31 +337,7 @@
    }
   },
   {
-   "label": "Worst #5: surf-surf-diffclass",
-   "pos": [
-    632.0,
-    1.7,
-    745.8
-   ],
-   "look": [
-    632.0,
-    1.2,
-    733.8
-   ],
-   "fov": 68,
-   "detail": {
-    "x": 632.0457469284648,
-    "z": 733.815,
-    "score": 1931.71,
-    "checks": [
-     "surf-surf-diffclass"
-    ],
-    "what": "1932 m2",
-    "id": "ay/123204483 (setts) x ay/549545292 (cobbles)"
-   }
-  },
-  {
-   "label": "Worst #6: lod2-spire, bld-height-sanity",
+   "label": "Worst #3: lod2-spire, bld-height-sanity",
    "pos": [
     596.9,
     1.7,

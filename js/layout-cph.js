@@ -73,7 +73,39 @@ export function applyStreets(geo, doc) {
     for (const li of doc.graph.dropLinks || []) { rg.links[li][2] = 0; rg.links[li][3] = 0; }
     rg.layout = doc.version;
   }
+  // footprint errors resolved by source precedence (tools/cph-geodata/streets.py resolve_buildings): drops (a shed inside the main
+  // building, a duplicate, a house in the lake) and clips (the older footprint loses the overlap). A clipped footprint keeps its
+  // id and attributes; extra pieces become copies `id#k`.
+  if (doc.buildings && geo.buildings) {
+    const drop = new Set((doc.buildings.drop || []).map((d) => d.id));
+    const clip = new Map((doc.buildings.clip || []).map((c) => [c.id, c]));
+    const next = [];
+    stats.buildingsDropped = 0;
+    stats.buildingsClipped = 0;
+    for (const b of geo.buildings) {
+      if (drop.has(b.id)) { stats.buildingsDropped++; continue; }
+      const c = clip.get(b.id);
+      if (!c) { next.push(b); continue; }
+      stats.buildingsClipped++;
+      c.pieces.forEach((piece, k) => {
+        const nb = { ...b, id: k === 0 ? b.id : `${b.id}#${k}`, ring: piece.ring, holes: piece.holes || [], footprintFix: c.reason, ringSurvey: b.ring };
+        next.push(nb);
+      });
+    }
+    geo.buildings = next;
+  }
+  if (doc.surfaceCuts) geo.surfaceCuts = doc.surfaceCuts;
   if (doc.sidewalks) { geo.sidewalksSurvey = geo.sidewalks; geo.sidewalks = doc.sidewalks; stats.sidewalks = doc.sidewalks.length; }
   if (doc.cycleTracks) { geo.cycleTracksSurvey = geo.cycleTracks; geo.cycleTracks = doc.cycleTracks; stats.cycleTracks = doc.cycleTracks.length; }
   return stats;
+}
+
+/**
+ * Ground-surface cuts of two sources (the lake document's and the street layout's) as one list; where both cut the same polygon the
+ * street layout's wins (it already subtracts the water, and keeps the polygon's holes).
+ */
+export function mergeSurfaceCuts(...lists) {
+  const byId = new Map();
+  for (const list of lists) for (const c of list || []) byId.set(c.id, c);
+  return [...byId.values()];
 }

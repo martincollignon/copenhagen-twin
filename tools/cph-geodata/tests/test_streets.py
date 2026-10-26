@@ -108,3 +108,61 @@ def test_a_dual_carriageway_neighbour_halves_the_width():
     a = S.road_ribbon(doc["roads"]["r"]["p"], doc["roads"]["r"]["hw"])
     b = S.road_ribbon(doc["roads"]["r2"]["p"], doc["roads"]["r2"]["hw"])
     assert a.intersection(b).area < 1.0
+
+
+# ----------------------------------------------------------------------------------------------- data errors
+def bld(bid, ring, **kw):
+    return {"id": bid, "ring": ring, **kw}
+
+
+def test_footprint_overlaps_follow_source_precedence_and_report():
+    from shapely.geometry import Polygon
+
+    water = Polygon()
+    geo = {"heroes": [{"building_id": "gdk:1000000003"}], "buildings": [
+        bld("gdk:1000000001", sq(0, 0, 40, 20)),  # old block 800 m2
+        bld("gdk:1200000002", sq(30, 0, 50, 20)),  # newer neighbour overlapping its east end by 10 x 20 = 200 m2
+        bld("gdk:1100000004", sq(5, 5, 9, 9)),  # a 16 m2 shed drawn on the old block: hidden inside it
+        bld("gdk:1000000003", sq(100, 0, 120, 20)),  # a hero
+        bld("gdk:1300000005", sq(110, 0, 130, 20)),  # newer, overlapping the hero: the hero wins
+        bld("kk:bygning:7", sq(200, 0, 210, 10)),  # a KK footprint ...
+        bld("gdk:1000000006", sq(200, 0, 210, 10)),  # ... duplicated by an older GeoDanmark one: GeoDanmark outranks KK
+    ]}
+    res = S.resolve_buildings(geo, water)
+    assert res["drop"]["gdk:1100000004"] == "inside-larger"
+    assert "gdk:1200000002" not in res["drop"] and "gdk:1200000002" not in res["clip"], "the newer footprint is untouched"
+    piece = res["clip"]["gdk:1000000001"]["pieces"][0]
+    assert piece.area == pytest.approx(600.0, abs=0.5), "the older block loses the 200 m2 overlap"
+    assert "gdk:1000000003" not in res["drop"] and "gdk:1000000003" not in res["clip"], "heroes are never touched"
+    assert res["clip"]["gdk:1300000005"]["pieces"][0].area == pytest.approx(200.0, abs=0.5), "even a newer footprint yields the overlap to a hero"
+    assert res["drop"].get("kk:bygning:7") == "overlap-older"
+    assert {r["id"] for r in res["report"]} >= {"gdk:1100000004", "gdk:1000000001", "kk:bygning:7"}
+
+
+def test_a_house_in_a_lake_is_dropped_and_one_on_the_quay_is_clipped():
+    water = S.poly_of(sq(0, 0, 100, 100))
+    geo = {"heroes": [], "buildings": [bld("gdk:1", sq(10, 10, 20, 20)), bld("gdk:2", sq(95, 40, 115, 60))]}
+    res = S.resolve_buildings(geo, water)
+    assert res["drop"] == {"gdk:1": "in-water"}
+    assert res["clip"]["gdk:2"]["pieces"][0].area == pytest.approx(300, abs=1)
+    rec = S.building_records(geo, res)
+    assert rec["drop"] == [{"id": "gdk:1", "reason": "in-water"}] and rec["clip"][0]["pieces"][0]["ring"]
+
+
+def test_ground_surfaces_lose_roads_buildings_parks_and_the_losing_class():
+    from shapely.geometry import Polygon
+
+    carriage = {"r": S.poly_of(sq(0, 40, 100, 50))}
+    surfaces = {"surfaces": [
+        {"id": "osm:square", "cls": "cobbles", "ring": sq(0, 0, 100, 100)},  # a 100 x 100 'square' enclosing a street, a house and a park
+        {"id": "kk:gravel", "cls": "gravel", "ring": sq(60, 60, 80, 80)},  # the register beats OSM where both cover a spot
+    ]}
+    geo = {"parks": [{"id": "p", "ring": sq(0, 0, 30, 30)}]}
+    house = S.poly_of(sq(0, 60, 30, 100))
+    cuts, stats = S.compile_surfaces(surfaces, geo, Polygon(), carriage, [], house)
+    by = {c["id"]: c["replace"] for c in cuts}
+    area = sum(S.poly_of(r["ring"], r.get("holes", ())).area for r in by["osm:square"])
+    # 10 000 - street 1 000 - house 1 200 - park 900 - gravel 400 = 6 500
+    assert area == pytest.approx(10000 - 1000 - 1200 - 900 - 400, abs=5)
+    assert "kk:gravel" not in by, "a register polygon clear of everything stays as it is"
+    assert stats["osm"] == 1
