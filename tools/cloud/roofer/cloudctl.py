@@ -277,7 +277,7 @@ def cmd_report(a):
                       "task_cost_usd": round(cost, 2), "own_cell_lidar": own_src, "all_lidar_fetches": src,
                       "buildings_own": sum(d["own_buildings"] for d in done.values()),
                       "max_task_s": max((d["task_s"] for d in done.values()), default=0),
-                      "max_peak_rss_mb": max((d["peak_rss_mb"] for d in done.values()), default=0)}, indent=1))
+                      "max_peak_rss_mb": max((d.get("peak_rss_mb", 0) for d in done.values()), default=0)}, indent=1))
     for c, f in sorted(failed.items()):
         print(c, f["attempt_error"][:200].replace("\n", " "))
 

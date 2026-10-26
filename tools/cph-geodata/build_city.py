@@ -56,9 +56,9 @@ import tile_split as T  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
-TILES_DIR = DATA / "tiles"
-CITY_DIR = DATA / "city"
-WORK = CITY_DIR / "work"
+TILES_DIR = Path(os.environ.get("CPH_TILES_DIR") or DATA / "tiles")  # staging builds: point at a copy and leave data/tiles alone
+CITY_DIR = Path(os.environ.get("CPH_CITY_DIR") or DATA / "city")
+WORK = Path(os.environ.get("CPH_WORK_DIR") or CITY_DIR / "work")  # state markers, meta parts, queue notes
 STATE = WORK / "state"
 RAW_CITY = S.RAW_CITY
 RAW_CELLS = DATA / "raw" / "cells"
