@@ -6,6 +6,8 @@ import {
 import { cityUniforms } from './tsl-materials.js';
 import { buildLakeArrays, groundWithHoles, shoreDistanceField, WATER } from './lakes-cph.js';
 import { buildTerrainMeshArrays } from './terrain-cph.js';
+import { applyGroundField } from './ground-shader-cph.js';
+import { lakeDistanceFrom } from './ground-field-cph.js';
 
 // js/water-cph.js
 // The Soerne as water: sunken lake surface with TSL ripples, fresnel sky/planar reflection and a soft shoreline, held by
@@ -65,8 +67,14 @@ function createLakeWallMaterial() {
     const cope = mix(vec3(0.30, 0.29, 0.28), vec3(0.42, 0.40, 0.38), copeId).mul(grain);
     const concrete = vec3(0.16, 0.16, 0.165).mul(grain);
     const isCope = step(0.5, kind).mul(step(kind, 1.5));
-    const isConcrete = step(1.5, kind);
-    return mix(mix(wallWet, cope, isCope), concrete, isConcrete);
+    const isBank = step(2.5, kind);
+    const isConcrete = step(1.5, kind).mul(float(1).sub(isBank));
+    // natural lake bank (kind 3): grass above the splash zone, wet mud and reed stubble at the water line
+    const n1 = fract(sin(dot(vec2(floor(wuv.x.mul(1.7)), floor(v.mul(2.3))), vec2(12.9, 78.2))).mul(43758.5));
+    const grassC = mix(vec3(0.07, 0.12, 0.035), vec3(0.14, 0.2, 0.06), n1);
+    const mud = mix(vec3(0.05, 0.04, 0.03), vec3(0.09, 0.075, 0.05), n1);
+    const bank = mix(mud, grassC, smoothstep(-0.95, -0.35, v));
+    return mix(mix(mix(wallWet, cope, isCope), concrete, isConcrete), bank, isBank);
   })();
   return m;
 }
@@ -143,8 +151,8 @@ function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
  * Builds the lakes into `scene`. Returns { group, ground, water, material, stats, update, attach, setPlanar }.
  * `ground` is the cut ground mesh (replaces the plain plane); `update(x, z)` gates the planar reflection pass.
  */
-function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -750, 750, 750], planar = true, terrain = null } = {}) {
-  const arrays = buildLakeArrays(doc, { bbox, terrain });
+function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -750, 750, 750], planar = true, terrain = null, parks = null, modelBridge = () => false } = {}) {
+  const arrays = buildLakeArrays(doc, { bbox, terrain, modelBridge });
   const group = new THREE.Group();
   group.name = 'CopenhagenLakes';
 
@@ -156,6 +164,8 @@ function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -75
   groundGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
   groundGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(g.normal || Array.from(g.position, (_, i) => (i % 3 === 1 ? 1 : 0)), 3));
   groundGeometry.setIndex(new THREE.Uint32BufferAttribute(g.index, 1));
+  // fine-gravel lake path + grass (js/ground-shader-cph.js); the same raster answers `lakeDistance` (tree species context)
+  const groundFieldInfo = parks ? applyGroundField(groundMaterial, doc, parks, { bbox }) : null;
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.name = 'CopenhagenGround';
   ground.receiveShadow = true;
@@ -243,6 +253,7 @@ function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -75
   };
   return {
     group, ground, water, material, walls, field, state, setPlanar,
+    lakeDistance: groundFieldInfo ? lakeDistanceFrom(groundFieldInfo.field) : null,
     stats: { ...arrays.stats, surfaceTriangles: arrays.surface.index.length / 3, groundTriangles: g.index.length / 3 },
     level: arrays.level,
     attach: ({ camera: cam }) => { camera = cam; },

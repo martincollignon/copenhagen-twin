@@ -155,3 +155,24 @@ The engine sinks the water 0.8 m below the ground, builds granite walls and cuts
 A separate file (`version: "cph-furniture/1"`, same frame); `data/cph-geodata.json` is untouched. Every feature has `src`, `conf` and `licence` (`CC-BY-4.0`, `unstated` for datasets without a licence statement, `ODbL` for water-edge derived items). `yaw` is the direction an object faces (model +z -> `(sin yaw, cos yaw)` in x, z).
 
 Arrays: `trees` (`height`, `crown_radius`, `genus` family, `species`, `age`), `lamps` (Citelum mast and wire-suspended: `mount`, `pole` kbh/tube/park, `pole_h`, `light` led/sodium/metalhalide/fluorescent, `cct`, `watt`, wire `span` [x0, z0, x1, z1] from the 2018 `belysning-ledninger` lines or, `span_conf: inferred`, facade to facade across the street), `parkingBays` (`kind` par/ang/perp from `p_pladser` kerb lines and `parkering_areal` polygons), `parkMeters`, `bins`, `glassContainers`, `binStands`, `bollards` (`material`, `colour`), `benches`, `bikeRacks` (`capacity`), `busStops` (Movia equipment flags), `monuments`, `rescuePosts`, `lakeLights` (inferred CitySwan-style path lights, 15 m repeat). The engine (`js/street-furniture-cph.js`, pure mapping in `js/street-furniture-data.js`) places them at the ground height and fills the bays with parked cars at 70-85 % occupancy (seeded).
+
+
+## `data/cph-vegetation.json` (`cph-vegetation/1`, `tools/cph-geodata/vegetation.py`)
+
+Separate file, same local frame. `surfaces` are polygons in the `cph-surfaces` record shape (`ring`, optional `holes`, `src`, `conf`) with `cls: "grass"` and `kind`: `lawn` (CIR NDVI above the hard-ground 97th percentile, no class 5 above, no class 3/4 returns, `measured`), `planting` (NDVI with class 3/4 returns, `measured`), `parkfloor` (the ground under crowns inside a KK park polygon, `inferred`). Cut by buildings, KK pavements and lakes. `canopy` is the class 5 footprint (audit only). `stats` carries the areas and the NDVI threshold. The engine appends `surfaces` to cph-surfaces' `surfaces`; `grass` draws as ground (`js/surface-materials-cph.js`) and carries the tufts of `js/grass-cph.js`.
+
+## Ground-floor venues (`data/cph-groundfloor.json`, `cph-groundfloor/1`, `tools/cph-geodata/groundfloor.py`)
+
+`venues[]`: `{x, z, kind, name, src, conf}` in the local frame; `kind` is `food | grocery | shop | service | craft | hotel | office`. Sources: OSM
+Overpass (`shop=*`, food/drink and service `amenity`, `craft`, public offices, hotels; ODbL) and the KK `bevillinger` layer (serveringsbevillinger,
+with `koncept` and `night`). `js/groundfloor.js` assigns each wall a ground-floor kind (`shop` where a venue stands in or in front of a
+street-facing wall, `entry` for a residential street front with a door, `rear` for courtyard walls, `lotLine` for party walls that abut a
+neighbouring footprint, `blank` for outbuildings) and the facade shader reads it as `facadeBldg.y`. BBR trade use (3xx) without venue data gives an
+inferred shop. The file is optional: without it only BBR trade use makes shopfronts.
+
+## Photo facade look atlases (`data/tex-look/*.webp`, `tools/cph-geodata/facade_look.py`)
+
+Derived from `data/tex/` (gitignored like it): RGBA WebP, same layout as the JPEG atlas (`observed.atlas.walls[].px/uv` are unchanged). RGB is the
+de-lit, shadow-divided, sharpened strip normalised to the calibrated `tone_cal`; alpha is lossless: 0 unobserved texel (nearest-texel smear or flat
+median fill from `appearance.py`, detected by lack of texture; strips with more than half unobserved are dropped), about 128 observed wall, up to 255
+inside a detected window blob. `?tex=0` turns photo walls off, `?debug=notex` too.

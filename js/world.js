@@ -9,6 +9,7 @@ import { buildDirectionOverlay } from './direction-overlay.js';
 import { buildSignalHeads } from './signal-heads-cph.js';
 import { createWalkSpace } from './walk-space-cph.js';
 import { buildLakes } from './water-cph.js';
+import { buildBridgeDLB, filterDLBFurniture } from './bridge-dlb.js';
 import { setCalibration } from './appearance.js';
 import { applySurfaceCuts } from './lakes-cph.js';
 import { loadCphFurniture } from './street-furniture-data.js';
@@ -17,6 +18,7 @@ import { applyTerrainGround, applyStreets, loadCphStreets, mergeSurfaceCuts } fr
 import { createStreetFurniture } from './street-furniture-cph.js';
 import { createZoneMap } from './zones-cph.js';
 import { placeFurniture } from './placement-cph.js';
+import { createGrass } from './grass-cph.js';
 
 // js/world.js
 // The Copenhagen world: a ground plane in the Copenhagen frame (docs/cph-geodata-schema.md) plus data/cph-geodata.json,
@@ -27,6 +29,7 @@ import { placeFurniture } from './placement-cph.js';
 const CPH_GEODATA_URL = './data/cph-geodata.json';
 const CPH_SURFACES_URL = './data/cph-surfaces.json';
 const CPH_LAKES_URL = './data/cph-lakes.json';
+const CPH_VEGETATION_URL = './data/cph-vegetation.json';
 
 /** Optional ground-surface register and road markings (tools/cph-geodata/surfaces.py); null when absent. */
 async function loadCphSurfaces(url = CPH_SURFACES_URL, fetchImpl = globalThis.fetch) {
@@ -39,6 +42,25 @@ async function loadCphSurfaces(url = CPH_SURFACES_URL, fetchImpl = globalThis.fe
     console.info('[cph] no surfaces loaded:', error?.message || error);
     return null;
   }
+}
+
+/** Optional measured lawns and planting (tools/cph-geodata/vegetation.py: CIR NDVI + DHM point cloud); null when absent. */
+async function loadCphVegetation(url = CPH_VEGETATION_URL, fetchImpl = globalThis.fetch) {
+  try {
+    const response = await fetchImpl(url, { cache: 'no-cache' });
+    if (!response.ok) return null;
+    const doc = await response.json();
+    return doc?.version?.startsWith('cph-vegetation/') ? doc : null;
+  } catch (error) {
+    console.info('[cph] no vegetation loaded:', error?.message || error);
+    return null;
+  }
+}
+
+/** The vegetation polygons appended to the surface register, where they draw as `grass` ground (nothing when either is absent). */
+function withVegetation(surfacesDoc, vegetation) {
+  if (!surfacesDoc || !vegetation?.surfaces?.length) return surfacesDoc;
+  return { ...surfacesDoc, surfaces: [...surfacesDoc.surfaces, ...vegetation.surfaces] };
 }
 
 /** Optional lake document (tools/cph-geodata/lakes.py): lake outlines, bridge strips and surface cuts; null when absent. */
@@ -319,10 +341,17 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
 
   // Lakes (the Soerne): the ground plane is cut open over the water, so the plain plane is only built without them
   const lakesDoc = geo && !debug.split(',').includes('nowater') ? await loadCphLakes() : null;
+  const furnitureDoc = geo ? await loadCphFurniture() : null;
+  let bridgeDLB = null;
+  if (lakesDoc?.lakes?.length && !debug.split(',').includes('nobridge')) {
+    bridgeDLB = buildBridgeDLB(scene, geo, lakesDoc, { terrain, furnitureDoc });
+    if (bridgeDLB) markInit(`dlb(${bridgeDLB.lamps.count} lamps, ${bridgeDLB.layout.arches.length} arches)`);
+  }
   let lakes = null;
   let ground;
   if (lakesDoc?.lakes?.length) {
-    lakes = buildLakes(scene, lakesDoc, { groundMaterial: groundMaterial(), size: GROUND_SIZE, bbox: geo.frame?.bbox || CPH_FRAME.bbox, planar: water !== 'simple', terrain });
+    lakes = buildLakes(scene, lakesDoc, { groundMaterial: groundMaterial(), size: GROUND_SIZE, bbox: geo.frame?.bbox || CPH_FRAME.bbox, planar: water !== 'simple', terrain,
+      parks: geo.parks || [], modelBridge: (bridge) => bridgeDLB?.layout.bridgeId === bridge.id });
     scene.add(lakes.ground);
     ground = lakes.ground;
     markInit(`lakes(${lakes.stats.lakes})`);
@@ -345,19 +374,28 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
 
   let traffic = null;
   let surfacesCut = null;
+  let vegetation = null;
+  let grass = null;
   if (geo?.roadGraph && !debug.split(',').includes('noroads')) {
-    surfacesCut = applySurfaceCuts(await loadCphSurfaces(), mergeSurfaceCuts(lakesDoc?.surface_cuts, geo.surfaceCuts));
+    vegetation = debug.split(',').includes('nograss') ? null : await loadCphVegetation();
+    surfacesCut = applySurfaceCuts(withVegetation(await loadCphSurfaces(), vegetation), mergeSurfaceCuts(lakesDoc?.surface_cuts, geo.surfaceCuts));
     traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: surfacesCut, terrain, debug });
+  }
+
+  // grass tufts on the measured lawns near the camera (one draw call); `?debug=nograss` keeps the plain ground
+  if (vegetation?.surfaces?.length) {
+    grass = createGrass(scene, vegetation, { terrain: terrain.flat ? null : terrain });
+    markInit(`grass(${vegetation.stats?.lawn_m2 ?? '?'} m2 lawn)`);
   }
 
   // M4: street furniture (data/cph-furniture.json): trees, lamps, parked cars, bins, bollards, benches, racks, bus stops
   let furniture = null;
   if (geo && !debug.split(',').includes('nofurniture')) {
-    const doc = await loadCphFurniture();
+    const doc = furnitureDoc && bridgeDLB ? filterDLBFurniture(furnitureDoc, bridgeDLB.layout) : furnitureDoc;
     if (doc) {
       // ONE spatial constraint map (footprints, water, the measured carriageway, cycle strips, pavements) places every item
       const zones = streetsStats && !debug.split(',').includes('noplace') ? createZoneMap({ geo, lakes: lakesDoc, surfaces: surfacesCut }) : null;
-      furniture = createStreetFurniture(scene, doc, { groundHeight: traffic?.surfaces?.groundHeight || null, place: zones ? (d) => placeFurniture(d, { zones, geo }) : null });
+      furniture = createStreetFurniture(scene, doc, { groundHeight: traffic?.surfaces?.groundHeight || null, place: zones ? (d) => placeFurniture(d, { zones, geo }) : null, lakeDistance: lakes?.lakeDistance || null });
       markInit(`furniture(${furniture.plan.trees.length} trees, ${furniture.plan.lamps.length} lamps, ${furniture.plan.cars.length} cars${furniture.plan.report ? `, ${furniture.plan.report.dropped.length} dropped` : ''})`);
     }
   }
@@ -369,8 +407,11 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     update: (x, z, night = 0) => {
       buildings?.update(x, z);
       lakes?.update(x, z);
+      grass?.update(x, z);
       furniture?.update(x, z, night);
+      bridgeDLB?.update(night);
     },
+    bridgeDLB,
     furniture,
     audioSignals: [],
     locationLabel: createLocator(geo),
@@ -384,8 +425,9 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     buildings,
     attach: (context) => { buildings?.attach(context); lakes?.attach(context); },
     lakes,
+    grass,
     geo
   };
 }
 
-export { CPH_GEODATA_URL, CPH_SURFACES_URL, CPH_LAKES_URL, loadCphGeodata, loadCphSurfaces, loadCphLakes, buildWorld };
+export { CPH_GEODATA_URL, CPH_SURFACES_URL, CPH_LAKES_URL, CPH_VEGETATION_URL, loadCphGeodata, loadCphSurfaces, loadCphLakes, loadCphVegetation, buildWorld };

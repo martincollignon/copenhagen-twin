@@ -34,6 +34,8 @@ Headless browser check (Playwright; boots the twin, asserts the HUD and console,
 uv run --with playwright python tools/shoot-m2.py --verify --query hooks --out docs/cleanup
 ```
 
+Facade look: photo walls are on by default between about 14 m and 150 m of the camera (procedural brick, plaster and windows closer, tone + procedural beyond; `?tex=0` turns the photos off). They need `data/tex/` (photo atlases) and the processed `data/tex-look/` (`uv run --with pillow --with numpy --with scipy python tools/cph-geodata/facade_look.py`); without them the twin falls back to the procedural facades. Ground-floor shopfronts come from `data/cph-groundfloor.json` (`uv run --with requests --with pyproj python tools/cph-geodata/groundfloor.py`). Facade shots: `uv run --with playwright python tools/shoot-look.py --out docs/look/facades/x [--perf]`.
+
 ## Rebuild the data
 
 `data/cph-geodata.json` is generated and never edited by hand:
@@ -56,6 +58,19 @@ The twin renders Københavnerfortov (slab rows with a sett line between, paralle
 and setts procedurally (`js/surface-materials-cph.js`); pavements are the Københavnerfortov unless the register or a
 plaza-sized polygon says otherwise. Without the file the twin still boots (pavements and lane paint only).
 
+`data/cph-vegetation.json` (lawns and planting) is measured, not taken from a register: the colour-infrared orthophoto gives
+NDVI and the DHM point cloud gives what stands above the ground (class 5 crowns, class 3/4 shrubs); the ground under park
+crowns is lawn by the KK park register. The twin appends these polygons to the surfaces as `grass` ground and grows tufts
+on them around the camera (`js/grass-cph.js`: one instanced draw call, 49 tiles of 8 m refilled as you move, wind and
+fade in the shader; `?debug=nograss` switches both off). Method, thresholds and QA: `tools/cph-geodata/vegetation.py`.
+
+```sh
+python3 tools/cph-geodata/vegetation_rasters.py   # DHM Punktsky class counts at 1 m (pdal; tiles from tools/lod2/fetch.py)
+uv run tools/cph-geodata/vegetation_cir.py        # CIR orthophoto -> NDVI (Dataforsyningen token from ADC `gsearch-token`)
+uv run tools/cph-geodata/vegetation.py
+uv run --with playwright python tools/shoot-grass.py   # shots and cost into docs/grass/
+```
+
 `data/cph-furniture.json` (street furniture, M4) is another separate generated file:
 
 ```sh
@@ -64,6 +79,9 @@ uv run --with playwright python tools/shoot-m2.py --furniture   # shots + fps in
 uv run --with playwright python tools/shoot-m2.py --oneway      # traffic direction: live car check + contraflow / track / arrow-overlay shots into docs/oneway
 node tools/audit/oneway.mjs                                     # cars and cyclists against the one-way / bicycle-direction data (10 simulated minutes)
 ```
+
+Look shots for lakes, trees and night lighting: `uv run --with playwright python tools/shoot-look.py --tag after` (docs/look/lakes-trees).
+`uv run tools/cph-geodata/basins.py` adds the per-basin water levels to `data/cph-lakes.json` (after `lakes.py`).
 
 ## Licence and attributions
 
