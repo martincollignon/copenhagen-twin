@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Links the hero glTFs named in data/cph-geodata.json (`heroes[]`, absolute paths on this machine) into the gitignored
-# data/heroes/<building_id>/ folder, so the dev server can serve them. The glb is never committed.
+# Links optional hero glTFs named in data/cph-geodata.json (`heroes[]`) into the gitignored
+# data/heroes/<building_id>/ folder, so the dev server can serve them. The model is never committed.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 python3 - "$root" <<'PY'
 import json, os, re, sys
+from pathlib import Path
 root = sys.argv[1]
 geo = json.load(open(os.path.join(root, 'data/cph-geodata.json')))
+hero_dir = Path(os.environ.get('CPH_HERO_DIR', str(Path.home() / '.local/share/building-case-3d/noerre-soegade-37/build')))
 for hero in geo.get('heroes', []):
-    glb = hero['glb']
-    frame = hero.get('frame') or os.path.join(os.path.dirname(glb), 'building.json')
+    glb = str(hero_dir / 'building.glb')
+    frame = str(hero_dir / 'building.json')
     if not os.path.exists(frame):  # building.json sits next to the build/ folder in the building-case-to-3d layout
         alt = os.path.join(os.path.dirname(os.path.dirname(glb)), 'building.json')
         frame = alt if os.path.exists(alt) else frame

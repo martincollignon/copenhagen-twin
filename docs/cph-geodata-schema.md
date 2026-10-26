@@ -25,7 +25,7 @@ Field-level overrides go in `conf_fields: {field: conf}`. Nothing may be invente
   "version": "cph-geodata/1",
   "generated": "ISO time",
   "frame": {"epsg": 25832, "vertical": "DVR90", "origin": [723900.0, 6176500.0, 6.84], "axes": "x=east, z=south, y=up", "bbox": [-750, -750, 750, 750]},
-  "attribution": ["Indeholder data fra Klimadatastyrelsen …", "© OpenStreetMap contributors (ODbL)", "…"],
+  "attribution": ["Indeholder data fra Klimadatastyrelsen …", "Indeholder data fra Styrelsen for Dataforsyning og Infrastruktur, Skråfoto 2023 and 2025 (retrieved October 2026)", "© OpenStreetMap contributors (ODbL)", "…"],
   "buildings": [Building],
   "roads": [Road],
   "roadGraph": {"nodes": [x0, z0, x1, z1, …], "links": [[a, b, lanesFwd, lanesBack, width, speedKmh, nameIdx, classIdx, signalA, signalB]], "names": ["NØRRE SØGADE", …], "classes": ["primary", "secondary", "residential", "service", "cycleway", "footway"]},
@@ -40,7 +40,7 @@ Field-level overrides go in `conf_fields: {field: conf}`. Nothing may be invente
     "benches":   [{"x": 0, "z": 0, "src": [...], "conf": "…"}],
     "lights":    [{"x": 0, "z": 0, "src": [...], "conf": "…"}]
   },
-  "heroes": [{"building_id": "…", "glb": "relative or absolute path", "frame": "path to building.json", "src": ["building-case-to-3d"], "conf": "measured"}]
+  "heroes": [{"building_id": "…", "src": ["building-case-to-3d"], "conf": "measured"}]
 }
 ```
 
@@ -195,6 +195,8 @@ Derived from `data/tex/` (gitignored like it): RGBA WebP, same layout as the JPE
 de-lit, shadow-divided, sharpened strip normalised to the calibrated `tone_cal`; alpha is lossless: 0 unobserved texel (nearest-texel smear or flat
 median fill from `appearance.py`, detected by lack of texture; strips with more than half unobserved are dropped), about 128 observed wall, up to 255
 inside a detected window blob. `?tex=0` turns photo walls off, `?debug=notex` too.
+
+Source imagery: Skråfoto 2023 and 2025 from Styrelsen for Dataforsyning og Infrastruktur, retrieved October 2026. The WebP atlases are derived from those photos and are included in the public site artifact with attribution.
 
 
 ### Tree canopy enrichment (`tools/cph-geodata/tree_canopy.py`)

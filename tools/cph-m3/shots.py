@@ -1,6 +1,8 @@
 import json, os
-os.makedirs('/Users/martincollignon/conductor/cph-twin-m3/docs/m3', exist_ok=True)
-OUT='/Users/martincollignon/conductor/cph-twin-m3/docs/m3/'
+from pathlib import Path
+
+OUT = Path(__file__).resolve().parents[2] / 'docs' / 'm3'
+OUT.mkdir(parents=True, exist_ok=True)
 pg.goto(f'http://127.0.0.1:{port}/index.html?hooks')
 pg.wait_for_function('window.__twin !== undefined', timeout=60000)
 pg.wait_for_timeout(3000)
