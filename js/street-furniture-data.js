@@ -266,17 +266,30 @@ export function rackItems(racks, groundHeight, seed = 1) {
     const dx = Math.sin(r.yaw);
     const dz = Math.cos(r.yaw);
     const n = slots;
-    const fill = 0.35 + 0.5 * hash2(r.x, r.z, seed + 91);
+    const fill = r.shopping ? 0.84 + 0.14 * hash2(r.x, r.z, seed + 91) : 0.4;
+    const occupied = Math.round(n * fill);
+    const chosenSlots = Array.from({ length: n }, (_, i) => i)
+      .sort((a, b) => hash2(r.x + a * RACK_SLOT, r.z, seed + 93) - hash2(r.x + b * RACK_SLOT, r.z, seed + 93))
+      .slice(0, occupied);
+    const parked = new Set(chosenSlots);
     for (let i = 0; i < n; i++) {
       const o = (i - (n - 1) / 2) * RACK_SLOT;
       const x = r.x + dx * o;
       const z = r.z + dz * o;
       const y = groundHeight ? groundHeight.heightAt(x, z) : 0;
       if (i % 2 === 0) hoops.push({ cx: x, cz: z, x, y, z, yaw: r.yaw });
-      if (hash2(x, z, seed + 93) < fill) {
+      if (parked.has(i)) {
+        const style = hash2(x, z, seed + 111);
+        // The prechecked rack envelope is a regular city bicycle; long cargo forms are
+        // reserved for facade parking where their full, larger footprint is validated.
+        const variant = style < 0.16 ? 'mens'
+          : style < 0.36 ? 'city-crate'
+            : style < 0.52 ? 'city-childseat'
+              : 'city';
         bikes.push({
           cx: x, cz: z, x, y, z, yaw: r.yaw + Math.PI / 2 + (hash2(x, z, seed + 95) - 0.5) * 0.12,
-          hue: Math.floor(hash2(x, z, seed + 97) * 6), size: 0.94 + hash2(x, z, seed + 99) * 0.12
+          hue: Math.floor(hash2(x, z, seed + 97) * 10), size: 0.94 + hash2(x, z, seed + 99) * 0.12,
+          variant, lean: hash2(x, z, seed + 101) < 0.28 ? (hash2(x, z, seed + 103) - 0.5) * 0.2 : 0
         });
       }
     }
@@ -329,6 +342,7 @@ export function buildFurniturePlan(doc, groundHeight = null, { seed = 1, place =
   }
   const stops = busStopParts(doc.busStops, groundHeight);
   const racks = rackItems(doc.bikeRacks, groundHeight, seed);
+  const freeBikes = place_(doc.streetBikes, groundHeight);
   const benches = place_(doc.benches, groundHeight).concat(stops.benches);
   const bins = place_(doc.bins, groundHeight).concat(stops.bins);
   const plan = {
@@ -342,7 +356,8 @@ export function buildFurniturePlan(doc, groundHeight = null, { seed = 1, place =
     bollards: place_(doc.bollards, groundHeight),
     benches,
     hoops: racks.hoops,
-    bikes: racks.bikes,
+    freeBikes,
+    bikes: racks.bikes.concat(freeBikes),
     flags: stops.flags,
     shelters: stops.shelters,
     countdowns: stops.countdowns,

@@ -153,7 +153,7 @@ test('street props stand on the pavement: snapped off the road, dropped from the
   assert.equal(doc.glassContainers.length, 1);
   assert.equal(report.counts.benches['dropped:no-ground'], 1);
   assert.equal(doc.bollards.length, 1);
-  for (const [key, w, d] of [['benches', 1.8, 0.55], ['bins', 0.52, 0.52], ['bollards', 0.3, 0.3], ['glassContainers', 3.8, 1.2]]) {
+  for (const [key, w, d] of [['benches', 1.8, 0.55], ['bins', 0.52, 0.52], ['bollards', 0.3, 0.3], ['glassContainers', 1.55, 1.55]]) {
     for (const it of doc[key]) assert.equal(zones.cover(it.x, it.z, it.yaw || 0, w, d).solid, 0, `${key} off the asphalt`);
   }
   // two benches that would stand on each other: the second is moved or dropped, never overlapping
@@ -176,6 +176,41 @@ test('bike racks become clipped rows of at most 6 m on free ground', () => {
   for (const r of doc.bikeRacks) assert.ok(zones.cover(r.x, r.z, r.yaw, 1.75, r.capacity * 0.5).solid < 0.05, 'on free ground');
   assert.equal(report.counts.bikeRacks['dropped:no-ground'], 1, 'a rack in the road has nowhere to go');
   assert.ok(report.counts.bikeRacks.clipped >= 1);
+});
+
+test('facade bikes use full rotated and cargo footprints and keep an unblocked 0.8 m walking strip', () => {
+  const geo = street(5, { cs: { hw: 5, cr: [2, [[0, 100]]] } });
+  geo.roads[0].name = 'Nørrebrogade';
+  geo.sidewalks = [{ id: 'sr', ring: rect(0, 5.3, 100, 12.5) }, { id: 'sl', ring: rect(0, -12.5, 100, -5.3) }];
+  geo.buildings = [
+    { id: 'br', ring: rect(0, 12.5, 100, 24), eave: 12, ground: 0 },
+    { id: 'bl', ring: rect(0, -24, 100, -12.5), eave: 12, ground: 0 }
+  ];
+  const zones = createZoneMap({ geo, lakes: null, surfaces: null, bbox: [-20, -30, 120, 30] });
+  const { doc } = placeFurniture(emptyDoc(), { zones, geo });
+  assert.ok(doc.streetBikes.length >= 60, `shopping frontage has ${doc.streetBikes.length} facade bikes`);
+  assert.ok(doc.streetBikes.every((bike) => bike.shoppingStreet === 'Nørrebrogade'), 'Danish street names retain their shopping frontage classification');
+  assert.ok(doc.streetBikes.some((bike) => bike.variant === 'cargo-longjohn' || bike.variant === 'cargo-trike'), 'cargo forms use the larger footprint path');
+  for (const bike of doc.streetBikes) {
+    const footprint = zones.cover(bike.x, bike.z, bike.yaw, bike.footprintW, bike.footprintD, bike.footprintOffset);
+    assert.equal(footprint.solid, 0, `${bike.variant} footprint avoids road, cycle track, building and water`);
+    assert.ok(footprint.pavement + footprint.plaza >= 0.9, 'the whole bike stands on walkable paving');
+    assert.equal(footprint.road, 0);
+    assert.equal(footprint.cycle, 0);
+    const line = zones.cover(bike.walkingLine.x, bike.walkingLine.z, bike.yaw, bike.walkingLine.width, bike.walkingLine.depth);
+    assert.equal(line.solid, 0, 'the adjacent walking strip avoids roads and cycle tracks');
+    assert.ok(line.pavement + line.plaza >= 0.9, 'the 0.8 m walking strip stays on pavement');
+    const bikeBox = obb(bike.x, bike.z, bike.yaw, bike.footprintW, bike.footprintD, bike.footprintOffset);
+    const walkBox = obb(bike.walkingLine.x, bike.walkingLine.z, bike.yaw, bike.walkingLine.width, bike.walkingLine.depth);
+    assert.ok(!obbOverlap(bikeBox, walkBox), 'the walking line clears the full angled/cargo bike envelope');
+    assert.equal(bike.x, bike.cx, 'the accepted full precision placement is retained');
+    assert.equal(bike.z, bike.cz, 'the accepted full precision placement is retained');
+  }
+  const bikeBoxes = doc.streetBikes.map((bike) => obb(bike.x, bike.z, bike.yaw, bike.footprintW, bike.footprintD, bike.footprintOffset));
+  const walkwayBoxes = doc.streetBikes.map((bike) => obb(bike.walkingLine.x, bike.walkingLine.z, bike.yaw, bike.walkingLine.width, bike.walkingLine.depth));
+  for (let i = 0; i < bikeBoxes.length; i++) for (let j = 0; j < bikeBoxes.length; j++) {
+    if (i !== j) assert.ok(!obbOverlap(bikeBoxes[i], walkwayBoxes[j]), 'another accepted bike cannot occupy the reserved walking corridor');
+  }
 });
 
 test('bus stops: the flag and shelter stand on the pavement side, the glass faces the carriageway', () => {
@@ -203,6 +238,20 @@ test('the shipped furniture, placed on the shipped layout, has no item on the wr
   const zones = createZoneMap({ geo, lakes: read('data/cph-lakes.json'), surfaces: null });
   const { doc, report } = placeFurniture(read('data/cph-furniture.json'), { zones, geo });
   assert.ok(doc.parkingBays.length > 1000 && doc.trees.length > 4500);
+  assert.ok(doc.streetBikes.length > 500, 'the real facade network receives clustered street parking');
+  for (const bike of doc.streetBikes) {
+    const paddedFootprint = zones.cover(bike.x, bike.z, bike.yaw, bike.footprintW + 0.16, bike.footprintD + 0.16, bike.footprintOffset);
+    assert.equal(paddedFootprint.solid, 0, `${bike.variant} footprint plus placement margin clears solid zones`);
+    const footprint = zones.cover(bike.x, bike.z, bike.yaw, bike.footprintW, bike.footprintD, bike.footprintOffset);
+    assert.equal(footprint.road, 0, `${bike.variant} full footprint clears the road`);
+    assert.equal(footprint.cycle, 0, `${bike.variant} full footprint clears cycle tracks`);
+    assert.equal(footprint.water, 0, `${bike.variant} full footprint clears water`);
+    assert.ok(footprint.building <= 0.07, `${bike.variant} full footprint clears building footprints within zone-raster tolerance`);
+    assert.ok(footprint.pavement + footprint.plaza >= 0.9, `${bike.variant} stands fully on walkable paving`);
+    const line = zones.cover(bike.walkingLine.x, bike.walkingLine.z, bike.yaw, bike.walkingLine.width, bike.walkingLine.depth);
+    assert.equal(line.solid, 0, 'the reserved walking corridor avoids road, cycle track, building and water');
+    assert.ok(line.pavement + line.plaza >= 0.9, 'the reserved walking corridor stays on paving');
+  }
   for (const b of doc.parkingBays) {
     const c = zones.cover(b.x, b.z, b.yaw, 1.95, 4.7);
     assert.ok(c.moving < 0.06 && c.cycle < 0.06 && c.building < 0.03 && c.water === 0 && c.road > 0.85, `bay ${b.x}, ${b.z}: ${JSON.stringify(c)}`);

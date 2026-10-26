@@ -1,27 +1,28 @@
 // js/road-surfaces-cph.js
 // Copenhagen road surfaces from the compiled geodata (docs/cph-geodata-schema.md): dark asphalt carriageways, granite
 // kerbs (as geometry), raised dark-asphalt cycle tracks one kerb step above the carriageway and one below the pavement,
-// white lane paint (no yellow), and the KK road markings (data/cph-surfaces.json: crossings, arrows, bays, blue cycle
-// crossings). Pavements are built by pavement-cph.js from the same road list.
+// white lane paint, and the KK road markings (data/cph-surfaces.json: crossings, arrows, bays, blue cycle crossings,
+// red bus lanes and yellow kerb lines). Pavements are built by pavement-cph.js from the same road list.
 // Frame: x east, z south, y up. `buildRoadSurfaceArrays` is pure (no three.js) so it can be tested headless;
 // `buildCphRoadSurfaces` turns the arrays into merged meshes.
 
-import { carriagewayWidth, cycleStrips, intersectIntervals, subtractIntervalLists, slicePts, rightNormals, KERB_W, CYCLE_W } from './road-width-cph.js';
-import { triangulatePolygon } from './polygon-cph.js';
+import { carriagewayWidth, movingHalfWidth, cycleStrips, intersectIntervals, subtractIntervalLists, slicePts, rightNormals, KERB_W, CYCLE_W } from './road-width-cph.js';
+import { triangulatePolygon, pointInRing } from './polygon-cph.js';
 import { buildPavementBuckets, createSurfaceIndex } from './pavement-cph.js';
 import { createHeightGrid, composeHeightField } from './ground-height-cph.js';
 import { densifyPts, drapePositions } from './terrain-cph.js';
 import { computeMouthLayouts, subtractIntervals } from './junction-mouths-cph.js';
-import { hasContraflow, bikeBanned, stripCoverage } from './bike-direction.js';
+import { hasContraflow, bikeBanned, stripCoverage, stripDirection } from './bike-direction.js';
 
 // Heights (m): carriageway -> (10 cm kerb) -> cycle track -> (8 cm kerb) -> pavement
 export const SURFACE_Y = { asphalt: 0.02, paint: 0.035, cycle: 0.12, cyclePaint: 0.128, kerbTop: 0.002, sidewalk: 0.2, ground: 0.014 };
 const VEHICULAR = new Set(['primary', 'secondary', 'residential', 'service']);
 const LANE_W = 3.0;
-const LINE_W = 0.12;
+export const ROAD_PAINT = Object.freeze({ lineWidth: 0.1, parkingEdgeWidth: 0.3, cycleLaneWidth: 0.3, dashLength: 2.5, dashPeriod: 7.5 });
+const LINE_W = ROAD_PAINT.lineWidth;
 const JUNCTION_TRIM = 7; // m of cycle track before a junction that is painted blue (the crossing)
 const DRAPE_STEP = 6; // m: ribbons are split to this length when they follow terrain
-const RENDERED_MARKINGS = new Set(['white', 'crossing', 'arrow', 'symbol', 'bay', 'bump', 'bluecycle']);
+const RENDERED_MARKINGS = new Set(['white', 'crossing', 'arrow', 'symbol', 'bay', 'bump', 'bluecycle', 'red', 'yellow']);
 
 class Layer {
   // `terrain`: the ground model the layer is draped on (js/terrain-cph.js); y values given to the builders are offsets above it
@@ -189,6 +190,76 @@ function thickLine(layer, a, b, w, y) {
   layer.quad([a[0] - nx, a[1] - nz], [b[0] - nx, b[1] - nz], [b[0] + nx, b[1] + nz], [a[0] + nx, a[1] + nz], y);
 }
 
+function busText(layer, cx, cz, ux, uz, y, scale = 1) {
+  // BUS reads across the lane; the glyph height runs along traffic. Stretch the
+  // strokes to fill a realistic ~2 m x 2 m road marking.
+  const vx = -uz;
+  const vz = ux;
+  const P = (u, v) => [cx + vx * (u - 0.68) * 1.5 * scale + ux * (v - 0.26) * 4 * scale,
+    cz + vz * (u - 0.68) * 1.5 * scale + uz * (v - 0.26) * 4 * scale];
+  const W = 0.075 * scale;
+  const stroke = (a, b) => thickLine(layer, P(...a), P(...b), W, y);
+  const B = [[0, 0, 0, 0.52], [0, 0.52, 0.25, 0.52], [0.25, 0.52, 0.34, 0.44], [0.34, 0.44, 0.34, 0.32], [0.34, 0.32, 0.25, 0.26], [0.25, 0.26, 0, 0.26], [0.25, 0.26, 0.36, 0.19], [0.36, 0.19, 0.36, 0.08], [0.36, 0.08, 0.25, 0], [0.25, 0, 0, 0]];
+  const U = [[0, 0.52, 0, 0.1], [0, 0.1, 0.09, 0], [0.09, 0, 0.27, 0], [0.27, 0, 0.36, 0.1], [0.36, 0.1, 0.36, 0.52]];
+  const S = [[0.36, 0.52, 0.1, 0.52], [0.1, 0.52, 0, 0.43], [0, 0.43, 0, 0.34], [0, 0.34, 0.36, 0.18], [0.36, 0.18, 0.36, 0.09], [0.36, 0.09, 0.26, 0], [0.26, 0, 0, 0]];
+  for (const [x, glyph] of [[0, B], [0.5, U], [1.0, S]]) for (const [ax, az, bx, bz] of glyph) stroke([ax + x, az], [bx + x, bz]);
+}
+
+function fitsMarking(ring, holes, cx, cz, ux, uz, acrossHalf, alongHalf) {
+  const vx = -uz;
+  const vz = ux;
+  for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {
+    const across = (i / 4 - 1) * acrossHalf;
+    const along = (j / 4 - 1) * alongHalf;
+    const x = cx + vx * across + ux * along;
+    const z = cz + vz * across + uz * along;
+    if (!pointInRing(ring, x, z) || holes?.some((hole) => pointInRing(hole, x, z))) return false;
+  }
+  return true;
+}
+
+function fittingScale(ring, holes, cx, cz, ux, uz, halfWidthAtOne, halfDepthAtOne, requested = 0.9) {
+  for (let scale = requested; scale >= 0.4; scale -= 0.05) {
+    if (fitsMarking(ring, holes, cx, cz, ux, uz, halfWidthAtOne * scale, halfDepthAtOne * scale)) return scale;
+  }
+  return 0;
+}
+
+function nearestRoadPose(geo, x, z) {
+  let best = null;
+  for (const r of geo.roads || []) {
+    if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4 || r.drop) continue;
+    for (let i = 0; i + 3 < r.pts.length; i += 2) {
+      const ax = r.pts[i]; const az = r.pts[i + 1];
+      const dx = r.pts[i + 2] - ax; const dz = r.pts[i + 3] - az;
+      const l2 = dx * dx + dz * dz || 1;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+      const px = ax + dx * t; const pz = az + dz * t;
+      const distance = Math.hypot(px - x, pz - z);
+      if (distance < (best?.distance ?? Infinity)) {
+        const length = Math.sqrt(l2);
+        const ux = dx / length; const uz = dz / length;
+        const side = (x - px) * -uz + (z - pz) * ux;
+        best = { road: r, ux, uz, side, distance };
+      }
+    }
+  }
+  return best;
+}
+
+function longestAxis(ring) {
+  let best = [1, 0];
+  let longest = 0;
+  for (let i = 0; i < ring.length; i += 2) {
+    const j = (i + 2) % ring.length;
+    const dx = ring[j] - ring[i];
+    const dz = ring[j + 1] - ring[i + 1];
+    const l = Math.hypot(dx, dz);
+    if (l > longest) { longest = l; best = [dx / l, dz / l]; }
+  }
+  return best;
+}
+
 /** A bicycle pictogram in side view laid on the road at (cx, cz); (ux, uz) is the way the rider travels. */
 export function bikeSymbol(layer, cx, cz, ux, uz, y, scale = 1) {
   const vx = -uz; // "up" of the pictogram: to the rider's right
@@ -348,6 +419,8 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
   const cycle = new Layer(terrain);
   const paint = new Layer(terrain);
   const blue = new Layer(terrain);
+  const red = new Layer(terrain);
+  const yellow = new Layer(terrain);
 
   // Real KK markings: which roads already have lane paint, and where blue crossings are
   const marks = (surfaces?.markings || []).filter((m) => RENDERED_MARKINGS.has(m.kind) && m.ring && m.ring.length >= 6);
@@ -426,19 +499,31 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
         ribbon(cycle, q, ...sd(o1, o2), SURFACE_Y.cycle, { u0: a0 });
         kerbRun(kerb, q, ...sd(o2, o2 + KERB_W), pavementY + SURFACE_Y.kerbTop, side > 0 ? SURFACE_Y.cycle : null, side > 0 ? null : SURFACE_Y.cycle, a0);
       });
-      // white edge line along the carriageway side of the track
-      piecesOf(r.pts, inner, (q) => ribbon(paint, q, ...sd(o1 + 0.12, o1 + 0.12 + 0.1), SURFACE_Y.cyclePaint));
+      // The raised cycle track keeps a narrow edge line; painted lanes below use a broad separator.
+      piecesOf(r.pts, inner, (q) => ribbon(paint, q, ...sd(o1 + 0.12, o1 + 0.12 + LINE_W), SURFACE_Y.cyclePaint));
       // blue through the junction crossing, where KK has no blue polygon there
       for (const [ts, te, jx, jz] of [[0, trim0, x0, z0], [L - trim1, L, x1, z1]]) {
         if (te - ts < 1 || blueNear(jx, jz, 25) || !ranges.length) continue;
         ribbon(blue, slicePts(r.pts, ts, te), ...sd(h, o2), SURFACE_Y.asphalt + 0.012, { u0: ts });
+        const q = slicePts(r.pts, (ts + te) / 2 - 0.6, (ts + te) / 2 + 0.6);
+        if (q.length >= 4) {
+          const dx = q[q.length - 2] - q[0];
+          const dz = q[q.length - 1] - q[1];
+          const len = Math.hypot(dx, dz) || 1;
+          const mx = (q[0] + q[q.length - 2]) / 2;
+          const mz = (q[1] + q[q.length - 1]) / 2;
+          const off = side * (h + o2) / 2;
+          const nr = [-dz / len, dx / len];
+          const riding = stripDirection(r, side) === 'back' ? -1 : 1;
+          bikeSymbol(paint, mx + nr[0] * off, mz + nr[1] * off, (dx / len) * riding, (dz / len) * riding, SURFACE_Y.paint, 0.82);
+        }
       }
     }
     // a contraflow cycle lane on a one-way street: solid line and pictograms at the left edge, the rider coming towards us
     if (hasContraflow(r) && !bikeBanned(r) && (r.bike.contraKind === 'lane' || r.bike.contraKind === 'track') && !stripCoverage(r, strips).back && L > 14) {
       const lineV = -(h - CONTRA_LANE_W);
       const body = slicePts(r.pts, 4, L - 4);
-      ribbon(paint, body, lineV - LINE_W / 2, lineV + LINE_W / 2, SURFACE_Y.paint);
+      ribbon(paint, body, lineV - ROAD_PAINT.cycleLaneWidth / 2, lineV + ROAD_PAINT.cycleLaneWidth / 2, SURFACE_Y.paint);
       const nSym = Math.max(1, Math.floor((L - 8) / SYMBOL_EVERY));
       for (let k = 0; k < nSym; k++) {
         const sAt = 4 + ((L - 8) * (k + 0.5)) / nSym;
@@ -466,12 +551,17 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
     if (r.class !== 'residential' || w >= 6) {
       for (const s of [-1, 1]) ribbon(paint, r.pts, s * edge - LINE_W / 2, s * edge + LINE_W / 2, SURFACE_Y.paint);
     }
+    // Where the carriageway leaves a parking strip beside moving traffic, mark that inner parking boundary clearly.
+    const moving = movingHalfWidth(r);
+    if (h - moving >= 1.9) for (const s of [-1, 1]) {
+      ribbon(paint, r.pts, s * moving - ROAD_PAINT.parkingEdgeWidth / 2, s * moving + ROAD_PAINT.parkingEdgeWidth / 2, SURFACE_Y.paint);
+    }
     if (!r.oneway && back > 0) {
-      dashed(paint, r.pts, 0, LINE_W, 3, 9, SURFACE_Y.paint);
-      for (let k = 1; k < fwd; k++) dashed(paint, r.pts, k * LANE_W, LINE_W, 2, 6, SURFACE_Y.paint);
-      for (let k = 1; k < back; k++) dashed(paint, r.pts, -k * LANE_W, LINE_W, 2, 6, SURFACE_Y.paint);
+      dashed(paint, r.pts, 0, LINE_W, ROAD_PAINT.dashLength, ROAD_PAINT.dashPeriod, SURFACE_Y.paint);
+      for (let k = 1; k < fwd; k++) dashed(paint, r.pts, k * LANE_W, LINE_W, ROAD_PAINT.dashLength, ROAD_PAINT.dashPeriod, SURFACE_Y.paint);
+      for (let k = 1; k < back; k++) dashed(paint, r.pts, -k * LANE_W, LINE_W, ROAD_PAINT.dashLength, ROAD_PAINT.dashPeriod, SURFACE_Y.paint);
     } else if (r.oneway && fwd > 1) {
-      for (let k = 1; k < fwd; k++) dashed(paint, r.pts, (k - fwd / 2) * LANE_W, LINE_W, 2, 6, SURFACE_Y.paint);
+      for (let k = 1; k < fwd; k++) dashed(paint, r.pts, (k - fwd / 2) * LANE_W, LINE_W, ROAD_PAINT.dashLength, ROAD_PAINT.dashPeriod, SURFACE_Y.paint);
     }
   }
 
@@ -507,13 +597,43 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
       const [cx, cz] = ringCentroid(m.ring);
       const onCycle = cycles.near(cx, cz);
       const y = onCycle ? SURFACE_Y.cyclePaint : m.kind === 'bluecycle' ? SURFACE_Y.asphalt + 0.012 : SURFACE_Y.paint;
-      fillRing(m.kind === 'bluecycle' ? blue : paint, m.ring, y, m.holes);
+      const target = m.kind === 'bluecycle' ? blue : m.kind === 'red' ? red : m.kind === 'yellow' ? yellow : paint;
+      fillRing(target, m.ring, y, m.holes);
+      if (m.kind === 'bluecycle') {
+        const axis = longestAxis(m.ring);
+        const near = nearestRoadPose(geo, cx, cz);
+        let ux = axis[0]; let uz = axis[1];
+        if (near && near.distance < 30) {
+          const sign = stripDirection(near.road, near.side) === 'back' ? -1 : 1;
+          ux = near.ux * sign; uz = near.uz * sign;
+        }
+        const scale = fittingScale(m.ring, m.holes, cx, cz, ux, uz, 0.55, 0.67, 0.88);
+        if (scale) bikeSymbol(paint, cx, cz, ux, uz, y + 0.003, scale);
+      } else if (m.kind === 'red') {
+        const [ux, uz] = longestAxis(m.ring);
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (let i = 0; i < m.ring.length; i += 2) {
+          const d = (m.ring[i] - cx) * ux + (m.ring[i + 1] - cz) * uz;
+          lo = Math.min(lo, d); hi = Math.max(hi, d);
+        }
+        const count = Math.max(1, Math.floor((hi - lo) / 18));
+        for (let k = 0; k < count; k++) {
+          const d = count === 1 ? 0 : lo + (hi - lo) * (k + 0.5) / count;
+          const tx = cx + ux * d;
+          const tz = cz + uz * d;
+          const scale = fittingScale(m.ring, m.holes, tx, tz, ux, uz, 0.68 * 1.5, 0.26 * 4, 0.9);
+          if (scale) busText(paint, tx, tz, ux, uz, y + 0.003, scale);
+        }
+      }
     }
   }
 
   const layers = { asphalt, kerb, cycle, paint };
   if (!pavement) layers.sidewalk = sidewalk;
   if (blue.vertexCount) layers.blue = blue;
+  if (red.vertexCount) layers.red = red;
+  if (yellow.vertexCount) layers.yellow = yellow;
   return layers;
 }
 
