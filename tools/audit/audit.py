@@ -437,11 +437,19 @@ check("water-surface", "water", "Ground-material polygon overlaps open water aft
 lw = lay.get("lakeWalls")
 if lw:
     fb = lw["freeboards"]
-    tall = [f for f in fb if f["free"] > 2.0]
+    quay = [f for f in fb if not f.get("natural")]  # the Soerne: granite quay with coping (park ponds have grassed banks)
+    wall = [f for f in quay if not f.get("abutment")]  # the bridge approach (Dronning Louises Bro) is as tall as the deck
+    tall = [f for f in wall if f["free"] > 1.2]
     ex = [(f["id"], f["x"], f["z"], f"wall {f['free']:.2f} m above the water", f["free"]) for f in tall]
-    check("lake-wall-too-tall", "water", "Lake wall more than 2.0 m above the water at a shore vertex (8 m spacing)", len(tall), len(fb), "med", ex,
-          f"free-board p5/p50/p95 {np.percentile([f['free'] for f in fb], 5):.2f} / {np.percentile([f['free'] for f in fb], 50):.2f} / {np.percentile([f['free'] for f in fb], 95):.2f} m; "
-          "the water level is the measured DTM level of each lake, the wall top follows the terrain at the shore", weight=1)
+    pct = lambda v, q: np.percentile([f["free"] for f in v], q)
+    check("lake-wall-too-tall", "water", "Soerne quay wall more than 1.2 m above its own water at a shore vertex (8 m spacing; bridge approach and park-pond banks excluded)", len(tall), len(wall), "med", ex,
+          f"free-board p5/p50/p95 {pct(wall, 5):.2f} / {pct(wall, 50):.2f} / {pct(wall, 95):.2f} m (reference 0.3-0.8 m, visual-refs 8a); "
+          f"each basin has its own measured level {lw.get('basins')}; before the basin split one level for Sortedams + Peblinge gave 62 shore vertices over 2 m", weight=1)
+    over2 = [f for f in quay if f["free"] > 2.0]
+    check("lake-wall-over-2m", "water", "Any Soerne wall more than 2.0 m above the water (incl. the bridge approach, which is real masonry)", len(over2), len(quay), "low",
+          [(f["id"], f["x"], f["z"], f"wall {f['free']:.2f} m (bridge approach)", f["free"]) for f in over2], "the abutments of Dronning Louises Bro: deck 1.62 m over a -0.94 m lake", weight=0.5)
+    low = [f for f in wall if f["free"] < 0.3]
+    check("lake-wall-too-low", "water", "Soerne wall less than 0.3 m above the water (the engine keeps a 0.3 m minimum free-board)", len(low), len(wall), "low", [(f["id"], f["x"], f["z"], f"{f['free']:.2f} m", f["free"]) for f in low], "", weight=0.5)
 
 # lake lights
 ll = plan["lakeLights"]
@@ -898,8 +906,11 @@ CR = np.array([t["crown_radius"] for t in trees])
 clamp_h = sum(1 for h in H if h < 2.5 or h > 40)
 ex = [(f"tree[{i}] {t['genus']}", t["x"], t["z"], f"h {t['height']:.0f} m, crown r {t['crown_radius']:.1f} m", t["height"]) for i, t in enumerate(trees) if t["height"] > 28 or t["crown_radius"] > 9]
 check("tree-giant", "trees", "Tree height > 28 m or crown radius > 9 m", len(ex), len(trees), "med", ex, f"height p50 {np.median(H):.0f} p95 {np.percentile(H, 95):.0f} max {H.max():.0f}; crown p50 {np.median(CR):.1f} p95 {np.percentile(CR, 95):.1f} max {CR.max():.1f}", weight=1)
-gen = Counter(t["genus"] for t in trees)
-check("tree-generic-genus", "trees", "Tree genus not resolved ('generic' look)", gen["generic"], len(trees), "low", [], f"genus mix {dict(gen)}", visible=False)
+# the engine gives untyped crowns a context genus (js/tree-species-cph.js): count what is drawn when the layout carries it
+placed = plan.get("trees") or []
+gen = Counter(t["genus"] for t in (placed if placed and "genusSource" in placed[0] else trees))
+src = Counter(t.get("genusSource", "recorded") for t in placed) if placed else {}
+check("tree-generic-genus", "trees", "Tree genus not resolved ('generic' look)", gen["generic"], sum(gen.values()), "low", [], f"genus mix {dict(gen)}; source {dict(src)}", visible=False)
 ratio = [(f"tree[{i}]", t["x"], t["z"], f"crown r {t['crown_radius']:.1f} / h {t['height']:.1f} = {t['crown_radius'] / max(t['height'], 1):.2f}", t["crown_radius"] / max(t["height"], 1))
          for i, t in enumerate(trees) if t["crown_radius"] > 0.75 * max(2.5, min(40, t["height"]))]
 check("tree-crown-clamped", "trees", "Crown radius > 0.75 x height (engine clamps to 0.75 h)", len(ratio), len(trees), "low", ratio, "", weight=0.3, visible=False)

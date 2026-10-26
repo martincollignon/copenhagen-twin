@@ -1,149 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { WATER, KIND, extendBeyondBbox, buildLakeArrays, groundWithHoles, inLake, shoreDistanceField, applySurfaceCuts } from '../js/lakes-cph.js';
-import { trianglesArea, ringArea, pointInRing } from '../js/polygon-cph.js';
-import { createTerrain } from '../js/terrain-cph.js';
+import { WATER, extendBeyondBbox, buildLakeArrays, groundWithHoles, inLake, shoreDistanceField, applySurfaceCuts } from '../js/lakes-cph.js';
+import { trianglesArea, ringArea } from '../js/polygon-cph.js';
 
 const doc = JSON.parse(readFileSync(new URL('../data/cph-lakes.json', import.meta.url), 'utf8'));
-const terrainDoc = JSON.parse(readFileSync(new URL('../data/cph-terrain.json', import.meta.url), 'utf8'));
 const BBOX = [-750, -750, 750, 750];
 // a 40 x 40 lake (counter-clockwise seen from above: negative shoelace in x/z)
 const SQUARE = { lakes: [{ id: 't', ring: [0, 0, 0, 40, 40, 40, 40, 0] }] };
 
-test('water sits about 0.45 m below the coping with measured freeboard preserved', () => {
-  assert.equal(WATER.surfaceY, -0.45);
-  assert.equal(WATER.minFreeboard, 0.45);
+test('water sits 0.5-1.0 m below the ground, walls rise to just above it', () => {
+  assert.ok(WATER.surfaceY <= -0.5 && WATER.surfaceY >= -1.0);
   const a = buildLakeArrays(SQUARE, { bbox: BBOX });
   assert.ok(a.surface.position.every((v, i) => i % 3 !== 1 || v === WATER.surfaceY));
   const ys = a.walls.position.filter((_, i) => i % 3 === 1);
   assert.equal(Math.min(...ys), WATER.bedY);
   assert.equal(Math.max(...ys), WATER.wallTop);
   assert.ok(WATER.wallTop > 0 && WATER.wallTop < 0.2);
-  assert.ok(Math.abs(WATER.wallTop - WATER.surfaceY - 0.53) < 1e-9);
-
-  const measured = { flat: false, lakeLevel: () => WATER.surfaceY, heightAt: () => 0 };
-  const terrainArrays = buildLakeArrays(SQUARE, { bbox: BBOX, terrain: measured });
-  assert.ok(terrainArrays.freeboards.every((point) => point.free >= WATER.minFreeboard));
-  assert.ok(terrainArrays.freeboards.some((point) => Math.abs(point.free - 0.53) < 1e-6));
-});
-
-test('measured Søerne levels rise 0.35 m and retain the minimum coping freeboard', () => {
-  const lake = { id: 'connected', area_m2: 100000, ring: SQUARE.lakes[0].ring };
-  const terrain = { flat: false, lakeLevel: () => -1, heightAt: () => -0.49 };
-  const a = buildLakeArrays({ lakes: [lake] }, { bbox: BBOX, terrain });
-  assert.equal(a.level, -1 + WATER.measuredSurfaceOffset, 'planar reflections use the corrected rendered water level');
-  assert.ok(a.surface.position.every((v, i) => i % 3 !== 1 || Math.abs(v - (-1 + WATER.measuredSurfaceOffset)) < 1e-9));
-  assert.ok(a.freeboards.every((point) => point.free >= WATER.minFreeboard));
-  assert.ok(a.freeboards.every((point) => Math.abs(point.free - 0.45) < 1e-9));
-});
-
-test('measured Søerne coping freeboards are near 0.45 m after the render-level adjustment', () => {
-  const terrain = createTerrain(terrainDoc);
-  const a = buildLakeArrays(doc, { bbox: BBOX, terrain });
-  for (const id of ['lake:0', 'lake:1', 'lake:2']) {
-    const free = a.freeboards.filter((point) => point.id === id).map((point) => point.free).sort((x, y) => x - y);
-    assert.ok(free.length > 0, `${id} has measured shoreline samples`);
-    assert.ok(free[0] >= WATER.minFreeboard, `${id} respects the minimum freeboard`);
-    assert.ok(free[Math.floor(free.length / 2)] <= 0.6, `${id} median freeboard stays near the 0.45 m target`);
-  }
-});
-
-test('lake-wall tops batter landward while the coping keeps its measured width', () => {
-  const { walls } = buildLakeArrays(SQUARE, { bbox: BBOX });
-  const p = walls.position;
-  const normal = walls.normal;
-  const horizontalNormalLength = Math.hypot(normal[0], normal[2]);
-  const nx = normal[0] / horizontalNormalLength;
-  const nz = normal[2] / horizontalNormalLength;
-  const dx = p[9] - p[0]; // top-start vertex minus bottom-start vertex
-  const dz = p[11] - p[2];
-  const intoWater = dx * nx + dz * nz;
-  assert.ok(Math.abs(intoWater + WATER.wallBatter) < 1e-6, 'top moves 0.15 m away from the water-facing normal');
-
-  const copeInner = [p[12], p[14]];
-  const copeOuter = [p[21], p[23]];
-  const copingOutward = (copeOuter[0] - copeInner[0]) * nx + (copeOuter[1] - copeInner[1]) * nz;
-  assert.ok(Math.abs(copingOutward + WATER.copingW) < 1e-6, 'coping projects 0.3 m landward from the wall face');
-});
-
-test('bridge fascias stay vertical when lake walls use a landward batter', () => {
-  const ring = [-20, -20, -20, 20, 20, 20, 20, -20];
-  const arrays = buildLakeArrays({ lakes: [], bridges: [{ id: 'b', ring, open_edges: [0] }] }, { bbox: BBOX });
-  const p = arrays.soffit.position;
-  const base = ring.length / 2; // bridge deck vertices precede the fascia quad
-  const a = base;
-  const b = base + 1;
-  const c = base + 2;
-  const d = base + 3;
-  assert.equal(p[3 * a], p[3 * d]);
-  assert.equal(p[3 * a + 2], p[3 * d + 2]);
-  assert.equal(p[3 * b], p[3 * c]);
-  assert.equal(p[3 * b + 2], p[3 * c + 2]);
-});
-
-test('Peblinge coping closes to the registered gravel at the real lake-path camera cross-section', () => {
-  const surfaces = applySurfaceCuts(
-    JSON.parse(readFileSync(new URL('../data/cph-surfaces.json', import.meta.url), 'utf8')),
-    doc.surface_cuts
-  ).surfaces;
-  const lake = doc.lakes.find((item) => item.id === 'lake:0');
-  const hint = [-70.5, -300];
-  let closest = null;
-  let area = 0;
-  for (let i = 0; i < lake.ring.length; i += 2) {
-    const j = (i + 2) % lake.ring.length;
-    area += lake.ring[i] * lake.ring[j + 1] - lake.ring[j] * lake.ring[i + 1];
-  }
-  area /= 2;
-  for (let i = 0; i < lake.ring.length; i += 2) {
-    const j = (i + 2) % lake.ring.length;
-    const ax = lake.ring[i];
-    const az = lake.ring[i + 1];
-    const dx = lake.ring[j] - ax;
-    const dz = lake.ring[j + 1] - az;
-    const length = Math.hypot(dx, dz) || 1;
-    const t = Math.max(0, Math.min(1, ((hint[0] - ax) * dx + (hint[1] - az) * dz) / (length * length)));
-    const x = ax + dx * t;
-    const z = az + dz * t;
-    const distance = Math.hypot(hint[0] - x, hint[1] - z);
-    if (closest && distance >= closest.distance) continue;
-    const left = [-dz / length, dx / length];
-    const waterLeft = pointInRing(lake.ring, x + left[0] * 0.5, z + left[1] * 0.5);
-    const waterRight = pointInRing(lake.ring, x - left[0] * 0.5, z - left[1] * 0.5);
-    const land = waterLeft !== waterRight ? (waterLeft ? [-left[0], -left[1]] : left) : (area < 0 ? left : [-left[0], -left[1]]);
-    closest = { x, z, distance, land };
-  }
-
-  const arrays = buildLakeArrays(doc, { bbox: BBOX, terrain: createTerrain(terrainDoc) });
-  const terrain = createTerrain(terrainDoc);
-  const outerX = closest.x + closest.land[0] * (WATER.wallBatter + WATER.copingW);
-  const outerZ = closest.z + closest.land[1] * (WATER.wallBatter + WATER.copingW);
-  const registeredGravel = surfaces.find((surface) => surface.cls === 'gravel' && pointInRing(surface.ring, outerX, outerZ));
-  assert.ok(registeredGravel, 'the target coping edge is covered by the measured gravel polygon');
-
-  let nearest = null;
-  for (let i = 0; i < arrays.walls.kind.length; i++) {
-    if (arrays.walls.kind[i] !== KIND.fascia) continue;
-    const x = arrays.walls.position[3 * i];
-    const z = arrays.walls.position[3 * i + 2];
-    const d = Math.hypot(x - outerX, z - outerZ);
-    if (!nearest || d < nearest.distance) nearest = { i, x, z, distance: d };
-  }
-  assert.ok(nearest && nearest.distance < 3, 'the landward coping fascia reaches this real shoreline segment');
-  assert.ok(pointInRing(registeredGravel.ring, nearest.x, nearest.z), 'the fascia endpoint lies inside the same registered gravel polygon');
-  const samePointY = [];
-  for (let i = 0; i < arrays.walls.kind.length; i++) {
-    if (arrays.walls.kind[i] !== KIND.fascia) continue;
-    if (Math.hypot(arrays.walls.position[3 * i] - nearest.x, arrays.walls.position[3 * i + 2] - nearest.z) < 1e-8) {
-      samePointY.push(arrays.walls.position[3 * i + 1]);
-    }
-  }
-  const fasciaBottom = Math.min(...samePointY);
-  const fasciaTop = Math.max(...samePointY);
-  const gravelTop = terrain.heightAt(nearest.x, nearest.z) + 0.014;
-  assert.ok(fasciaTop - gravelTop > 0.25, 'real terrain leaves a substantial height step under the raised coping');
-  assert.ok(Math.abs(fasciaBottom - gravelTop) < 1e-6, 'the fascia closes that step exactly to the terrain-draped gravel level');
 });
 
 test('lake walls face the water; the water surface and the soffit face up / down', () => {
@@ -158,12 +31,9 @@ test('lake walls face the water; the water surface and the soffit face up / down
     const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
     const stored = [W.normal[3 * p], W.normal[3 * p + 1], W.normal[3 * p + 2]];
     assert.ok(n[0] * stored[0] + n[1] * stored[1] + n[2] * stored[2] > 0, 'geometric normal agrees with the stored one');
-    if (W.kind[p] === KIND.wall) { // water-facing wall: points into the lake (towards its centre)
+    if (stored[1] === 0) { // a wall face: points into the lake (towards its centre)
       const toCentre = [20 - A[0], 20 - A[2]];
       assert.ok(stored[0] * toCentre[0] + stored[2] * toCentre[1] > 0, 'faces the water');
-    } else if (W.kind[p] === KIND.fascia) {
-      const awayFromLake = [A[0] - 20, A[2] - 20];
-      assert.ok(stored[0] * awayFromLake[0] + stored[2] * awayFromLake[1] > 0, 'landward fascia faces away from the water');
     }
   }
   const S = a.surface;
@@ -230,4 +100,45 @@ test('surface cuts replace or drop surface polygons', () => {
   assert.deepEqual(out.surfaces[0].ring, [0, 0, 2, 0, 2, 2]);
   assert.equal(out.surfaces[0].cls, 'gravel');
   assert.equal(doc2.surfaces.length, 3, 'input untouched');
+});
+
+// ---- water level / terrain consistency (data/cph-terrain.json + data/cph-lakes.json) ----
+import { createTerrain } from '../js/terrain-cph.js';
+const terrainDoc = JSON.parse(readFileSync(new URL('../data/cph-terrain.json', import.meta.url), 'utf8'));
+const realTerrain = createTerrain(terrainDoc);
+
+test('Sortedams Sø and Peblinge Sø are separate basins with their own measured level (0.84 m apart)', () => {
+  const basins = doc.basins.filter((b) => b.lake === 'lake:0');
+  assert.equal(basins.length, 2, 'the bridge strip splits the merged lake');
+  const [a, b] = basins.map((x) => x.level).sort((p, q) => p - q);
+  assert.ok(b - a > 0.5 && b - a < 1.2, `levels ${a} / ${b}`);
+  // the measured level is the DTM over the water: the terrain at an open-water point equals its basin's level
+  assert.ok(Math.abs(realTerrain.heightAt(-60, -200) - a) < 0.05, 'Peblinge');
+  assert.ok(Math.abs(realTerrain.heightAt(150, -650) - b) < 0.05, 'Sortedams');
+});
+
+test('lake walls: the quay of the Soerne stands 0.3-1.2 m over its own water, except at the bridge approach', () => {
+  const a = buildLakeArrays(doc, { terrain: realTerrain });
+  const soerne = a.freeboards.filter((f) => !f.natural && !f.abutment);
+  assert.ok(soerne.length > 1000);
+  const tall = soerne.filter((f) => f.free > 1.2);
+  assert.equal(tall.length, 0, `walls over 1.2 m: ${tall.slice(0, 5).map((f) => `${f.id} ${f.x},${f.z} ${f.free.toFixed(2)}`).join('; ')}`);
+  assert.ok(soerne.every((f) => f.free >= WATER.minFreeboard - 1e-9));
+  const sorted = soerne.map((f) => f.free).sort((p, q) => p - q);
+  const med = sorted[sorted.length >> 1];
+  assert.ok(med > 0.4 && med < 0.8, `median free-board ${med.toFixed(2)} m (visual-refs 8a: 0.3-0.8 m)`);
+});
+
+test('the bridge approach is the only place a Soerne wall may be taller than the deck allows', () => {
+  const a = buildLakeArrays(doc, { terrain: realTerrain });
+  const abut = a.freeboards.filter((f) => !f.natural && f.abutment);
+  assert.ok(abut.length > 20 && Math.max(...abut.map((f) => f.free)) < 4.2, 'bridge deck 1.62 m over a -0.94 m lake plus the coping');
+});
+
+test('natural park lakes get grassed banks, not quay walls with coping', () => {
+  const a = buildLakeArrays(doc, { terrain: realTerrain });
+  const kinds = new Set(a.walls.kind);
+  assert.ok(kinds.has(3), 'bank faces exist');
+  assert.ok(kinds.has(0) && kinds.has(1), 'quay wall + coping exist for the Soerne');
+  assert.ok(a.freeboards.filter((f) => f.natural).length > 0);
 });

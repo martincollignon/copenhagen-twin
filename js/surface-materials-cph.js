@@ -15,17 +15,18 @@ import {
   mix, step, smoothstep, sin, dot, abs, length, pow, exp, clamp, context, metalness
 } from 'three/tsl';
 import { cityUniforms } from './tsl-materials.js';
+import { poolLightAt } from './pool-light-cph.js';
 
 export const ssrReflectionWeight = Fn((builder) => builder.context.wetSurfaceReflection ?? metalness);
 
-const srgb = (r, g, b) => {
+export const srgb = (r, g, b) => {
   const c = new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
   return vec3(c.r, c.g, c.b);
 };
 
 const hash2D = Fn(([p]) => fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453)));
 const hash1D = Fn(([n]) => fract(sin(float(n).mul(127.1).add(311.7)).mul(43758.5453)));
-const noise2D = Fn(([p]) => {
+export const noise2D = Fn(([p]) => {
   const pv = vec2(p).toVar();
   const i = floor(pv).toVar();
   const f = fract(pv).toVar();
@@ -70,12 +71,14 @@ const puddleMask = (wp) => {
   return smoothstep(float(0.84).sub(wet.mul(0.18)), float(0.90).sub(wet.mul(0.18)), puddleField(wp)).mul(onset);
 };
 
-function wetFinish(colour, roughness, wp) {
+export function wetFinish(colour, roughness, wp) {
   const wet = roadWetness();
   const puddle = puddleMask(wp);
   const dampRoughness = mix(roughness, float(0.15), wet);
   return vec4(colour.mul(float(1.0).sub(wet.mul(0.4))), mix(dampRoughness, float(0.02), puddle));
 }
+
+export const wetReflectionWeightAt = (wp) => roadWetness().mul(0.06).add(puddleMask(wp).mul(0.28));
 
 // stone cell inside a sett/cobble field. `edgeM` = distance to the stone edge in metres
 function stoneShade(edgeM, fp, gap) {
@@ -193,25 +196,16 @@ function stoneField(size, gapFrac, tint) {
 }
 
 // ---- gravel and plain concrete -----------------------------------------------------------------------------------
-const gravel = Fn(([u, v, seed, wp]) => {
+/** Dry fine gravel by world position, shared by register polygons and the lake-path ground band. */
+export const gravelRGB = Fn(([wp]) => {
   const fpw = length(vec2(fwidth(wp.x), fwidth(wp.y)));
   const fine = float(1.0).sub(smoothstep(0.01, 0.08, fpw));
   const g = noise2D(wp.mul(70.0)).mul(0.5).add(noise2D(wp.mul(16.0)).mul(0.5));
   const big = noise2D(wp.mul(0.7));
-  const c = mix(srgb(150, 138, 118), srgb(176, 165, 146), big).mul(float(0.88).add(g.mul(0.24).mul(fine)));
-  return wetFinish(c, float(0.98), wp);
+  return mix(srgb(142, 130, 110), srgb(168, 156, 134), big).mul(float(0.88).add(g.mul(0.24).mul(fine)));
 });
 
-// Low, muted bank grass. Broad colour variation keeps it from reading as a flat green polygon at city scale.
-const grass = Fn(([u, v, seed, wp]) => {
-  const fpw = length(vec2(fwidth(wp.x), fwidth(wp.y)));
-  const fine = float(1.0).sub(smoothstep(0.01, 0.08, fpw));
-  const broad = noise2D(wp.mul(0.42)).mul(0.65).add(noise2D(wp.mul(1.8)).mul(0.35));
-  const flecks = noise2D(wp.mul(22.0)).sub(0.5).mul(0.12).mul(fine);
-  const green = mix(srgb(73, 83, 57), srgb(105, 111, 77), broad);
-  const dry = mix(green, srgb(127, 117, 82), smoothstep(0.68, 0.86, noise2D(wp.mul(0.16))).mul(0.24));
-  return vec4(dry.mul(float(0.94).add(flecks)), 0.96);
-});
+const gravel = Fn(([u, v, seed, wp]) => wetFinish(gravelRGB(wp), float(0.98), wp));
 
 const concrete = Fn(([u, v, seed, wp]) => {
   const fp = max(fwidth(u), fwidth(v)).max(0.0004);
@@ -262,6 +256,30 @@ const granite = Fn(([u, v, seed, wp]) => {
   return vec4(c.mul(float(1.0).sub(joint.mul(0.45))), 0.78);
 });
 
+// ---- grass -------------------------------------------------------------------------------------------------------
+// One colour field for the lawn: the ground polygons and the tufts of js/grass-cph.js both read it at the world position,
+// so the blades grow out of ground of exactly their own colour. Mown parkland: large soft patches (sun, shade, wear), a
+// slow dry-to-lush drift, broad mowing bands, a little clover.
+export const grassColour = Fn(([wp]) => {
+  const patch = noise2D(wp.mul(0.11)).mul(0.55).add(noise2D(wp.mul(0.43).add(vec2(9.1, 3.3))).mul(0.45));
+  const lush = srgb(64, 98, 38);
+  const mid = srgb(88, 120, 48);
+  const dry = srgb(128, 134, 70);
+  let c = mix(lush, mid, smoothstep(0.25, 0.6, patch));
+  c = mix(c, dry, smoothstep(0.62, 0.9, noise2D(wp.mul(0.05).add(vec2(41.0, 7.0)))).mul(0.65));
+  const band = sin(wp.x.mul(1.9).add(wp.y.mul(0.7)).add(noise2D(wp.mul(0.2)).mul(5.0))).mul(0.5).add(0.5);
+  c = c.mul(float(0.94).add(band.mul(0.1)));
+  const clover = smoothstep(0.7, 0.8, noise2D(wp.mul(0.9).add(vec2(2.0, 5.0))));
+  return mix(c, srgb(78, 122, 62), clover.mul(0.35));
+});
+
+const grassGround = Fn(([u, v, seed, wp]) => {
+  const fpw = length(vec2(fwidth(wp.x), fwidth(wp.y)));
+  const fine = float(1.0).sub(smoothstep(0.02, 0.25, fpw)); // blade-scale grain fades out before it can shimmer
+  const grain = noise2D(wp.mul(70.0)).sub(0.5).mul(0.2).add(noise2D(wp.mul(17.0)).sub(0.5).mul(0.14)).mul(fine);
+  return vec4(grassColour(wp).mul(float(0.82).add(grain)), 0.96);
+});
+
 const paintFn = (colour, rough) => Fn(([u, v, seed, wp]) => {
   const fpw = length(vec2(fwidth(wp.x), fwidth(wp.y)));
   const fine = float(1.0).sub(smoothstep(0.02, 0.2, fpw));
@@ -278,12 +296,13 @@ export function createRoadSurfaceMaterials() {
     const out = fn(kuv.x, kuv.y, withSeed ? seed : float(0.25), wp);
     const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0, side });
     mat.colorNode = out.xyz;
+    mat.emissiveNode = out.xyz.mul(poolLightAt(positionWorld)); // street-light pools (js/pool-light-cph.js)
     mat.roughnessNode = out.w;
     if (wet) {
       // Keep wet SSR eligibility in material context so reflection passes can use an unnamed color target.
       // The main scene MRT reads this scalar; the material remains dielectric for lighting and reflection optics.
       mat.contextNode = context({
-        wetSurfaceReflection: roadWetness().mul(0.06).add(puddleMask(wp).mul(0.28))
+        wetSurfaceReflection: wetReflectionWeightAt(wp)
       });
     }
     if (polygonOffset) {
@@ -310,7 +329,7 @@ export function createRoadSurfaceMaterials() {
       cobbles: pavement(stoneField(0.14, 0.07, vec3(1.0, 0.97, 0.92)), { wet: true }),
       setts: pavement(stoneField(0.1, 0.05, vec3(1.0)), { wet: true }),
       gravel: pavement(gravel, { wet: true }),
-      grass: pavement(grass),
+      grass: make(grassGround, { withSeed: true, polygonOffset: -2 }),
       other: pavement(concrete),
       asphalt_road: make(asphaltFn({ base: srgb(66, 67, 70), tracks: 0, patchRate: 0.05, wear: 0 }), { withSeed: true, polygonOffset: -1, wet: true })
     }

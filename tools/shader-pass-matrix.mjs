@@ -7,6 +7,7 @@ import { mrt, output, normalView, roughness, vec2, vec3, vec4, float, positionVi
 import { createRoadSurfaceMaterials, ssrReflectionWeight } from '../js/surface-materials-cph.js';
 import { cityUniforms, createContactShadowMaterial, createCarFlareMaterial } from '../js/tsl-materials.js';
 import { createLakeWallMaterial, createWaterMaterial } from '../js/water-cph.js';
+import { applyGroundField } from '../js/ground-shader-cph.js';
 
 const renderer = new THREE.WebGPURenderer({ canvas: { width: 1440, height: 900, style: {}, addEventListener() {} } });
 renderer.hasFeature = () => false;
@@ -19,8 +20,13 @@ for (const [name, size] of [['kuv', 2], ['seed', 1], ['wallUV', 2], ['wallKind',
 
 const roadMaterials = createRoadSurfaceMaterials();
 const sdf = new THREE.DataTexture(new Uint8Array(4), 2, 2, THREE.RedFormat);
+const groundFieldMaterial = new THREE.MeshStandardNodeMaterial({ metalness: 0 });
+applyGroundField(groundFieldMaterial, {
+  lakes: [{ ring: [-10, -10, -10, 10, 10, 10, 10, -10] }]
+}, [{ ring: [-18, -18, -18, 18, 18, 18, 18, -18] }], { bbox: [-20, -20, 20, 20] });
 const materials = { ...roadMaterials, ...roadMaterials.ground };
 delete materials.ground;
+materials.groundField = groundFieldMaterial;
 materials.wall = createLakeWallMaterial();
 materials.water = createWaterMaterial({ sdf, bbox: [-750, -750, 750, 750], planar: null }).material;
 materials.waterPlanar = createWaterMaterial({ sdf, bbox: [-750, -750, 750, 750], planar: { resolutionScale: 0.4 } }).material;
@@ -111,6 +117,28 @@ function assertOutputLocations(builder, count, label) {
   assert.deepEqual(locations, Array.from({ length: count }, (_, index) => index), `${label} emitted unexpected attachment locations`);
 }
 
+function assertWetnessAffectsColourAndRoughness(sourceMaterial, label) {
+  const colourProbe = new THREE.MeshStandardNodeMaterial({ metalness: 0 });
+  colourProbe.colorNode = sourceMaterial.colorNode;
+  colourProbe.roughnessNode = float(0.95);
+  colourProbe.emissiveNode = null;
+  colourProbe.contextNode = null;
+  const colourBuilder = compile(colourProbe);
+  assertOutputLocations(colourBuilder, 1, `${label} isolated colour probe`);
+  assert.ok(colourBuilder.uniforms.fragment.some((nodeUniform) => nodeUniform.node === cityUniforms.uRoadWetness),
+    `${label} colour no longer depends on uRoadWetness without SSR context`);
+
+  const roughnessProbe = new THREE.MeshStandardNodeMaterial({ metalness: 0 });
+  roughnessProbe.colorNode = vec3(0.4, 0.4, 0.4);
+  roughnessProbe.roughnessNode = sourceMaterial.roughnessNode;
+  roughnessProbe.emissiveNode = null;
+  roughnessProbe.contextNode = null;
+  const roughnessBuilder = compile(roughnessProbe);
+  assertOutputLocations(roughnessBuilder, 1, `${label} isolated roughness probe`);
+  assert.ok(roughnessBuilder.uniforms.fragment.some((nodeUniform) => nodeUniform.node === cityUniforms.uRoadWetness),
+    `${label} roughness no longer depends on uRoadWetness without SSR context`);
+}
+
 const passConfigurations = [
   { mode: 'canvas color-only check', materials: passMaterials, expectedOutputs: 1 },
   { mode: 'unnamed reflection target', materials: reflectionMaterials, expectedOutputs: 1 },
@@ -135,6 +163,13 @@ for (const { mode, materials: visibleMaterials, expectedOutputs } of passConfigu
       assert.equal(material.mrtNode, null, 'wet asphalt must not replace the renderer MRT');
       assert.ok(material.contextNode?.value?.wetSurfaceReflection, 'wet asphalt has no context SSR weight');
     }
+    if (mode === 'main scene MRT' && name === 'groundField') {
+      assert.ok(builder.uniforms.fragment.some((nodeUniform) => nodeUniform.node === cityUniforms.uRoadWetness),
+        'ground-field wet SSR output no longer depends on uRoadWetness');
+      assert.equal(material.metalness, 0, 'ground-field wet gravel must remain dielectric');
+      assert.equal(material.mrtNode, null, 'ground-field wet gravel must not replace the renderer MRT');
+      assert.ok(material.contextNode?.value?.wetSurfaceReflection, 'ground-field material has no context SSR weight');
+    }
   }
   if (mode === 'main scene MRT') {
     const wetProbe = new THREE.MeshStandardNodeMaterial({ metalness: 0 });
@@ -146,6 +181,16 @@ for (const { mode, materials: visibleMaterials, expectedOutputs } of passConfigu
     assertOutputLocations(probeBuilder, 3, 'main scene MRT / isolated wet SSR probe');
     assert.ok(probeBuilder.uniforms.fragment.some((nodeUniform) => nodeUniform.node === cityUniforms.uRoadWetness),
       'isolated main SSR mask is not connected to wetness');
+
+    const groundFieldProbe = new THREE.MeshStandardNodeMaterial({ metalness: 0 });
+    groundFieldProbe.colorNode = vec3(0.4, 0.4, 0.4);
+    groundFieldProbe.roughnessNode = float(0.3);
+    groundFieldProbe.contextNode = groundFieldMaterial.contextNode;
+    const groundFieldProbeBuilder = compile(groundFieldProbe);
+    assertNoEmptyOutput(groundFieldProbeBuilder, 'main scene MRT / isolated ground-field SSR probe');
+    assertOutputLocations(groundFieldProbeBuilder, 3, 'main scene MRT / isolated ground-field SSR probe');
+    assert.ok(groundFieldProbeBuilder.uniforms.fragment.some((nodeUniform) => nodeUniform.node === cityUniforms.uRoadWetness),
+      'isolated ground-field SSR mask is not connected to wetness');
   }
   if (mode === 'partial normal/depth MRT check') {
     const builder = compile(roadMaterials.asphalt);
@@ -153,6 +198,11 @@ for (const { mode, materials: visibleMaterials, expectedOutputs } of passConfigu
   }
   console.log(`PASS ${mode} (${Object.keys(visibleMaterials).length} materials)`);
 }
+
+configureTarget('canvas color-only check');
+assertWetnessAffectsColourAndRoughness(roadMaterials.ground.gravel, 'registered gravel');
+assertWetnessAffectsColourAndRoughness(groundFieldMaterial, 'ground-field gravel');
+console.log('PASS isolated wetness dependencies (registered and ground-field gravel colour and roughness)');
 
 const directionalLight = new THREE.DirectionalLight();
 const shadowNode = new ShadowNode(directionalLight);

@@ -32,7 +32,7 @@ Lighting uses 26 October 2026 in Europe/Copenhagen: Golden Hour at 16:10, Midday
 | `?wet=0.7` | Overrides ground wetness from 0 to 1; clear presets default to dry. |
 | `?ao=1` | Enables half-resolution GTAO at 0.6 strength. It remains opt-in pending a GPU cost measurement. |
 
-The lake promenade is inferred at runtime from the lake rings because this checkout lacks `data/raw/`. It supplies a four-metre gravel path and a two-metre grass bank where roads, bridges, buildings and registered surfaces leave space, using the existing surface renderer. These are approximate bands, not surveyed path outlines. Connected large Søerne basins use a +0.35 m visual water-level adjustment relative to the DTM; small lakes and ponds keep their measured levels. Terrain still controls the shoreline, so freeboard varies near banks and bridge approaches. Some land-side bank samples on `lake:1` and `lake:2` lie below the corrected water elevation, outside the water footprint; their profile needs visual review before any coordinated terrain and walking-height correction.
+Water levels come from the DTM over the lakes. `data/cph-lakes.json` stores basin polygons and their measured levels, allowing basins separated by bridges to keep distinct elevations while nearby levels snap together. Lake outlines cut through the terrain or ground mesh; developed shores use quay walls and coping, while natural shores use bank geometry. A shared ground-field shader shades fine gravel along the lake edge and grass over measured park areas.
 
 Capture and benchmark the atmospheric changes on a machine that permits a local browser/server:
 
@@ -52,7 +52,7 @@ Wet ground supplies its SSR weight through material context, which only the main
 node --experimental-loader /private/tmp/dlb-three/loader.mjs tools/shader-pass-matrix.mjs
 ```
 
-Clear midday haze uses density 0.00013 (about 12% attenuation at 1 km) and caps fog in-scatter luminance at 0.48 scene-linear to prevent the HDR sun lobe from washing out buildings. Where terrain sits below the coping, a landward granite face now joins the ledge to the gravel; inferred gravel overlaps the coping edge by 5 mm.
+Clear midday haze uses density 0.00013 (about 12% attenuation at 1 km) and caps fog in-scatter luminance at 0.48 scene-linear to prevent the HDR sun lobe from washing out buildings.
 
 Tests (Node 20+, no dependencies):
 
@@ -65,6 +65,8 @@ Headless browser check (Playwright; boots the twin, asserts the HUD and console,
 ```sh
 uv run --with playwright python tools/shoot-m2.py --verify --query hooks --out docs/cleanup
 ```
+
+Facade look: photo walls are on by default between about 14 m and 150 m of the camera (procedural brick, plaster and windows closer, tone + procedural beyond; `?tex=0` turns the photos off). They need `data/tex/` (photo atlases) and the processed `data/tex-look/` (`uv run --with pillow --with numpy --with scipy python tools/cph-geodata/facade_look.py`); without them the twin falls back to the procedural facades. Ground-floor shopfronts come from `data/cph-groundfloor.json` (`uv run --with requests --with pyproj python tools/cph-geodata/groundfloor.py`). Facade shots: `uv run --with playwright python tools/shoot-look.py --out docs/look/facades/x [--perf]`.
 
 ## Rebuild the data
 
@@ -88,6 +90,19 @@ The twin renders Københavnerfortov (slab rows with a sett line between, paralle
 and setts procedurally (`js/surface-materials-cph.js`); pavements are the Københavnerfortov unless the register or a
 plaza-sized polygon says otherwise. Without the file the twin still boots (pavements and lane paint only).
 
+`data/cph-vegetation.json` (lawns and planting) is measured, not taken from a register: the colour-infrared orthophoto gives
+NDVI and the DHM point cloud gives what stands above the ground (class 5 crowns, class 3/4 shrubs); the ground under park
+crowns is lawn by the KK park register. The twin appends these polygons to the surfaces as `grass` ground and grows tufts
+on them around the camera (`js/grass-cph.js`: one instanced draw call, 49 tiles of 8 m refilled as you move, wind and
+fade in the shader; `?debug=nograss` switches both off). Method, thresholds and QA: `tools/cph-geodata/vegetation.py`.
+
+```sh
+python3 tools/cph-geodata/vegetation_rasters.py   # DHM Punktsky class counts at 1 m (pdal; tiles from tools/lod2/fetch.py)
+uv run tools/cph-geodata/vegetation_cir.py        # CIR orthophoto -> NDVI (Dataforsyningen token from ADC `gsearch-token`)
+uv run tools/cph-geodata/vegetation.py
+uv run --with playwright python tools/shoot-grass.py   # shots and cost into docs/grass/
+```
+
 `data/cph-furniture.json` (street furniture, M4) is another separate generated file:
 
 ```sh
@@ -96,6 +111,9 @@ uv run --with playwright python tools/shoot-m2.py --furniture   # shots + fps in
 uv run --with playwright python tools/shoot-m2.py --oneway      # traffic direction: live car check + contraflow / track / arrow-overlay shots into docs/oneway
 node tools/audit/oneway.mjs                                     # cars and cyclists against the one-way / bicycle-direction data (10 simulated minutes)
 ```
+
+Look shots for lakes, trees and night lighting: `uv run --with playwright python tools/shoot-look.py --tag after` (docs/look/lakes-trees).
+`uv run tools/cph-geodata/basins.py` adds the per-basin water levels to `data/cph-lakes.json` (after `lakes.py`).
 
 ## Licence and attributions
 
