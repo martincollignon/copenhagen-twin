@@ -5,7 +5,7 @@ import {
 } from './street-furniture-data.js';
 import * as G from './street-furniture-geometry.js';
 import * as T from './tree-geometry-cph.js';
-import { treeDayOfYear, treeSeason } from './tree-season.js';
+import { treeDayOfYear } from './tree-season.js';
 import { TREE_LOD, treeCapacities, originalTreeBudget, selectTreeDraws } from './tree-budget.js';
 import { resolveGenus } from './tree-species-cph.js';
 import { alignLakeFurniture } from './lake-furniture-cph.js';
@@ -33,11 +33,12 @@ const lin = (srgb) => new THREE.Color().setRGB(srgb[0], srgb[1], srgb[2], THREE.
 
 /** One InstancedMesh with a write cursor. `paint` (cars): the geometry carries instanced paintColor/carState attributes. */
 class MeshSet {
-  constructor(name, geometry, material, capacity, { colored = false, tinted = false, cast = false, receive = true, paint = false, parent = null } = {}) {
+  constructor(name, geometry, material, capacity, { colored = false, tinted = false, cast = false, receive = true, paint = false, seasonal = false, parent = null } = {}) {
     this.name = name;
     this.capacity = Math.max(1, capacity);
     this.paint = paint;
     this.tinted = tinted;
+    this.season = seasonal ? T.attachTreeSeasonAttributes(geometry, this.capacity) : null;
     if (paint) {
       geometry.setAttribute('paintColor', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3));
       geometry.setAttribute('carState', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 4), 4));
@@ -97,6 +98,12 @@ class MeshSet {
     return i;
   }
 
+  putSeason(slot, state) {
+    if (slot < 0) return;
+    this.season.early.array.set(state.early, slot * 4);
+    this.season.late.array.set(state.late, slot * 4);
+  }
+
   end(warm) {
     if (this.n === 0 && warm) {
       composeYaw(this.matrices, 0, 0, -50, 0, 0, 0.001, 0.001, 0.001);
@@ -106,6 +113,10 @@ class MeshSet {
     }
     this.mesh.visible = this.mesh.count > 0;
     this.mesh.instanceMatrix.needsUpdate = true;
+    if (this.season) {
+      this.season.early.needsUpdate = true;
+      this.season.late.needsUpdate = true;
+    }
     if (this.colors && this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
     if (this.tints) this.mesh.geometry.attributes.bikePaint.needsUpdate = true;
     if (this.paint) {
@@ -168,6 +179,7 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   const treeMat = T.createTreeMaterial(atlas);
   const byGenus = new Map();
   for (const t of plan.trees) {
+    t.season = T.treeInstanceSeason(t.genus, treeDay, t.x, t.z, t.tint);
     if (!byGenus.has(t.genus)) byGenus.set(t.genus, []);
     byGenus.get(t.genus).push(t);
   }
@@ -177,14 +189,13 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   const treeMid = new Map();
   const treeFar = new Map();
   for (const [genus, list] of byGenus) {
-    treeNear.set(genus, mk(`trees-near-${genus}`, T.buildNearTree(genus, treeDay), treeMat, count(list.length, 260), { colored: true, cast: false }));
-    treeMid.set(genus, mk(`trees-mid-${genus}`, T.buildMidTree(genus, treeDay), treeMat, count(list.length, 900), { colored: true, cast: false }));
-    treeFar.set(genus, mk(`trees-far-${genus}`, T.buildBillboard(bill.cellOf.get(genus)), billMat, count(list.length, 4000), { colored: true, receive: false }));
+    treeNear.set(genus, mk(`trees-near-${genus}`, T.buildNearTree(genus, treeDay, { variation: true }), treeMat, count(list.length, 260), { seasonal: true, cast: false }));
+    treeMid.set(genus, mk(`trees-mid-${genus}`, T.buildMidTree(genus, treeDay, { variation: true }), treeMat, count(list.length, 900), { seasonal: true, cast: false }));
+    treeFar.set(genus, mk(`trees-far-${genus}`, T.buildBillboard(bill.cellOf.get(genus)), billMat, count(list.length, 4000), { seasonal: true, receive: false }));
   }
-  const treeCosts = {}, fullTreeCosts = {}, seasons = {};
+  const treeCosts = {}, fullTreeCosts = {};
   for (const [genus] of byGenus) {
     treeCosts[genus] = {}; fullTreeCosts[genus] = {};
-    seasons[genus] = treeSeason(genus, treeDay);
     for (const [lod, sets] of [['near', treeNear], ['mid', treeMid], ['far', treeFar]]) {
       const geometry = sets.get(genus).mesh.geometry;
       treeCosts[genus][lod] = geometry.index.count / 3;
@@ -204,7 +215,7 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   const litter = mk('tree-litter', T.buildTreeLitterGeometry(), T.createTreeLitterMaterial(atlas), 1500, { receive: true });
   const litterItems = [];
   for (const t of plan.trees) {
-    const coverage = seasons[t.genus].litter;
+    const coverage = t.season.litter;
     if (!['chestnut', 'lime'].includes(t.genus) || coverage <= 0) continue;
     for (let i = 0; i < t.litterPoints.length; i += 2) {
       if (((i * 0.61803398875 + t.tint) % 1) >= coverage) continue;
@@ -367,13 +378,15 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     const budget = originalTreeBudget(candidates, fullTreeCosts, originalCaps);
     const submitted = selectTreeDraws(candidates, treeCosts, treeCaps, budget);
     for (const { tree: t, distance: d, lod } of submitted.selected) {
-      const tint = [t.tint, t.tint, t.tint];
+      const set = (lod === 'far' ? treeFar : lod === 'near' ? treeNear : treeMid).get(t.genus);
+      let slot;
       if (lod === 'far') {
-        treeFar.get(t.genus).put(t.x, t.y, t.z, t.yaw, t.crownR * 2.0, t.height, t.crownR * 2.0, tint);
+        slot = set.put(t.x, t.y, t.z, t.yaw, t.crownR * 2.0, t.height, t.crownR * 2.0);
       } else {
-        (lod === 'near' ? treeNear : treeMid).get(t.genus).put(t.x, t.y, t.z, t.yaw, t.sxz, t.sy, t.sxz, tint);
+        slot = set.put(t.x, t.y, t.z, t.yaw, t.sxz, t.sy, t.sxz);
       }
-      const density = seasons[t.genus].density;
+      set.putSeason(slot, t.season);
+      const density = t.season.density;
       if (d <= 90 && density > 0 && treeShadow.n < budget.shadows) {
         const width = 0.9 * Math.sqrt(density);
         treeShadow.put(t.x, t.y + t.crown.cy, t.z, t.yaw, t.crown.rx * width, t.crown.ry * 0.9, t.crown.rx * width);

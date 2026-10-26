@@ -30,6 +30,15 @@ were compared with this branch’s input and are unchanged. Two consecutive runs
 produce byte-identical JSON. The schema additions are in
 [cph-geodata-schema.md](cph-geodata-schema.md).
 
+The data tool's inferred chestnut labels are placeholders. Rendering now keeps
+main's existing 46% chestnut / 42% lime / 6% plane / 6% maple mix for untyped lake
+crowns. Recorded genera and identifiable species names take precedence. This
+corrects the uniform chestnut row seen in the lead's first browser captures;
+the inferred mix is a modelling assumption, not a species survey.
+Across the 730 records explicitly marked lakeside, the resolved population now
+includes 353 chestnuts, 207 limes, 64 maples, 20 planes and 42 willows. At 26 October,
+their individual chestnut retention targets span 30.9–59.7%, and lime 60.9–79.7%.
+
 ## Rendering
 
 Near and mid geometry now fits the specified crown radius and height, including
@@ -44,12 +53,33 @@ validator; there is no second query parser. `?date=YYYY-MM-DD` controls leaves a
 lighting together. The default remains 26 October 2026. Seasons are built at load;
 reload with a different date to change them.
 
-October retained-leaf fractions are chestnut 0.45 (brown), lime 0.65 (gold), plane
-0.80 (ochre) and willow 0.88 (green-yellow). Deterministic spray culling removes
-indices, reducing submitted triangles. Winter retains wood at near/mid distances;
-the far atlas paints the same genus skeleton beneath its seasonal leaf dabs.
-Conifers remain evergreen. These are genus-level phenology estimates, not surveys
-of individual trees.
+Each tree has a stable date advance/delay within a 7–12 day range, keyed to its
+position. At the default date, chestnuts target 30–60% retained leaves (45% at the
+central date), and limes 60–80% (65% centrally). Plane and willow central retention
+remains 80% and 88%. Shared meshes remove indices beyond the maximum retention
+needed by the date window; each instance alpha-tests the remaining sprays against
+its own density. Bare trees retain the wood geometry. Litter and crown-shadow
+density follow the same individual season.
+
+Colour progresses through green, yellow-green, gold, rusty brown and dull brown.
+The central-date sRGB targets are chestnut (120, 80, 40), lime (200, 170, 60),
+plane (170, 140, 70), willow (90, 110, 50) and poplar (113, 132, 49). Willow and
+poplar colour later. The leaf atlas stores shading in red and per-blade colour
+progression in green, sampled without sRGB decoding. Palette colours are decoded
+once before upload, with no red-channel tint multiplier. Leaf transmission is
+reduced to preserve dark brown/olive shading. Conifers remain evergreen.
+
+Sprays have shallow folded corners and darker, later-coloured leaf rims, without
+extra triangles. Relative to the reviewed result, measured median near-card edges
+shrank 30.2% for chestnut, 31.1% for lime and 29.7% for plane; mid-card reductions
+are 27.5%, 29.6% and 28.7%. Card counts remain unchanged. Complete summer crown
+dimensions still match the mapped radius and height.
+
+The far atlas includes five date variants per genus, selected per instance in the
+same draw. Each keeps its branch skeleton and varies leaf colour/density, with
+smaller dabs to leave gaps. The atlas is now 640 × 2,880 pixels, approximately
+9.4 MiB including mipmaps. These remain phenology estimates, not measurements of
+individual trees.
 
 The original LOD distances remain 34 / 200 / 950 m. Each camera rebuild computes
 the original trees’ draw/triangle budget from their preserved genera and main’s
@@ -65,28 +95,36 @@ and during shader warm-up. There is no guaranteed litter in a view that uses the
 full tree budget.
 
 Vertex attributes share one interleaved buffer. Counting `instanceMatrix` as four
-streams, tree materials use six, litter uses five, and the unchanged crown-shadow
-proxy uses eight. No seasonal per-instance attributes are added.
+streams, tree materials use seven: the packed vertex buffer, four matrix streams,
+and two seasonal vec4 instance attributes replacing `instanceColor`. Litter uses
+five; the unchanged crown-shadow proxy uses eight.
 
 ## Verification
 
-- `node --test tests/*.cjs tests/*.mjs`: 285 passing tests, zero failures.
-- Ten new tests cover crown evidence, additions, date reuse, seasons, metric
-  geometry, winter branches at every LOD, buffer limits, camera budgets and litter.
+- `node --test tests/*.cjs tests/*.mjs`: 288 passing tests, zero failures.
+- Thirteen tree-realism tests cover crown evidence, additions, date reuse,
+  individual phenology and colour, seasonal shedding, smaller folded cards,
+  metric geometry, winter branches, buffer limits, camera budgets and litter.
+  The species tests also protect the mixed inferred lake avenues.
 - Budget sweep: 25 camera locations in each of winter, summer and autumn; no
   trees dropped within 950 m and no draw/triangle budget exceeded.
 - `node --experimental-loader /private/tmp/dlb-three/loader.mjs tools/check-tree-shaders.mjs`:
   360 offline WGSL builds pass across all genera, colour/MRT/shadow passes and
-  instance capacities of 1 and 6,000. This uses the local cached Three build.
+  instance capacities of 1 and 6,000. Shadow overrides use the source material's
+  alpha mask and wind nodes, and assertions check seasonal attributes and alpha
+  discard in the generated shaders. This uses the local cached Three build.
 - All 28,690 litter points were checked against mapped hard ground minus buildings,
   lakes and ponds, allowing 8 mm for rounded stored coordinates.
 - The required design scan reports two existing `index.html` warnings:
   `overused-font` recommends replacing Inter with a more distinctive face;
   `single-font` recommends a display/body pairing. HTML changes only add the two
   module preloads required by the boot tests. HUD typography was not changed.
+  The corrective pass changes JavaScript only; its required scan emitted no
+  findings (the scanner does not inspect `.js` files).
 
-Browser screenshots and GPU performance measurements are assigned to the lead
-by `SPEC.md` and were not run. The checks above establish geometry/submission
+The lead supplied the initial October browser captures and requested this colour,
+density and card-size correction. Updated browser screenshots and GPU performance
+measurements remain assigned to the lead by `SPEC.md`. The checks above establish geometry/submission
 budgets and WGSL generation, not a successful Chrome WebGPU frame. Inspect the
 lake avenue at October midday/golden hour and at summer/winter dates, including
 LOD transitions and ground contact. Runtime tree-budget details are available at

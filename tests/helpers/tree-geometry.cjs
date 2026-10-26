@@ -32,7 +32,7 @@ class InterleavedBufferAttribute {
 const THREE = {
   Vector3, InterleavedBufferAttribute,
   InterleavedBuffer: class { constructor(array, stride) { Object.assign(this, { array, stride }); } },
-  BufferAttribute: Attribute, Float32BufferAttribute: Attribute, Uint32BufferAttribute: Attribute,
+  BufferAttribute: Attribute, InstancedBufferAttribute: Attribute, Float32BufferAttribute: Attribute, Uint32BufferAttribute: Attribute,
   IcosahedronGeometry: class {
     constructor() {
       this.attributes = { position: new Attribute([0, 1, 0, 1, 0, 0, 0, 0, 1], 3),

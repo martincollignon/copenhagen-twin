@@ -84,6 +84,71 @@ test('October chestnut, lime, plane and willow retain distinct colours and densi
   }
 });
 
+test('individual October trees span green, gold and brown with species-appropriate retention', () => {
+  const trees = doc.trees.filter(t => t.lakeside);
+  const offsets = trees.map(t => season.treePhenologyOffset(t.x, t.z));
+  assert.ok(Math.min(...offsets) < -10 && Math.max(...offsets) > 10);
+  assert.ok(offsets.every(offset => Math.abs(offset) <= 12));
+  assert.deepEqual(offsets, trees.map(t => season.treePhenologyOffset(t.x, t.z)), 'stable across rebuilds');
+  for (const [genus, min, max] of [['chestnut', 0.30, 0.60], ['lime', 0.60, 0.80]]) {
+    const states = trees.map(t => T.treeInstanceSeason(genus, 299, t.x, t.z));
+    assert.ok(states.every(s => s.density >= min && s.density <= max));
+    assert.ok(states.some(s => s.colour[1] > s.colour[0]), `${genus} includes green individuals`);
+    assert.ok(states.some(s => s.colour[0] > s.colour[1] * 1.2), `${genus} includes gold/brown individuals`);
+    assert.ok(new Set(states.map(s => s.colour.map(c => Math.round(c * 255)).join(','))).size > 100);
+  }
+  for (const genus of genera) for (let day = 275; day <= 330; day++) {
+    const [r, g, b] = season.treeLeafColour(genus, day, T.LOOK[genus].leaf);
+    assert.ok(g > b * 1.4 && g > r * 0.45, `${genus}/${day} avoids pink or red-heavy browns`);
+    const state = T.treeInstanceSeason(genus, day, 12, 34);
+    assert.ok([...state.early, ...state.late].every(Number.isFinite));
+    if (genus !== 'conifer' && day === 296) assert.notDeepEqual(state.early.slice(0, 3), state.late.slice(0, 3), 'leaf hue endpoints differ');
+  }
+});
+
+test('shared seasonal meshes retain every eligible individual spray and expose wood', () => {
+  for (const genus of ['chestnut', 'lime', 'plane', 'willow']) for (const build of [T.buildNearTree, T.buildMidTree]) {
+    const full = build(genus, 190), autumn = build(genus, 299, { variation: true });
+    const ranks = geometry => {
+      const leaf = geometry.attributes.leafData, result = new Set();
+      for (const i of geometry.index.array) if (leaf.data.array[i * leaf.data.stride + leaf.offset + 3]) result.add(leaf.getX(i));
+      return [...result];
+    };
+    const all = ranks(full), retained = ranks(autumn);
+    for (let offset = -12; offset <= 12; offset++) {
+      const density = season.treeSeason(genus, 299 + offset).density;
+      assert.equal(retained.filter(r => r < density).length, all.filter(r => r < density).length);
+    }
+    assert.equal(autumn.userData.woodTriangles, full.userData.woodTriangles);
+    assert.ok(autumn.index.count <= full.index.count);
+    if (genus === 'chestnut') {
+      const fraction = retained.filter(r => r < 0.45).length / all.length;
+      assert.ok(fraction >= 0.3 && fraction <= 0.6, `chestnut retained sprays: ${fraction}`);
+    }
+  }
+});
+
+test('near leaf sprays have smaller metric edges and folded corners without more triangles', () => {
+  for (const [genus, maxMedian, triangles] of [['chestnut', 1.10, 1918], ['lime', 0.65, 2454], ['plane', 0.90, 1878]]) {
+    const geometry = T.buildNearTree(genus, 190), p = geometry.attributes.position;
+    const leaf = geometry.attributes.leafData, edges = [];
+    let folded = 0;
+    const point = i => [p.getX(i), p.getY(i), p.getZ(i)];
+    const sub = (a, b) => a.map((v, i) => v - b[i]);
+    for (let i = 0; i < geometry.index.count; i += 6) {
+      const [a, b, c, , , d] = Array.from(geometry.index.array.slice(i, i + 6));
+      if (leaf.getX(a) < 0) continue;
+      const ab = sub(point(b), point(a)), ac = sub(point(c), point(a)), ad = sub(point(d), point(a));
+      edges.push(Math.hypot(...ab));
+      const cross = [ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]];
+      if (Math.abs(cross.reduce((sum, v, k) => sum + v * ad[k], 0)) > 1e-5) folded++;
+    }
+    assert.ok(median(edges) < maxMedian, `${genus} metric spray size ${median(edges)}`);
+    assert.equal(folded, edges.length, 'every spray has non-coplanar corners');
+    assert.equal(geometry.index.count / 3, triangles, 'summer topology stays at the main budget');
+  }
+});
+
 test('near and mid trees shed actual sprays, preserve wood, and fit per-tree metric dimensions', () => {
   for (const genus of genera) for (const build of [T.buildNearTree, T.buildMidTree]) {
     const summer = build(genus, 190), autumn = build(genus, 299), winter = build(genus, 35);
@@ -106,14 +171,15 @@ test('near and mid trees shed actual sprays, preserve wood, and fit per-tree met
     assert.ok(Math.abs(radius - 6) < 1e-5, `${genus} radius ${radius}`);
     assert.ok(Math.abs(top - 18) < 1e-5, `${genus} height ${top}`);
     const a = summer.attributes.position.data.array, b = winter.attributes.position.data.array;
-    for (let i = 0; i < a.length; i += 13) assert.deepEqual(a.slice(i, i + 3), b.slice(i, i + 3), 'shedding never resizes wood');
+    for (let i = 0; i < a.length; i += summer.attributes.position.data.stride) assert.deepEqual(a.slice(i, i + 3), b.slice(i, i + 3), 'shedding never resizes wood');
   }
 });
 
 test('each tree material stays within eight vertex buffers including four for instanceMatrix', () => {
   for (const genus of genera) for (const geometry of [T.buildNearTree(genus), T.buildMidTree(genus), T.buildBillboard(0)]) {
-    assert.equal(treeVertexBufferCount(geometry, { colored: true }), 6);
-    assert.ok(treeVertexBufferCount(geometry, { colored: true }) <= 8, `${genus} colour/shadow material`);
+    T.attachTreeSeasonAttributes(geometry, 1);
+    assert.equal(treeVertexBufferCount(geometry), 7);
+    assert.ok(treeVertexBufferCount(geometry) <= 8, `${genus} colour/shadow material`);
   }
   const loose = { attributes: Object.fromEntries(['position', 'normal', 'uv', 'color', 'sway'].map(k => [k, {}])) };
   assert.equal(treeVertexBufferCount(loose, { colored: true }), 10, 'detects the original unpacked layout');
@@ -145,7 +211,7 @@ test('real-data camera budgets never exceed original draws/triangles across thre
   const full = Object.fromEntries(genera.map(g => [g, { near: T.buildNearTree(g, 190).index.count / 3, mid: 260, far: 4 }]));
   let added = 0;
   for (const day of [35, 190, 299]) {
-    const costs = Object.fromEntries(genera.map(g => [g, { near: T.buildNearTree(g, day).index.count / 3, mid: T.buildMidTree(g, day).index.count / 3, far: 4 }]));
+    const costs = Object.fromEntries(genera.map(g => [g, { near: T.buildNearTree(g, day, { variation: true }).index.count / 3, mid: T.buildMidTree(g, day, { variation: true }).index.count / 3, far: 4 }]));
     for (const x of [-600, -300, 0, 300, 600]) for (const z of [-600, -300, 0, 300, 600]) {
       const candidates = trees.map(tree => ({ tree, distance: Math.hypot(tree.x - x, tree.z - z) }));
       const budget = originalTreeBudget(candidates, full, originalCaps);
