@@ -64,7 +64,7 @@ RAW_CITY = S.RAW_CITY
 RAW_CELLS = DATA / "raw" / "cells"
 DISTRICT_REF = RAW_CITY / "district-tiles-ref"  # data/tiles + meta of the district-only build this one replaces
 
-MIN_FREE_GB = 5.0
+MIN_FREE_GB = float(os.environ.get("CPH_MIN_FREE_GB", "5.0"))  # lower it only on request
 CELL_MARGIN = 50.0  # buildings slice per cell: footprints within this of the cell are kept (terrain masks, border buildings)
 DHM_MARGIN = 100.0
 TERRAIN_CELL = 2.0
@@ -808,7 +808,7 @@ def stage_index(a, tiles, cells) -> None:
     log(f"[index] {len(idx_tiles)} tiles, {total / 1e6:.1f} MB; meta.json {(CITY_DIR / 'meta.json').stat().st_size / 1e6:.2f} MB")
 
 
-STAGES = ["fetch", "fetch2", "buildings0", "geo", "cells", "surfaces", "furniture", "groundfloor", "streets", "entrances", "cellsinput", "vegetation", "index", "report"]
+STAGES = ["fetch", "fetch2", "buildings0", "geo", "cells", "surfaces", "furniture", "groundfloor", "streets", "entrances", "cellsinput", "vegetation", "lod2", "index", "report"]
 
 
 def main(argv=None):
@@ -854,7 +854,7 @@ def main(argv=None):
             import city_layers
 
             getattr(city_layers, f"stage_{s}")(a, tiles, cells)
-        elif s in ("entrances", "vegetation", "cellsinput"):
+        elif s in ("entrances", "vegetation", "cellsinput", "lod2"):
             import city_layers2
 
             getattr(city_layers2, f"stage_{s}")(a, tiles, cells)

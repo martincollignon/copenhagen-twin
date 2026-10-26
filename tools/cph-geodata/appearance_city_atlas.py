@@ -204,6 +204,8 @@ def patch_tiles(cell: str, atlases: dict[str, dict], tid_of: dict[str, str]) -> 
         by_tile.setdefault(tid_of[bid], {})[bid] = a
     for tid, d in by_tile.items():
         p = C.TILES / tid / "appearance.json"
+        if not p.exists():  # cloud task: the tile layers are merged later (task.py MODE=attach)
+            continue
         doc = C.jload(p)
         for bid, a in d.items():
             if bid in doc["buildings"]:
