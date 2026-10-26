@@ -313,8 +313,8 @@ _COUNTS = None
 
 
 def build_road_graph(roads, ways_for_graph, names, signal_pts_utm, tol=0.5):
-    polylines = [[frame.to_local(x, y) for x, y in simplify_keep_junctions(
-        [c for _, c in ways_for_graph], i)] for i in range(len(ways_for_graph))]
+    all_coords = [c for _, c in ways_for_graph]  # one list object: simplify_keep_junctions caches its vertex counts on it
+    polylines = [[frame.to_local(x, y) for x, y in simplify_keep_junctions(all_coords, i)] for i in range(len(ways_for_graph))]
     nodes, segs = roadgraph.build_graph(polylines, tol)
     sig = [frame.to_local(x, y) for x, y in signal_pts_utm]
     sig_tree = STRtree([Point(p) for p in sig]) if sig else None
