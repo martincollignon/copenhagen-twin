@@ -6,7 +6,7 @@
 // Frame: x east, z south, y up. `buildRoadSurfaceArrays` is pure (no three.js) so it can be tested headless;
 // `buildCphRoadSurfaces` turns the arrays into merged meshes.
 
-import { carriagewayWidth, cycleStrips, intersectIntervals, subtractIntervalLists, slicePts, KERB_W, CYCLE_W } from './road-width-cph.js';
+import { carriagewayWidth, cycleStrips, intersectIntervals, subtractIntervalLists, slicePts, rightNormals, KERB_W, CYCLE_W } from './road-width-cph.js';
 import { triangulatePolygon } from './polygon-cph.js';
 import { buildPavementBuckets, createSurfaceIndex } from './pavement-cph.js';
 import { createHeightGrid, composeHeightField } from './ground-height-cph.js';
@@ -49,27 +49,6 @@ class Layer {
   }
   get vertexCount() { return this.pos.length / 3; }
   arrays() { return { position: drapePositions(new Float32Array(this.pos), this.terrain), kuv: new Float32Array(this.uv), index: new Uint32Array(this.idx) }; }
-}
-
-// Per-vertex unit normals of a polyline (right-hand side positive offset: right of travel with z south is (-dz, dx))
-function rightNormals(pts) {
-  const n = pts.length / 2;
-  const out = new Array(n);
-  for (let i = 0; i < n; i++) {
-    let dx = 0;
-    let dz = 0;
-    for (const [a, b] of [[i - 1, i], [i, i + 1]]) {
-      if (a < 0 || b >= n) continue;
-      const sx = pts[2 * b] - pts[2 * a];
-      const sz = pts[2 * b + 1] - pts[2 * a + 1];
-      const l = Math.hypot(sx, sz) || 1;
-      dx += sx / l;
-      dz += sz / l;
-    }
-    const l = Math.hypot(dx, dz) || 1;
-    out[i] = [-dz / l, dx / l];
-  }
-  return out;
 }
 
 function polyLength(pts) {

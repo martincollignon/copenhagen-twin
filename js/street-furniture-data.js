@@ -162,12 +162,13 @@ export const WIRE_SAG_RATIO = 0.03; // sag / span
  * A wire span as a parabola from facade anchor A to B with the lamp hanging at its parameter `t` (0..1). Returns the
  * polyline (x, y, z triplets, y above ground = `base`), and the lamp's world position.
  */
-export function wireSpan(span, lamp, base, segments = 10) {
+export function wireSpan(span, lamp, base, segments = 10, endGround = null, anchorH = null) {
   const [ax, az, bx, bz] = span;
   const len = Math.hypot(bx - ax, bz - az) || 1;
   const t = Math.max(0.08, Math.min(0.92, ((lamp.x - ax) * (bx - ax) + (lamp.z - az) * (bz - az)) / (len * len)));
-  const hA = WIRE_ANCHOR_Y + (hash2(ax, az, 3) - 0.5) * 0.6;
-  const hB = WIRE_ANCHOR_Y + (hash2(bx, bz, 3) - 0.5) * 0.6;
+  // each anchor hangs WIRE_ANCHOR_Y over the ground at ITS facade (the street rises and falls: js/terrain-cph.js)
+  const hA = (endGround ? endGround[0] - base : 0) + (anchorH ? anchorH[0] : WIRE_ANCHOR_Y) + (hash2(ax, az, 3) - 0.5) * 0.6;
+  const hB = (endGround ? endGround[1] - base : 0) + (anchorH ? anchorH[1] : WIRE_ANCHOR_Y) + (hash2(bx, bz, 3) - 0.5) * 0.6;
   const sag = Math.max(0.25, len * WIRE_SAG_RATIO);
   const yAt = (u) => hA + (hB - hA) * u - 4 * sag * u * (1 - u);
   const pts = [];
@@ -191,7 +192,7 @@ export function mapLamps(lamps, groundHeight) {
       wire: null
     };
     if (l.mount === 'wire' && l.span) {
-      const w = wireSpan(l.span, l, y);
+      const w = wireSpan(l.span, l, y, 10, groundHeight ? [groundHeight.heightAt(l.span[0], l.span[1]), groundHeight.heightAt(l.span[2], l.span[3])] : null, l.anchor_h || null);
       item.wire = w;
       item.x = w.lampX;
       item.z = w.lampZ;
@@ -296,12 +297,17 @@ export function busStopParts(stops, groundHeight) {
     const put = (list, x, z, yaw, extra = {}) => list.push({ cx: x, cz: z, x, y: gy(x, z), z, yaw, ...extra });
     put(parts.flags, s.x, s.z, s.yaw, { name: s.name });
     if (s.shelter) {
-      // behind the kerb line, along the stop, back to the building, glass facing the carriageway
-      put(parts.shelters, s.x - fx * 0.9 + tx * 2.2, s.z - fz * 0.9 + tz * 2.2, s.yaw, { bench: s.bench });
+      // behind the kerb line, along the stop, back to the building, glass facing the carriageway (or where the placer found room)
+      const [sx, sz] = s.shelterAt || [s.x - fx * 0.9 + tx * 2.2, s.z - fz * 0.9 + tz * 2.2];
+      put(parts.shelters, sx, sz, s.yaw, { bench: s.bench });
     } else if (s.bench) {
-      put(parts.benches, s.x - fx * 0.9 + tx * 1.6, s.z - fz * 0.9 + tz * 1.6, s.yaw, { length: 1.8 });
+      const [bx, bz] = s.benchAt || [s.x - fx * 0.9 + tx * 1.6, s.z - fz * 0.9 + tz * 1.6];
+      put(parts.benches, bx, bz, s.yaw, { length: 1.8 });
     }
-    if (s.bin) put(parts.bins, s.x - fx * 0.5 - tx * 1.1, s.z - fz * 0.5 - tz * 1.1, s.yaw, { kind: 'litter', model: 'bus stop' });
+    if (s.bin) {
+      const [nx, nz] = s.binAt || [s.x - fx * 0.5 - tx * 1.1, s.z - fz * 0.5 - tz * 1.1];
+      put(parts.bins, nx, nz, s.yaw, { kind: 'litter', model: 'bus stop' });
+    }
     if (s.countdown) put(parts.countdowns, s.x, s.z, s.yaw);
   }
   return parts;
@@ -309,34 +315,43 @@ export function busStopParts(stops, groundHeight) {
 
 // ----------------------------------------------------------------------------------------------- the plan
 
-const place = (items, groundHeight) =>
+const place_ = (items, groundHeight) =>
   (items || []).map((i) => ({ ...i, cx: i.x, cz: i.z, y: groundHeight ? groundHeight.heightAt(i.x, i.z) : 0 }));
 
 /** All placed furniture of the document, with ground heights. */
-export function buildFurniturePlan(doc, groundHeight = null, { seed = 1 } = {}) {
+export function buildFurniturePlan(doc, groundHeight = null, { seed = 1, place = null } = {}) {
+  // `place(doc)` re-places the items against the street layout (js/placement-cph.js placeFurniture); its report rides along
+  let report = null;
+  if (place) {
+    const placed = place(doc);
+    doc = placed.doc;
+    report = placed.report;
+  }
   const stops = busStopParts(doc.busStops, groundHeight);
   const racks = rackItems(doc.bikeRacks, groundHeight, seed);
-  const benches = place(doc.benches, groundHeight).concat(stops.benches);
-  const bins = place(doc.bins, groundHeight).concat(stops.bins);
+  const benches = place_(doc.benches, groundHeight).concat(stops.benches);
+  const bins = place_(doc.bins, groundHeight).concat(stops.bins);
   const plan = {
     trees: mapTrees(doc.trees, groundHeight),
     lamps: mapLamps(doc.lamps, groundHeight),
     cars: parkedCars(doc.parkingBays, groundHeight, seed),
-    meters: place(doc.parkMeters, groundHeight),
+    meters: place_(doc.parkMeters, groundHeight),
     bins,
-    glass: place(doc.glassContainers, groundHeight),
-    stands: place(doc.binStands, groundHeight),
-    bollards: place(doc.bollards, groundHeight),
+    glass: place_(doc.glassContainers, groundHeight),
+    stands: place_(doc.binStands, groundHeight),
+    bollards: place_(doc.bollards, groundHeight),
     benches,
     hoops: racks.hoops,
     bikes: racks.bikes,
     flags: stops.flags,
     shelters: stops.shelters,
     countdowns: stops.countdowns,
-    rescue: place(doc.rescuePosts, groundHeight),
+    rescue: place_(doc.rescuePosts, groundHeight),
     lakeLights: (doc.lakeLights || []).map((l) => ({ cx: l.x, cz: l.z, x: l.x, z: l.z, y: groundHeight ? groundHeight.heightAt(l.x, l.z) : 0, color: lightColor(l.cct), poolR: 4 })),
-    monuments: place(doc.monuments, groundHeight)
+    monuments: place_(doc.monuments, groundHeight)
   };
+  if (report) Object.defineProperty(plan, 'report', { value: report, enumerable: false });
+  Object.defineProperty(plan, 'placedDoc', { value: doc, enumerable: false }); // the document the plan was built from (after placement)
   return plan;
 }
 

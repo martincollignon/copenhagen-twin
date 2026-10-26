@@ -336,165 +336,7 @@
    }
   },
   {
-   "label": "Worst #3: wire-through-building, in-building-partial:bikes, in-building-partial:hoops",
-   "pos": [
-    154.1,
-    1.7,
-    -249.2
-   ],
-   "look": [
-    149.5,
-    1.2,
-    -260.3
-   ],
-   "fov": 68,
-   "detail": {
-    "x": 149.45999999999998,
-    "z": -260.263,
-    "score": 17.08,
-    "checks": [
-     "wire-through-building",
-     "in-building-partial:bikes",
-     "in-building-partial:hoops",
-     "on-carriageway:trees"
-    ],
-    "what": "17.1 m of the span inside a building (eave 19.8 > wire 9.1)",
-    "id": "lamp[1237]"
-   }
-  },
-  {
-   "label": "Worst #4: car-on-pavement, overlap:bikes+cars, rack-giant",
-   "pos": [
-    4.4,
-    1.7,
-    336.5
-   ],
-   "look": [
-    12.9,
-    1.2,
-    345.0
-   ],
-   "fov": 68,
-   "detail": {
-    "x": 12.852466644667981,
-    "z": 345.0240060778085,
-    "score": 1.0,
-    "checks": [
-     "car-on-pavement",
-     "overlap:bikes+cars",
-     "rack-giant"
-    ],
-    "what": "100% on pavement",
-    "id": "car[1674] par"
-   }
-  },
-  {
-   "label": "Worst #5: car-in-moving-lane, on-carriageway:cars",
-   "pos": [
-    267.4,
-    1.7,
-    -450.0
-   ],
-   "look": [
-    279.4,
-    1.2,
-    -450.0
-   ],
-   "fov": 68,
-   "detail": {
-    "x": 279.4161354739337,
-    "z": -449.9943128433209,
-    "score": 1.0,
-    "checks": [
-     "car-in-moving-lane",
-     "on-carriageway:cars"
-    ],
-    "what": "100% inside the moving-lane corridor (Gothersgade)",
-    "id": "car[142] par"
-   }
-  },
-  {
-   "label": "Worst #6: on-cycletrack:cars, on-cycletrack:bikes, on-cycletrack:glass",
-   "pos": [
-    302.1,
-    1.7,
-    398.6
-   ],
-   "look": [
-    310.6,
-    1.2,
-    407.1
-   ],
-   "fov": 68,
-   "detail": {
-    "x": 310.6136294346874,
-    "z": 407.07587055873717,
-    "score": 1.0,
-    "checks": [
-     "on-cycletrack:cars",
-     "on-cycletrack:bikes",
-     "on-cycletrack:glass",
-     "on-cycletrack:stands"
-    ],
-    "what": "100% of footprint",
-    "id": "cars[228]"
-   }
-  },
-  {
-   "label": "Worst #7: in-water:trees, overlap:benches+bins, tree-giant",
-   "pos": [
-    361.5,
-    1.7,
-    97.5
-   ],
-   "look": [
-    361.5,
-    1.2,
-    85.5
-   ],
-   "fov": 68,
-   "detail": {
-    "x": 361.5,
-    "z": 85.5,
-    "score": 10.35,
-    "checks": [
-     "in-water:trees",
-     "overlap:benches+bins",
-     "tree-giant"
-    ],
-    "what": "10.4 m from shore",
-    "id": "trees[4812]"
-   }
-  },
-  {
-   "label": "Worst #8: shelter-conflict, on-carriageway:lamp-poles, on-carriageway:shelters",
-   "pos": [
-    71.9,
-    1.7,
-    543.2
-   ],
-   "look": [
-    71.9,
-    1.2,
-    531.2
-   ],
-   "fov": 68,
-   "detail": {
-    "x": 71.92549412374053,
-    "z": 531.1828790814571,
-    "score": 1.0,
-    "checks": [
-     "shelter-conflict",
-     "on-carriageway:lamp-poles",
-     "on-carriageway:shelters",
-     "on-cycletrack:stands"
-    ],
-    "what": "0% in building, 100% on carriageway, 0% on cycle track",
-    "id": "shelter[11]"
-   }
-  },
-  {
-   "label": "Worst #9: bld-bld-overlap, bld-carriageway, road-through-bld",
+   "label": "Worst #3: bld-bld-overlap, bld-carriageway, road-through-bld",
    "pos": [
     594.7,
     1.7,
@@ -520,7 +362,7 @@
    }
   },
   {
-   "label": "Worst #10: bld-ground-step-neighbours, bld-bld-overlap, ground-jump-gt25cm",
+   "label": "Worst #4: bld-ground-step-neighbours, bld-bld-overlap, ground-jump-gt25cm",
    "pos": [
     69.2,
     1.7,
@@ -539,11 +381,59 @@
     "checks": [
      "bld-ground-step-neighbours",
      "bld-bld-overlap",
-     "ground-jump-gt25cm",
-     "on-carriageway:flags"
+     "ground-jump-gt25cm"
     ],
     "what": "party-wall neighbours' ground differ 5.1 m",
     "id": "gdk:1064780389 / gdk:1114558373"
+   }
+  },
+  {
+   "label": "Worst #5: surf-surf-diffclass",
+   "pos": [
+    632.0,
+    1.7,
+    745.8
+   ],
+   "look": [
+    632.0,
+    1.2,
+    733.8
+   ],
+   "fov": 68,
+   "detail": {
+    "x": 632.0457469284648,
+    "z": 733.815,
+    "score": 1931.71,
+    "checks": [
+     "surf-surf-diffclass"
+    ],
+    "what": "1932 m2",
+    "id": "ay/123204483 (setts) x ay/549545292 (cobbles)"
+   }
+  },
+  {
+   "label": "Worst #6: lod2-spire, bld-height-sanity",
+   "pos": [
+    596.9,
+    1.7,
+    241.6
+   ],
+   "look": [
+    592.3,
+    1.2,
+    252.7
+   ],
+   "fov": 68,
+   "detail": {
+    "x": 592.2888965517241,
+    "z": 252.675,
+    "score": 40.86,
+    "checks": [
+     "lod2-spire",
+     "bld-height-sanity"
+    ],
+    "what": "roof top 60.6 vs eave 19.7",
+    "id": "gdk:1064717929"
    }
   }
  ],

@@ -4,442 +4,66 @@
 
 | severity | check | layer | count | of | % |
 |---|---|---|---:|---:|---:|
-| high | `on-carriageway:glass` | glass | 9 | 23 | 39.13 |
-| high | `car-in-moving-lane` | cars | 784 | 2694 | 29.1 |
-| high | `on-carriageway:shelters` | shelters | 6 | 21 | 28.57 |
-| high | `car-off-carriageway` | cars | 485 | 2694 | 18.0 |
-| high | `on-carriageway:benches` | benches | 157 | 938 | 16.74 |
-| high | `overlap:cars+cars` | furniture | 286 | 2694 | 10.62 |
-| high | `on-carriageway:lamp-poles` | lamp-poles | 49 | 467 | 10.49 |
-| high | `on-carriageway:bins` | bins | 52 | 539 | 9.65 |
-| high | `on-cycletrack:cars` | cars | 227 | 2694 | 8.43 |
-| high | `on-carriageway:trees` | trees | 255 | 4905 | 5.2 |
-| high | `on-carriageway:stands` | stands | 36 | 740 | 4.86 |
-| high | `in-building-partial:monuments` | monuments | 3 | 76 | 3.95 |
-| high | `on-carriageway:monuments` | monuments | 2 | 76 | 2.63 |
-| high | `overlap:bikes+cars` | furniture | 249 | 9796 | 2.54 |
-| high | `in-water:trees` | trees | 112 | 4905 | 2.28 |
-| high | `car-on-pavement` | cars | 45 | 2694 | 1.67 |
-| high | `overlap:cars+hoops` | furniture | 143 | 8822 | 1.62 |
-| high | `overlap:benches+cars` | furniture | 39 | 3632 | 1.07 |
 | high | `road-through-bld` | roads | 9 | 916 | 0.98 |
 | high | `bld-bld-overlap` | buildings | 22 | 2517 | 0.87 |
 | high | `bld-ground-vs-street` | buildings | 18 | 2517 | 0.72 |
 | high | `bld-ground-terrain` | buildings | 15 | 2517 | 0.6 |
-| high | `in-building-partial:benches` | benches | 4 | 938 | 0.43 |
-| high | `in-water:benches` | benches | 4 | 938 | 0.43 |
-| high | `overlap:cars+trees` | furniture | 30 | 7599 | 0.39 |
-| high | `in-water:bins` | bins | 2 | 539 | 0.37 |
-| high | `wire-through-building` | lamps | 3 | 1239 | 0.24 |
-| high | `in-building-partial:cars` | cars | 6 | 2694 | 0.22 |
-| high | `in-building-partial:lamp-poles` | lamp-poles | 1 | 467 | 0.21 |
 | high | `bld-ground-step-neighbours` | buildings | 5 | 2517 | 0.2 |
-| high | `in-building-partial:bins` | bins | 1 | 539 | 0.19 |
-| high | `overlap:cars+stands` | furniture | 6 | 3434 | 0.17 |
 | high | `bld-water` | buildings | 2 | 2517 | 0.08 |
-| high | `in-building-partial:trees` | trees | 3 | 4905 | 0.06 |
 | high | `lod2-beyond-footprint` | lod2 | 0 | 2114 | 0.0 |
 | high | `water-carriageway` | water | 0 | 916 | 0.0 |
-| high | `water-cycletrack` | water | 0 | 584 | 0.0 |
+| high | `water-cycletrack` | water | 0 | 583 | 0.0 |
 | high | `water-pavement` | water | 0 | 1026 | 0.0 |
-| med | `wire-floating-anchor` | lamps | 1203 | 1239 | 97.09 |
+| high | `car-off-carriageway` | cars | 0 | 1067 | 0.0 |
+| high | `car-on-pavement` | cars | 0 | 1067 | 0.0 |
+| high | `car-in-moving-lane` | cars | 0 | 1067 | 0.0 |
+| high | `wire-through-building` | lamps | 0 | 502 | 0.0 |
 | med | `lod2-eave-mismatch` | lod2 | 1138 | 2114 | 53.83 |
-| med | `shelter-conflict` | bus stops | 11 | 21 | 52.38 |
-| med | `on-carriageway:flags` | flags | 17 | 47 | 36.17 |
-| med | `on-carriageway:meters` | meters | 14 | 47 | 29.79 |
-| med | `rack-rows` | bikeRacks | 286 | 1035 | 27.63 |
-| med | `on-cycletrack:flags` | flags | 9 | 47 | 19.15 |
-| med | `on-cycletrack:shelters` | shelters | 4 | 21 | 19.05 |
-| med | `on-carriageway:bikes` | bikes | 1353 | 7102 | 19.05 |
 | med | `bld-height-sanity` | buildings | 429 | 2517 | 17.04 |
-| med | `on-carriageway:hoops` | hoops | 956 | 6128 | 15.6 |
+| med | `busstop-far-from-road` | bus stops | 6 | 41 | 14.63 |
 | med | `surf-surf-diffclass` | surfaces | 30 | 229 | 13.1 |
-| med | `on-cycletrack:glass` | glass | 3 | 23 | 13.04 |
 | med | `signal-no-junction` | signals | 21 | 164 | 12.8 |
-| med | `busstop-far-from-road` | bus stops | 6 | 47 | 12.77 |
 | med | `surf-under-road` | surfaces | 16 | 143 | 11.19 |
-| med | `overlap:benches+benches` | furniture | 92 | 938 | 9.81 |
-| med | `on-cycletrack:bins` | bins | 37 | 539 | 6.86 |
-| med | `in-building-partial:stands` | stands | 47 | 740 | 6.35 |
-| med | `on-cycletrack:bollards` | bollards | 21 | 396 | 5.3 |
-| med | `ground-jump-centreline` | ground height | 247 | 4690 | 5.27 |
-| med | `on-cycletrack:benches` | benches | 40 | 938 | 4.26 |
-| med | `on-cycletrack:meters` | meters | 2 | 47 | 4.26 |
+| med | `ground-jump-centreline` | ground height | 245 | 4690 | 5.22 |
 | med | `lake-wall-too-tall` | water | 62 | 1631 | 3.8 |
-| med | `tree-crown-facade` | trees | 184 | 4905 | 3.75 |
-| med | `rack-giant` | bikeRacks | 38 | 1035 | 3.67 |
-| med | `in-building-partial:bikes` | bikes | 256 | 7102 | 3.6 |
-| med | `in-building-hidden:bins` | bins | 18 | 539 | 3.34 |
-| med | `on-cycletrack:trees` | trees | 161 | 4905 | 3.28 |
 | med | `lod2-spire` | lod2 | 68 | 2114 | 3.22 |
-| med | `overlap:glass+stands` | furniture | 23 | 763 | 3.01 |
-| med | `on-cycletrack:monuments` | monuments | 2 | 76 | 2.63 |
-| med | `ground-jump-gt25cm` | ground height | 119 | 4690 | 2.54 |
-| med | `overlap:bins+bins` | furniture | 13 | 539 | 2.41 |
+| med | `ground-jump-gt25cm` | ground height | 117 | 4690 | 2.49 |
 | med | `road-road-overlap` | roads | 19 | 916 | 2.07 |
-| med | `car-orientation` | cars | 47 | 2694 | 1.74 |
-| med | `overlap:stands+stands` | furniture | 12 | 740 | 1.62 |
 | med | `water-surface` | water | 3 | 229 | 1.31 |
 | med | `bld-carriageway` | buildings | 23 | 2517 | 0.91 |
-| med | `on-cycletrack:stands` | stands | 6 | 740 | 0.81 |
-| med | `in-water:lamp-poles` | lamp-poles | 3 | 467 | 0.64 |
-| med | `overlap:benches+lamp-poles` | furniture | 8 | 1405 | 0.57 |
-| med | `cycle-carriageway` | cycle tracks | 3 | 584 | 0.51 |
+| med | `cycle-carriageway` | cycle tracks | 3 | 583 | 0.51 |
 | med | `tree-giant` | trees | 25 | 4905 | 0.51 |
-| med | `overlap:benches+bins` | furniture | 7 | 1477 | 0.47 |
-| med | `overlap:benches+bikes` | furniture | 31 | 8040 | 0.39 |
-| med | `in-building-hidden:cars` | cars | 10 | 2694 | 0.37 |
-| med | `overlap:benches+trees` | furniture | 18 | 5843 | 0.31 |
-| med | `in-building-partial:hoops` | hoops | 17 | 6128 | 0.28 |
-| med | `overlap:bikes+lamp-poles` | furniture | 15 | 7569 | 0.2 |
-| med | `overlap:benches+hoops` | furniture | 11 | 7066 | 0.16 |
-| med | `overlap:bikes+trees` | furniture | 14 | 12007 | 0.12 |
-| med | `overlap:bikes+bollards` | furniture | 6 | 7498 | 0.08 |
+| med | `on-cycletrack:benches` | benches | 2 | 860 | 0.23 |
 | med | `bld-cycletrack` | buildings | 0 | 2517 | 0.0 |
 | med | `lakelights-water` | furniture | 0 | 143 | 0.0 |
-| med | `cycle-cycle-overlap` | cycle tracks | 0 | 584 | 0.0 |
+| med | `cycle-cycle-overlap` | cycle tracks | 0 | 583 | 0.0 |
 | med | `pavement-carriageway` | pavement | 0 | 1026 | 0.0 |
-| med | `wire-too-low` | lamps | 0 | 1239 | 0.0 |
+| med | `tree-crown-facade` | trees | 0 | 4782 | 0.0 |
+| med | `rack-rows` | bikeRacks | 0 | 982 | 0.0 |
+| med | `rack-giant` | bikeRacks | 0 | 982 | 0.0 |
+| med | `car-orientation` | cars | 0 | 1067 | 0.0 |
+| med | `wire-floating-anchor` | lamps | 0 | 502 | 0.0 |
+| med | `wire-too-low` | lamps | 0 | 502 | 0.0 |
 | med | `signal-in-building` | signals | 0 | 164 | 0.0 |
-| med | `busstop-in-building` | bus stops | 0 | 47 | 0.0 |
-| low | `on-carriageway:cars` | cars | 2370 | 2694 | 87.97 |
+| med | `busstop-in-building` | bus stops | 0 | 41 | 0.0 |
+| med | `shelter-conflict` | bus stops | 0 | 17 | 0.0 |
+| low | `on-carriageway:cars` | cars | 1067 | 1067 | 100.0 |
 | low | `tree-generic-genus` | trees | 3709 | 4905 | 75.62 |
-| low | `in-building-hidden:stands` | stands | 317 | 740 | 42.84 |
-| low | `busstop-in-carriageway` | bus stops | 17 | 47 | 36.17 |
-| low | `on-carriageway:bollards` | bollards | 140 | 396 | 35.35 |
 | low | `road-width-cap` | roads | 229 | 916 | 25.0 |
 | low | `tree-crown-clamped` | trees | 741 | 4905 | 15.11 |
-| low | `in-building-hidden:monuments` | monuments | 8 | 76 | 10.53 |
-| low | `on-cycletrack:bikes` | bikes | 418 | 7102 | 5.89 |
-| low | `in-building-hidden:hoops` | hoops | 353 | 6128 | 5.76 |
-| low | `on-cycletrack:hoops` | hoops | 324 | 6128 | 5.29 |
-| low | `wire-no-span` | lamps | 67 | 1306 | 5.13 |
-| low | `in-building-hidden:bikes` | bikes | 358 | 7102 | 5.04 |
-| low | `on-cycletrack:lamp-poles` | lamp-poles | 22 | 467 | 4.71 |
-| low | `in-building-hidden:glass` | glass | 1 | 23 | 4.35 |
-| low | `mast-height-high` | lamps | 16 | 400 | 4.0 |
 | low | `surf-surf-sameclass` | surfaces | 8 | 229 | 3.49 |
 | low | `pavement-cycletrack` | pavement | 22 | 1026 | 2.14 |
-| low | `in-building-hidden:meters` | meters | 1 | 47 | 2.13 |
-| low | `wire-too-short` | lamps | 24 | 1239 | 1.94 |
-| low | `in-building-hidden:bollards` | bollards | 4 | 396 | 1.01 |
-| low | `wire-too-long` | lamps | 11 | 1239 | 0.89 |
+| low | `mast-height-high` | lamps | 16 | 1188 | 1.35 |
 | low | `water-paths` | water | 5 | 987 | 0.51 |
 | low | `surf-under-bld` | surfaces | 1 | 229 | 0.44 |
-| low | `overlap:bollards+monuments` | furniture | 1 | 472 | 0.21 |
-| low | `overlap:bins+lamp-poles` | furniture | 2 | 1006 | 0.2 |
-| low | `overlap:bins+glass` | furniture | 1 | 562 | 0.18 |
-| low | `overlap:bollards+cars` | furniture | 4 | 3090 | 0.13 |
-| low | `in-building-hidden:trees` | trees | 6 | 4905 | 0.12 |
-| low | `in-building-hidden:benches` | benches | 1 | 938 | 0.11 |
-| low | `overlap:lamp-poles+trees` | furniture | 5 | 5372 | 0.09 |
-| low | `overlap:benches+lakeLights` | furniture | 1 | 1081 | 0.09 |
-| low | `overlap:bins+stands` | furniture | 1 | 1279 | 0.08 |
-| low | `overlap:bikes+bins` | furniture | 5 | 7641 | 0.07 |
-| low | `overlap:benches+bollards` | furniture | 1 | 1334 | 0.07 |
-| low | `overlap:bikes+glass` | furniture | 4 | 7125 | 0.06 |
-| low | `overlap:trees+trees` | furniture | 3 | 4905 | 0.06 |
-| low | `overlap:bins+cars` | furniture | 2 | 3233 | 0.06 |
-| low | `overlap:bikes+stands` | furniture | 4 | 7842 | 0.05 |
-| low | `overlap:glass+hoops` | furniture | 3 | 6151 | 0.05 |
-| low | `tree-trunk-facade` | trees | 2 | 4905 | 0.04 |
-| low | `overlap:cars+glass` | furniture | 1 | 2717 | 0.04 |
-| low | `overlap:cars+meters` | furniture | 1 | 2741 | 0.04 |
-| low | `overlap:hoops+trees` | furniture | 3 | 11033 | 0.03 |
-| low | `overlap:bins+hoops` | furniture | 2 | 6667 | 0.03 |
-| low | `overlap:hoops+stands` | furniture | 2 | 6868 | 0.03 |
-| low | `overlap:cars+lamp-poles` | furniture | 1 | 3161 | 0.03 |
-| low | `overlap:stands+trees` | furniture | 1 | 5645 | 0.02 |
-| low | `overlap:bins+trees` | furniture | 1 | 5444 | 0.02 |
-| low | `overlap:bikes+meters` | furniture | 1 | 7149 | 0.01 |
+| low | `overlap:benches+lakeLights` | furniture | 1 | 1003 | 0.1 |
 | low | `pavement-in-bld` | pavement | 0 | 1026 | 0.0 |
-| low | `mast-height-low` | lamps | 0 | 400 | 0.0 |
-
-#### `on-carriageway:glass` (high): glass on the capped carriageway (>= 25% of footprint)
-
-Count **9** of 23 (39.13%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | glass[10] | 615.8, 197.2 | 100% of footprint |
-| 2 | glass[12] | 132.4, 18.4 | 100% of footprint |
-| 3 | glass[13] | 35.6, 182.6 | 100% of footprint |
-| 4 | glass[17] | -50.0, -605.0 | 86% of footprint |
-| 5 | glass[14] | 343.1, -350.7 | 65% of footprint |
-| 6 | glass[16] | 356.9, 245.2 | 60% of footprint |
-| 7 | glass[3] | 716.0, 353.8 | 47% of footprint |
-| 8 | glass[0] | -352.0, -599.8 | 38% of footprint |
-| 9 | glass[15] | -11.2, 417.0 | 35% of footprint |
-
-#### `car-in-moving-lane` (high): Parked car >= 25% inside the moving-traffic corridor (lanes x 3.0 m around the centreline)
-
-Count **784** of 2694 (29.1%). the traffic sim drives through parked cars
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | car[142] par | 279.4, -450.0 | 100% inside the moving-lane corridor (Gothersgade) |
-| 2 | car[169] par | 117.6, 685.0 | 100% inside the moving-lane corridor (Hammerichsgade) |
-| 3 | car[185] par | 127.4, 687.0 | 100% inside the moving-lane corridor (Hammerichsgade) |
-| 4 | car[334] par | -320.8, -320.4 | 100% inside the moving-lane corridor (Korsgade) |
-| 5 | car[799] par | -213.3, -112.7 | 100% inside the moving-lane corridor (Thorupsgade) |
-| 6 | car[865] par | -177.0, -251.8 | 100% inside the moving-lane corridor (Wesselsgade) |
-| 7 | car[878] par | -166.5, -269.8 | 100% inside the moving-lane corridor (Wesselsgade) |
-| 8 | car[1839] par | 197.7, 161.3 | 100% inside the moving-lane corridor () |
-| 9 | car[2030] par | -341.0, -184.1 | 100% inside the moving-lane corridor (Smedegade) |
-| 10 | car[2493] par | 634.8, -302.3 | 100% inside the moving-lane corridor (Gothersgade) |
-
-#### `on-carriageway:shelters` (high): shelters on the capped carriageway (>= 25% of footprint)
-
-Count **6** of 21 (28.57%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | shelters[11] | 71.9, 531.2 | 100% of footprint |
-| 2 | shelters[15] | 581.2, -564.6 | 100% of footprint |
-| 3 | shelters[6] | 723.8, -249.5 | 100% of footprint |
-| 4 | shelters[3] | 606.5, -155.2 | 95% of footprint |
-| 5 | shelters[17] | 63.7, 715.9 | 88% of footprint |
-| 6 | shelters[20] | 251.8, -374.5 | 40% of footprint |
-
-#### `car-off-carriageway` (high): Parked car < 50% on carriageway/bay paint (and not mostly in a building)
-
-Count **485** of 2694 (18.0%). bay points come from kerb lines / parking polygons; where the engine's capped carriageway is narrower than the real kerb-to-kerb the car sits on pavement or bare ground
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | car[108] par | 680.5, 302.6 | 0% on carriageway/bay paint, 0% on pavement, 11.3 m from centreline |
-| 2 | car[109] par | 685.8, 300.5 | 0% on carriageway/bay paint, 0% on pavement, 16.2 m from centreline |
-| 3 | car[112] par | 702.1, 276.3 | 0% on carriageway/bay paint, 100% on pavement, 30.6 m from centreline |
-| 4 | car[113] par | 708.7, 274.3 | 0% on carriageway/bay paint, 67% on pavement, 30.5 m from centreline |
-| 5 | car[114] par | 714.1, 271.8 | 0% on carriageway/bay paint, 68% on pavement, 24.5 m from centreline |
-| 6 | car[115] par | 719.1, 269.6 | 0% on carriageway/bay paint, 70% on pavement, 19.0 m from centreline |
-| 7 | car[116] par | 724.2, 267.3 | 0% on carriageway/bay paint, 71% on pavement, 13.5 m from centreline |
-| 8 | car[117] par | 729.1, 265.1 | 0% on carriageway/bay paint, 70% on pavement, 8.1 m from centreline |
-| 9 | car[120] par | 696.0, 296.3 | 0% on carriageway/bay paint, 0% on pavement, 26.5 m from centreline |
-| 10 | car[121] par | 706.6, 291.9 | 0% on carriageway/bay paint, 0% on pavement, 37.6 m from centreline |
-
-#### `on-carriageway:benches` (high): benches on the capped carriageway (>= 25% of footprint)
-
-Count **157** of 938 (16.74%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | benches[829] | -439.6, -550.3 | 100% of footprint |
-| 2 | benches[874] | -493.5, -578.4 | 100% of footprint |
-| 3 | benches[15] | 714.3, 343.1 | 100% of footprint |
-| 4 | benches[21] | 690.5, 350.8 | 100% of footprint |
-| 5 | benches[34] | 552.1, 672.7 | 100% of footprint |
-| 6 | benches[35] | 581.5, 687.3 | 100% of footprint |
-| 7 | benches[39] | 603.7, 699.7 | 100% of footprint |
-| 8 | benches[44] | 532.8, 662.4 | 100% of footprint |
-| 9 | benches[417] | 542.5, 667.5 | 100% of footprint |
-| 10 | benches[619] | 697.2, 347.7 | 100% of footprint |
-
-#### `overlap:cars+cars` (high): cars overlaps cars (>= 20% of the smaller footprint)
-
-Count **286** of 2694 (10.62%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | cars[815] x cars[2446] | -567.5, -632.6 | 9.01 m2 (98% of smaller) |
-| 2 | cars[814] x cars[2445] | -572.9, -634.0 | 8.92 m2 (97% of smaller) |
-| 3 | cars[278] x cars[2416] | -215.6, 527.8 | 8.91 m2 (97% of smaller) |
-| 4 | cars[917] x cars[918] | -116.9, 731.5 | 8.61 m2 (98% of smaller) |
-| 5 | cars[275] x cars[1497] | -656.6, -422.4 | 8.58 m2 (98% of smaller) |
-| 6 | cars[813] x cars[2444] | -578.1, -635.2 | 8.56 m2 (98% of smaller) |
-| 7 | cars[68] x cars[2634] | -357.8, -231.5 | 8.51 m2 (97% of smaller) |
-| 8 | cars[725] x cars[2627] | -284.4, -641.4 | 8.50 m2 (97% of smaller) |
-| 9 | cars[819] x cars[2447] | -546.5, -627.5 | 8.49 m2 (97% of smaller) |
-| 10 | cars[276] x cars[2415] | -204.5, 529.0 | 8.48 m2 (97% of smaller) |
-
-#### `on-carriageway:lamp-poles` (high): lamp-poles on the capped carriageway (>= 25% of footprint)
-
-Count **49** of 467 (10.49%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lamp-poles[412] | -423.3, -76.2 | 100% of footprint |
-| 2 | lamp-poles[414] | 289.8, 550.6 | 100% of footprint |
-| 3 | lamp-poles[419] | 223.7, 747.1 | 100% of footprint |
-| 4 | lamp-poles[426] | -104.2, 555.7 | 100% of footprint |
-| 5 | lamp-poles[427] | 86.0, -176.1 | 100% of footprint |
-| 6 | lamp-poles[428] | 80.2, 553.1 | 100% of footprint |
-| 7 | lamp-poles[430] | -378.2, -617.0 | 100% of footprint |
-| 8 | lamp-poles[460] | 570.3, -81.2 | 100% of footprint |
-| 9 | lamp-poles[461] | 575.6, -77.2 | 100% of footprint |
-| 10 | lamp-poles[462] | 560.7, -68.4 | 100% of footprint |
-
-#### `on-carriageway:bins` (high): bins on the capped carriageway (>= 25% of footprint)
-
-Count **52** of 539 (9.65%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bins[65] | 331.9, 323.7 | 100% of footprint |
-| 2 | bins[101] | -451.9, -556.5 | 100% of footprint |
-| 3 | bins[104] | 590.4, 494.0 | 100% of footprint |
-| 4 | bins[385] | -262.6, -678.6 | 100% of footprint |
-| 5 | bins[391] | 581.9, -91.6 | 100% of footprint |
-| 6 | bins[473] | -462.5, -208.4 | 100% of footprint |
-| 7 | bins[477] | 24.8, -734.8 | 100% of footprint |
-| 8 | bins[507] | 603.5, -156.6 | 100% of footprint |
-| 9 | bins[508] | 462.8, -247.5 | 100% of footprint |
-| 10 | bins[58] | 535.7, -332.7 | 100% of footprint |
-
-#### `on-cycletrack:cars` (high): cars on a cycle track (>= 25% of footprint)
-
-Count **227** of 2694 (8.43%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | cars[228] | 310.6, 407.1 | 100% of footprint |
-| 2 | cars[135] | 676.7, 438.9 | 100% of footprint |
-| 3 | cars[1576] | 617.7, -292.0 | 100% of footprint |
-| 4 | cars[1578] | 609.7, -279.2 | 100% of footprint |
-| 5 | cars[658] | -720.2, -372.5 | 100% of footprint |
-| 6 | cars[680] | 524.4, -327.5 | 100% of footprint |
-| 7 | cars[684] | 521.2, -322.3 | 100% of footprint |
-| 8 | cars[754] | 37.2, -544.2 | 100% of footprint |
-| 9 | cars[1851] | 355.4, 250.3 | 100% of footprint |
-| 10 | cars[2581] | 600.3, -263.9 | 100% of footprint |
-
-#### `on-carriageway:trees` (high): trees on the capped carriageway (>= 25% of footprint)
-
-Count **255** of 4905 (5.2%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | trees[516] | 160.3, 444.0 | 100% of footprint |
-| 2 | trees[625] | -428.5, -67.4 | 100% of footprint |
-| 3 | trees[707] | 220.0, -320.4 | 100% of footprint |
-| 4 | trees[773] | 165.7, 437.9 | 100% of footprint |
-| 5 | trees[1491] | -429.1, -65.3 | 100% of footprint |
-| 6 | trees[1492] | -419.6, -64.7 | 100% of footprint |
-| 7 | trees[1503] | 148.0, -273.4 | 100% of footprint |
-| 8 | trees[1504] | 148.0, -273.4 | 100% of footprint |
-| 9 | trees[1543] | 150.7, -279.9 | 100% of footprint |
-| 10 | trees[1544] | 150.7, -279.9 | 100% of footprint |
-
-#### `on-carriageway:stands` (high): stands on the capped carriageway (>= 25% of footprint)
-
-Count **36** of 740 (4.86%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | stands[176] | 409.2, -708.8 | 100% of footprint |
-| 2 | stands[477] | -512.8, -347.3 | 100% of footprint |
-| 3 | stands[519] | 317.8, -49.1 | 100% of footprint |
-| 4 | stands[526] | -50.0, -605.0 | 100% of footprint |
-| 5 | stands[546] | -55.8, 392.7 | 100% of footprint |
-| 6 | stands[571] | -53.8, 374.6 | 100% of footprint |
-| 7 | stands[581] | -513.1, -370.1 | 100% of footprint |
-| 8 | stands[48] | 35.6, 182.6 | 100% of footprint |
-| 9 | stands[50] | 615.8, 197.2 | 100% of footprint |
-| 10 | stands[131] | -215.8, -469.6 | 100% of footprint |
-
-#### `in-building-partial:monuments` (high): monuments straddles a facade (25-90% of footprint inside a building)
-
-Count **3** of 76 (3.95%). half inside the wall: visible poking through the facade
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | monuments[21] | -670.2, -349.3 | 59% of footprint |
-| 2 | monuments[20] | 62.8, -659.8 | 38% of footprint |
-| 3 | monuments[22] | 145.0, 28.5 | 32% of footprint |
-
-#### `on-carriageway:monuments` (high): monuments on the capped carriageway (>= 25% of footprint)
-
-Count **2** of 76 (2.63%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | monuments[49] | 216.4, -121.8 | 100% of footprint |
-| 2 | monuments[48] | 167.8, -52.0 | 99% of footprint |
-
-#### `overlap:bikes+cars` (high): bikes overlaps cars (>= 20% of the smaller footprint)
-
-Count **249** of 9796 (2.54%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | cars[2433] x bikes[4448] | 195.2, -328.9 | 0.88 m2 (100% of smaller) |
-| 2 | cars[1078] x bikes[224] | -318.7, -296.0 | 0.88 m2 (100% of smaller) |
-| 3 | cars[1628] x bikes[1897] | 323.3, -316.2 | 0.88 m2 (100% of smaller) |
-| 4 | cars[1628] x bikes[6443] | 323.3, -316.2 | 0.88 m2 (100% of smaller) |
-| 5 | cars[2666] x bikes[4446] | 220.8, -306.7 | 0.88 m2 (100% of smaller) |
-| 6 | cars[1628] x bikes[1894] | 323.3, -316.2 | 0.88 m2 (100% of smaller) |
-| 7 | cars[1660] x bikes[1910] | 241.5, -165.8 | 0.88 m2 (100% of smaller) |
-| 8 | cars[75] x bikes[457] | 21.2, 361.7 | 0.87 m2 (100% of smaller) |
-| 9 | cars[1628] x bikes[1891] | 323.3, -316.2 | 0.87 m2 (100% of smaller) |
-| 10 | cars[2604] x bikes[4403] | 277.4, -267.1 | 0.87 m2 (100% of smaller) |
-
-#### `in-water:trees` (high): trees in open water (>= 25% of footprint)
-
-Count **112** of 4905 (2.28%). 47 are more than 1 m from the shore; the rest sit on the quay edge. Items stand at y = ground field (0) while the water plane is 0.8 m lower
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | trees[4812] | 361.5, 85.5 | 10.4 m from shore |
-| 2 | trees[4293] | -138.5, 566.5 | 8.3 m from shore |
-| 3 | trees[3983] | 277.5, 73.5 | 8.3 m from shore |
-| 4 | trees[4249] | -122.5, 462.5 | 7.8 m from shore |
-| 5 | trees[4814] | 376.5, 89.5 | 5.4 m from shore |
-| 6 | trees[4123] | -98.5, 254.5 | 4.9 m from shore |
-| 7 | trees[4120] | 246.5, 249.5 | 4.9 m from shore |
-| 8 | trees[4781] | 359.5, 34.5 | 4.8 m from shore |
-| 9 | trees[4334] | -148.5, 742.5 | 4.7 m from shore |
-| 10 | trees[4620] | 736.5, -426.5 | 4.6 m from shore |
-
-#### `car-on-pavement` (high): Parked car >= 40% on a pavement polygon
-
-Count **45** of 2694 (1.67%). wheels on the raised pavement at y 0.2 vs car y from the same field
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | car[1142] par | 663.2, 743.5 | 100% on pavement |
-| 2 | car[1674] par | 12.9, 345.0 | 100% on pavement |
-| 3 | car[2598] par | 244.1, -296.8 | 100% on pavement |
-| 4 | car[853] par | 457.8, -139.9 | 100% on pavement |
-| 5 | car[855] par | 469.9, -132.4 | 100% on pavement |
-| 6 | car[2149] par | -318.3, -482.4 | 100% on pavement |
-| 7 | car[2512] par | 434.6, -182.0 | 100% on pavement |
-| 8 | car[2591] par | -234.8, -108.6 | 100% on pavement |
-| 9 | car[2592] par | -239.8, -111.6 | 100% on pavement |
-| 10 | car[2593] par | -245.4, -115.0 | 100% on pavement |
-
-#### `overlap:cars+hoops` (high): cars overlaps hoops (>= 20% of the smaller footprint)
-
-Count **143** of 8822 (1.62%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | cars[2468] x hoops[1533] | 734.9, 748.1 | 0.03 m2 (100% of smaller) |
-| 2 | cars[2468] x hoops[1534] | 734.9, 748.1 | 0.03 m2 (100% of smaller) |
-| 3 | cars[2468] x hoops[1535] | 734.9, 748.1 | 0.03 m2 (100% of smaller) |
-| 4 | cars[2468] x hoops[1530] | 734.9, 748.1 | 0.03 m2 (100% of smaller) |
-| 5 | cars[2468] x hoops[1531] | 734.9, 748.1 | 0.03 m2 (100% of smaller) |
-| 6 | cars[2469] x hoops[1528] | 739.1, 744.9 | 0.03 m2 (100% of smaller) |
-| 7 | cars[2470] x hoops[1525] | 743.4, 741.6 | 0.03 m2 (100% of smaller) |
-| 8 | cars[2470] x hoops[1536] | 743.4, 741.6 | 0.03 m2 (100% of smaller) |
-| 9 | cars[2470] x hoops[1537] | 743.4, 741.6 | 0.03 m2 (100% of smaller) |
-| 10 | cars[2470] x hoops[1538] | 743.4, 741.6 | 0.03 m2 (100% of smaller) |
-
-#### `overlap:benches+cars` (high): benches overlaps cars (>= 20% of the smaller footprint)
-
-Count **39** of 3632 (1.07%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | cars[352] x benches[654] | 643.8, 680.1 | 0.99 m2 (100% of smaller) |
-| 2 | cars[352] x benches[630] | 643.8, 680.1 | 0.99 m2 (100% of smaller) |
-| 3 | cars[355] x benches[652] | 654.6, 667.5 | 0.99 m2 (100% of smaller) |
-| 4 | cars[355] x benches[637] | 654.6, 667.5 | 0.99 m2 (100% of smaller) |
-| 5 | cars[356] x benches[22] | 658.1, 663.4 | 0.99 m2 (100% of smaller) |
-| 6 | cars[356] x benches[26] | 658.1, 663.4 | 0.99 m2 (100% of smaller) |
-| 7 | cars[356] x benches[636] | 658.1, 663.4 | 0.99 m2 (100% of smaller) |
-| 8 | cars[356] x benches[651] | 658.1, 663.4 | 0.99 m2 (100% of smaller) |
-| 9 | cars[2466] x benches[635] | 707.6, 345.5 | 0.99 m2 (100% of smaller) |
-| 10 | cars[2466] x benches[647] | 707.6, 345.5 | 0.99 m2 (100% of smaller) |
+| low | `tree-trunk-facade` | trees | 0 | 4782 | 0.0 |
+| low | `wire-too-long` | lamps | 0 | 502 | 0.0 |
+| low | `wire-too-short` | lamps | 0 | 502 | 0.0 |
+| low | `wire-no-span` | lamps | 0 | 502 | 0.0 |
+| low | `mast-height-low` | lamps | 0 | 1188 | 0.0 |
+| low | `busstop-in-carriageway` | bus stops | 0 | 41 | 0.0 |
 
 #### `road-through-bld` (high): Carriageway has >= 8 m2 inside building footprints
 
@@ -508,85 +132,6 @@ Count **15** of 2517 (0.6%). ground min -6.35 max 4.22 median 1.14: one height m
 | 9 | gdk:1114653087 | 714.9, 514.6 | ground -1.07 vs terrain along outline +0.00 |
 | 10 | gdk:1064780700 | 142.3, 415.8 | ground +1.03 vs terrain along outline +0.00 |
 
-#### `in-building-partial:benches` (high): benches straddles a facade (25-90% of footprint inside a building)
-
-Count **4** of 938 (0.43%). half inside the wall: visible poking through the facade
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | benches[834] | 668.8, -152.6 | 67% of footprint |
-| 2 | benches[596] | -187.3, -523.4 | 61% of footprint |
-| 3 | benches[553] | 421.7, -411.2 | 42% of footprint |
-| 4 | benches[559] | 671.2, 284.0 | 30% of footprint |
-
-#### `in-water:benches` (high): benches in open water (>= 25% of footprint)
-
-Count **4** of 938 (0.43%). 4 are more than 1 m from the shore; the rest sit on the quay edge. Items stand at y = ground field (0) while the water plane is 0.8 m lower
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | benches[377] | 371.2, 35.1 | 4.4 m from shore |
-| 2 | benches[378] | 368.7, 32.8 | 2.4 m from shore |
-| 3 | benches[376] | 373.7, 33.1 | 2.1 m from shore |
-| 4 | benches[49] | 127.2, -475.3 | 1.1 m from shore |
-
-#### `overlap:cars+trees` (high): cars overlaps trees (>= 20% of the smaller footprint)
-
-Count **30** of 7599 (0.39%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | trees[331] x cars[644] | 310.5, 367.9 | 0.28 m2 (100% of smaller) |
-| 2 | trees[332] x cars[635] | 333.1, 333.7 | 0.28 m2 (100% of smaller) |
-| 3 | trees[417] x cars[645] | 322.9, 349.0 | 0.28 m2 (100% of smaller) |
-| 4 | trees[1320] x cars[649] | 317.0, 358.2 | 0.28 m2 (100% of smaller) |
-| 5 | trees[4152] x cars[1860] | 319.5, 308.5 | 0.28 m2 (100% of smaller) |
-| 6 | trees[4226] x cars[405] | -1.5, 421.5 | 0.28 m2 (100% of smaller) |
-| 7 | trees[341] x cars[1890] | 436.6, 173.3 | 0.28 m2 (100% of smaller) |
-| 8 | trees[708] x cars[2675] | 304.5, -245.3 | 0.28 m2 (100% of smaller) |
-| 9 | trees[1400] x cars[379] | 164.9, -34.3 | 0.28 m2 (100% of smaller) |
-| 10 | trees[1617] x cars[2582] | 597.2, -258.6 | 0.28 m2 (100% of smaller) |
-
-#### `in-water:bins` (high): bins in open water (>= 25% of footprint)
-
-Count **2** of 539 (0.37%). 1 are more than 1 m from the shore; the rest sit on the quay edge. Items stand at y = ground field (0) while the water plane is 0.8 m lower
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bins[3] | -174.3, -2.8 | 39.6 m from shore |
-| 2 | bins[441] | 373.6, 31.7 | 0.6 m from shore |
-
-#### `wire-through-building` (high): Wire span crosses a building volume (> 1 m inside the footprint shrunk by 0.4 m, eave above the wire)
-
-Count **3** of 1239 (0.24%). the span is facade-to-facade `inferred` across the street, or the 2018 line crosses a courtyard; pendant and wire pass through a house
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lamp[1237] | 149.5, -260.3 | 17.1 m of the span inside a building (eave 19.8 > wire 9.1) |
-| 2 | lamp[1238] | 176.2, -279.1 | 13.4 m of the span inside a building (eave 19.9 > wire 9.0) |
-| 3 | lamp[72] | -728.1, -458.1 | 10.4 m of the span inside a building (eave 12.0 > wire 9.9) |
-
-#### `in-building-partial:cars` (high): cars straddles a facade (25-90% of footprint inside a building)
-
-Count **6** of 2694 (0.22%). half inside the wall: visible poking through the facade
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | cars[55] | -373.7, -164.0 | 84% of footprint |
-| 2 | cars[56] | -369.7, -167.9 | 75% of footprint |
-| 3 | cars[54] | -378.0, -159.8 | 66% of footprint |
-| 4 | cars[57] | -359.7, -176.5 | 44% of footprint |
-| 5 | cars[53] | -382.6, -154.2 | 38% of footprint |
-| 6 | cars[2625] | 647.0, 679.7 | 28% of footprint |
-
-#### `in-building-partial:lamp-poles` (high): lamp-poles straddles a facade (25-90% of footprint inside a building)
-
-Count **1** of 467 (0.21%). half inside the wall: visible poking through the facade
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lamp-poles[221] | 712.7, 512.7 | 32% of footprint |
-
 #### `bld-ground-step-neighbours` (high): Touching buildings whose `ground` differs by > 1.5 m (stepped base along one frontage)
 
 Count **5** of 2517 (0.2%). a continuous Copenhagen block front gets a staircase of base lines / floating ground floors
@@ -599,27 +144,6 @@ Count **5** of 2517 (0.2%). a continuous Copenhagen block front gets a staircase
 | 4 | gdk:1064710550 / gdk:1064813295 | 530.5, -700.9 | party-wall neighbours' ground differ 1.6 m |
 | 5 | gdk:1064713317 / gdk:1064809760 | 32.4, 634.0 | party-wall neighbours' ground differ 1.6 m |
 
-#### `in-building-partial:bins` (high): bins straddles a facade (25-90% of footprint inside a building)
-
-Count **1** of 539 (0.19%). half inside the wall: visible poking through the facade
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bins[139] | 577.2, -68.1 | 65% of footprint |
-
-#### `overlap:cars+stands` (high): cars overlaps stands (>= 20% of the smaller footprint)
-
-Count **6** of 3434 (0.17%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | cars[1587] x stands[526] | -51.0, -604.1 | 1.37 m2 (100% of smaller) |
-| 2 | cars[1784] x stands[516] | 10.0, 436.1 | 1.37 m2 (100% of smaller) |
-| 3 | cars[2530] x stands[521] | 611.6, 343.9 | 1.27 m2 (93% of smaller) |
-| 4 | cars[2001] x stands[248] | 376.6, 399.8 | 0.63 m2 (46% of smaller) |
-| 5 | cars[1080] x stands[495] | -342.5, -257.0 | 0.40 m2 (30% of smaller) |
-| 6 | cars[2000] x stands[248] | 371.6, 401.7 | 0.28 m2 (21% of smaller) |
-
 #### `bld-water` (high): Building footprint overlaps a lake (>= 1 m2)
 
 Count **2** of 2517 (0.08%). walls rise out of the water / lake wall + building wall intersect (e.g. houses on the dossering over the lake edge)
@@ -628,16 +152,6 @@ Count **2** of 2517 (0.08%). walls rise out of the water / lake wall + building 
 |---:|---|---|---|
 | 1 | gdk:1216086107 | -15.8, -414.3 | 25 m2 in lake |
 | 2 | gdk:1216086110 | -8.0, -430.0 | 20 m2 in lake |
-
-#### `in-building-partial:trees` (high): trees straddles a facade (25-90% of footprint inside a building)
-
-Count **3** of 4905 (0.06%). half inside the wall: visible poking through the facade
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | trees[3543] | -16.5, -719.5 | 67% of footprint |
-| 2 | trees[1776] | -581.5, -744.2 | 56% of footprint |
-| 3 | trees[3776] | -265.5, -315.5 | 48% of footprint |
 
 #### `lod2-beyond-footprint` (high): LoD2 mesh has a vertex > 0.5 m outside its footprint
 
@@ -649,28 +163,27 @@ Count **0** of 916 (0.0%). road asphalt over open water (bridges other than brid
 
 #### `water-cycletrack` (high): Cycletrack overlaps open water (>= 1 m2)
 
-Count **0** of 584 (0.0%). cycle track strip over the lake
+Count **0** of 583 (0.0%). cycle track strip over the lake
 
 #### `water-pavement` (high): Pavement overlaps open water (>= 1 m2)
 
 Count **0** of 1026 (0.0%). pavement polygon over the lake (floats above the sunk water)
 
-#### `wire-floating-anchor` (med): Wire anchor > 2.5 m from the nearest facade
+#### `car-off-carriageway` (high): Parked car < 50% on carriageway/bay paint (and not mostly in a building)
 
-Count **1203** of 1239 (97.09%). the cable ends in mid-air at 8.9 m
+Count **0** of 1067 (0.0%). bay points come from kerb lines / parking polygons; where the engine's capped carriageway is narrower than the real kerb-to-kerb the car sits on pavement or bare ground
 
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lamp[918] | 450.4, 751.4 | anchors 58.7 / 39.7 m from any facade |
-| 2 | lamp[525] | 459.4, 743.9 | anchors 57.7 / 48.7 m from any facade |
-| 3 | lamp[621] | 459.4, 743.9 | anchors 57.7 / 48.7 m from any facade |
-| 4 | lamp[40] | 240.7, 405.7 | anchors 54.4 / 50.4 m from any facade |
-| 5 | lamp[838] | 240.7, 405.7 | anchors 54.4 / 50.4 m from any facade |
-| 6 | lamp[370] | 258.6, 391.1 | anchors 50.4 / 39.2 m from any facade |
-| 7 | lamp[711] | 236.1, 429.2 | anchors 46.2 / 50.1 m from any facade |
-| 8 | lamp[604] | 408.9, 153.5 | anchors 49.0 / 23.8 m from any facade |
-| 9 | lamp[667] | 306.2, 336.7 | anchors 35.9 / 47.1 m from any facade |
-| 10 | lamp[987] | 438.6, 133.9 | anchors 35.1 / 46.6 m from any facade |
+#### `car-on-pavement` (high): Parked car >= 40% on a pavement polygon
+
+Count **0** of 1067 (0.0%). wheels on the raised pavement at y 0.2 vs car y from the same field
+
+#### `car-in-moving-lane` (high): Parked car >= 25% inside the moving-traffic corridor (lanes x 3.0 m around the centreline)
+
+Count **0** of 1067 (0.0%). the traffic sim drives through parked cars
+
+#### `wire-through-building` (high): Wire span crosses a building volume (> 1 m inside the footprint shrunk by 0.4 m, eave above the wire)
+
+Count **0** of 502 (0.0%). the span is facade-to-facade `inferred` across the street, or the 2018 line crosses a courtyard; pendant and wire pass through a house
 
 #### `lod2-eave-mismatch` (med): LoD2 median eave differs from geodata eave by > 2 m
 
@@ -689,118 +202,6 @@ Count **1138** of 2114 (53.83%). facade walls are cut to the LoD2 eave per edge,
 | 9 | gdk:1233978021 | 558.0, 153.4 | LoD2 median eave 19.4 vs geodata eave 3.2 (+16.2 m) |
 | 10 | gdk:1064713391 | -323.9, -686.2 | LoD2 median eave 5.3 vs geodata eave 21.1 (-15.8 m) |
 
-#### `shelter-conflict` (med): Shelter footprint >= 15% in a building, or >= 10% on the carriageway / cycle track
-
-Count **11** of 21 (52.38%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | shelter[11] | 71.9, 531.2 | 0% in building, 100% on carriageway, 0% on cycle track |
-| 2 | shelter[15] | 581.2, -564.6 | 0% in building, 100% on carriageway, 0% on cycle track |
-| 3 | shelter[6] | 723.8, -249.5 | 0% in building, 100% on carriageway, 0% on cycle track |
-| 4 | shelter[3] | 606.5, -155.2 | 0% in building, 95% on carriageway, 0% on cycle track |
-| 5 | shelter[17] | 63.7, 715.9 | 0% in building, 88% on carriageway, 12% on cycle track |
-| 6 | shelter[1] | 96.6, 250.2 | 0% in building, 0% on carriageway, 61% on cycle track |
-| 7 | shelter[13] | 399.3, 664.0 | 0% in building, 0% on carriageway, 60% on cycle track |
-| 8 | shelter[4] | 338.8, 279.2 | 0% in building, 0% on carriageway, 57% on cycle track |
-| 9 | shelter[20] | 251.8, -374.5 | 0% in building, 40% on carriageway, 44% on cycle track |
-| 10 | shelter[14] | 622.7, -129.6 | 0% in building, 17% on carriageway, 0% on cycle track |
-
-#### `on-carriageway:flags` (med): flags on the capped carriageway (>= 25% of footprint)
-
-Count **17** of 47 (36.17%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | flags[39] | 62.6, 718.0 | 100% of footprint |
-| 2 | flags[4] | 60.0, 270.6 | 100% of footprint |
-| 3 | flags[6] | -553.5, 92.0 | 100% of footprint |
-| 4 | flags[8] | 604.1, -155.6 | 100% of footprint |
-| 5 | flags[10] | 463.9, -247.4 | 100% of footprint |
-| 6 | flags[13] | -691.8, -251.4 | 100% of footprint |
-| 7 | flags[16] | 709.6, -735.1 | 100% of footprint |
-| 8 | flags[17] | -514.1, 467.0 | 100% of footprint |
-| 9 | flags[18] | 332.9, 566.4 | 100% of footprint |
-| 10 | flags[20] | 724.4, -251.7 | 100% of footprint |
-
-#### `on-carriageway:meters` (med): meters on the capped carriageway (>= 25% of footprint)
-
-Count **14** of 47 (29.79%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | meters[26] | 580.9, 292.6 | 100% of footprint |
-| 2 | meters[27] | 385.6, 396.2 | 100% of footprint |
-| 3 | meters[32] | 216.4, -111.0 | 100% of footprint |
-| 4 | meters[45] | -11.9, 67.9 | 100% of footprint |
-| 5 | meters[1] | 304.3, 511.0 | 100% of footprint |
-| 6 | meters[2] | 266.9, 436.0 | 100% of footprint |
-| 7 | meters[9] | -461.5, -651.6 | 100% of footprint |
-| 8 | meters[17] | 185.3, 192.3 | 100% of footprint |
-| 9 | meters[23] | 138.7, 470.4 | 100% of footprint |
-| 10 | meters[29] | 431.1, 313.6 | 100% of footprint |
-
-#### `rack-rows` (med): Rack row (capacity x 0.5 m, centred on the point) >= 30% in a building / on the carriageway or in water
-
-Count **286** of 1035 (27.63%). capacity median 8, p95 35, max 90; engine caps rows at 48 slots = 24 m, centred on the data point
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | rack[545] cap 66 | 541.0, -537.1 | row 25 m: 0% in building, 100% on carriageway, 0% water |
-| 2 | rack[240] cap 38 | 85.2, 58.3 | row 20 m: 0% in building, 85% on carriageway, 0% water |
-| 3 | rack[345] cap 41 | 717.1, -207.4 | row 21 m: 75% in building, 0% on carriageway, 0% water |
-| 4 | rack[552] cap 30 | 683.6, 634.2 | row 16 m: 0% in building, 100% on carriageway, 0% water |
-| 5 | rack[615] cap 30 | -293.9, -337.3 | row 16 m: 0% in building, 100% on carriageway, 0% water |
-| 6 | rack[341] cap 30 | 720.0, -211.4 | row 16 m: 94% in building, 0% on carriageway, 0% water |
-| 7 | rack[353] cap 28 | 553.7, -27.0 | row 15 m: 100% in building, 0% on carriageway, 0% water |
-| 8 | rack[352] cap 28 | 551.7, -23.8 | row 15 m: 100% in building, 0% on carriageway, 0% water |
-| 9 | rack[349] cap 28 | 555.1, -30.4 | row 15 m: 100% in building, 0% on carriageway, 0% water |
-| 10 | rack[351] cap 28 | 549.6, -20.5 | row 15 m: 99% in building, 0% on carriageway, 0% water |
-
-#### `on-cycletrack:flags` (med): flags on a cycle track (>= 25% of footprint)
-
-Count **9** of 47 (19.15%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | flags[2] | -264.8, 20.0 | 100% of footprint |
-| 2 | flags[11] | 339.2, 276.9 | 100% of footprint |
-| 3 | flags[19] | 675.0, -205.4 | 100% of footprint |
-| 4 | flags[32] | 400.1, 666.2 | 100% of footprint |
-| 5 | flags[34] | -445.6, -496.1 | 100% of footprint |
-| 6 | flags[40] | 116.0, 720.8 | 100% of footprint |
-| 7 | flags[26] | -285.0, 37.4 | 100% of footprint |
-| 8 | flags[46] | 350.7, -327.6 | 100% of footprint |
-| 9 | flags[44] | -27.9, -559.9 | 94% of footprint |
-
-#### `on-cycletrack:shelters` (med): shelters on a cycle track (>= 25% of footprint)
-
-Count **4** of 21 (19.05%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | shelters[1] | 96.6, 250.2 | 61% of footprint |
-| 2 | shelters[13] | 399.3, 664.0 | 60% of footprint |
-| 3 | shelters[4] | 338.8, 279.2 | 57% of footprint |
-| 4 | shelters[20] | 251.8, -374.5 | 44% of footprint |
-
-#### `on-carriageway:bikes` (med): bikes on the capped carriageway (>= 25% of footprint)
-
-Count **1353** of 7102 (19.05%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bikes[5002] | 680.8, 637.4 | 100% of footprint |
-| 2 | bikes[6981] | 740.1, -92.6 | 100% of footprint |
-| 3 | bikes[217] | -220.4, -460.1 | 100% of footprint |
-| 4 | bikes[220] | -219.6, -461.4 | 100% of footprint |
-| 5 | bikes[221] | -219.4, -461.8 | 100% of footprint |
-| 6 | bikes[222] | -218.6, -463.1 | 100% of footprint |
-| 7 | bikes[237] | -140.2, -594.8 | 100% of footprint |
-| 8 | bikes[238] | -139.9, -595.2 | 100% of footprint |
-| 9 | bikes[241] | -138.6, -597.4 | 100% of footprint |
-| 10 | bikes[246] | -136.9, -600.4 | 100% of footprint |
-
 #### `bld-height-sanity` (med): Height implausible: > 60 m, < 2.5 m, or > 6.5 / < 2.0 m per storey
 
 Count **429** of 2517 (17.04%). 
@@ -818,22 +219,18 @@ Count **429** of 2517 (17.04%).
 | 9 | gdk:1064713699 | -591.4, -474.1 | h 19.8 m, 3 storeys, measured |
 | 10 | gdk:1064713815 | 429.8, -418.2 | h 17.9 m, 2 storeys, measured |
 
-#### `on-carriageway:hoops` (med): hoops on the capped carriageway (>= 25% of footprint)
+#### `busstop-far-from-road` (med): Stop flag > 5 m from the nearest carriageway edge
 
-Count **956** of 6128 (15.6%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
+Count **6** of 41 (14.63%). nearest road classes: {'secondary': 33, 'service': 3, 'residential': 5}
 
 | # | id | x, z | measure |
 |---:|---|---|---|
-| 1 | hoops[412] | 690.3, 719.7 | 100% of footprint |
-| 2 | hoops[413] | 691.1, 719.1 | 100% of footprint |
-| 3 | hoops[414] | 691.9, 718.5 | 100% of footprint |
-| 4 | hoops[415] | 692.3, 718.3 | 100% of footprint |
-| 5 | hoops[416] | 693.1, 717.7 | 100% of footprint |
-| 6 | hoops[417] | 693.9, 717.1 | 100% of footprint |
-| 7 | hoops[418] | 682.2, 725.6 | 100% of footprint |
-| 8 | hoops[419] | 683.0, 725.0 | 100% of footprint |
-| 9 | hoops[420] | 683.8, 724.4 | 100% of footprint |
-| 10 | hoops[423] | 680.2, 727.1 | 100% of footprint |
+| 1 | stop[0] Gothersgade | 486.7, -407.6 | flag 10.8 m from the nearest carriageway edge (secondary Øster Farimagsgade) |
+| 2 | stop[8] Nørre Farimagsgade | 430.4, -281.1 | flag 6.8 m from the nearest carriageway edge (secondary Frederiksborggade) |
+| 3 | stop[20] Teglgårdstræde | 425.5, 213.0 | flag 6.1 m from the nearest carriageway edge (secondary Nørre Voldgade) |
+| 4 | stop[23] Vesterport St. | 91.8, 488.4 | flag 5.6 m from the nearest carriageway edge (secondary Vester Farimagsgade) |
+| 5 | stop[17] Elmegade | -210.8, -651.2 | flag 5.1 m from the nearest carriageway edge (secondary Nørrebrogade) |
+| 6 | stop[18] Åboulevard | -663.6, -183.4 | flag 5.0 m from the nearest carriageway edge (secondary H.C. Ørsteds Vej) |
 
 #### `surf-surf-diffclass` (med): Two ground-material polygons of different class overlap (>= 2 m2)
 
@@ -852,16 +249,6 @@ Count **30** of 229 (13.1%). the later polygon wins per triangle; the loser leak
 | 9 | d6a33e3632#0 (cobbles) x way/27256158 (raadhus) | 197.0, 710.1 | 129 m2 |
 | 10 | f6a05e0a00#0 (cobbles) x f883b7f00b#0 (gravel) | 311.2, 220.2 | 32 m2 |
 
-#### `on-cycletrack:glass` (med): glass on a cycle track (>= 25% of footprint)
-
-Count **3** of 23 (13.04%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | glass[21] | 299.8, 440.2 | 100% of footprint |
-| 2 | glass[18] | 472.6, -225.8 | 100% of footprint |
-| 3 | glass[16] | 356.9, 245.2 | 40% of footprint |
-
 #### `signal-no-junction` (med): Signal point > 12 m from any road-graph junction node
 
 Count **21** of 164 (12.8%). the engine matches signals to junction nodes; unmatched ones get no signal heads or phase
@@ -879,107 +266,26 @@ Count **21** of 164 (12.8%). the engine matches signals to junction nodes; unmat
 | 9 | signal[157] | -396.3, 501.2 | 16 m from the nearest road-graph junction (degree >= 3) |
 | 10 | signal[74] | 711.2, -273.4 | 16 m from the nearest road-graph junction (degree >= 3) |
 
-#### `busstop-far-from-road` (med): Stop flag > 5 m from the nearest carriageway edge
-
-Count **6** of 47 (12.77%). nearest road classes: {'secondary': 39, 'service': 3, 'residential': 5}
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | stop[0] Gothersgade | 486.7, -407.6 | flag 10.8 m from the nearest carriageway edge (secondary Øster Farimagsgade) |
-| 2 | stop[9] Nørre Farimagsgade | 430.4, -281.1 | flag 6.8 m from the nearest carriageway edge (secondary Frederiksborggade) |
-| 3 | stop[25] Teglgårdstræde | 425.5, 213.0 | flag 6.1 m from the nearest carriageway edge (secondary Nørre Voldgade) |
-| 4 | stop[28] Vesterport St. | 91.8, 488.4 | flag 5.6 m from the nearest carriageway edge (secondary Vester Farimagsgade) |
-| 5 | stop[22] Elmegade | -210.8, -651.2 | flag 5.1 m from the nearest carriageway edge (secondary Nørrebrogade) |
-| 6 | stop[23] Åboulevard | -663.6, -183.4 | flag 5.0 m from the nearest carriageway edge (secondary H.C. Ørsteds Vej) |
-
 #### `surf-under-road` (med): Pavement-class ground polygon overlaps a carriageway (>= 5 m2)
 
 Count **16** of 143 (11.19%). ground at 0.014 under asphalt at 0.02: 6 mm apart, z-fighting at distance
 
 | # | id | x, z | measure |
 |---:|---|---|---|
-| 1 | osm:way/1355324246 | 290.3, 378.3 | cobbles: 9025 m2 under carriageway |
+| 1 | osm:way/1355324246 | 290.4, 378.4 | cobbles: 8453 m2 under carriageway |
 | 2 | osm:way/549543686 | 539.2, 668.9 | cobbles: 6523 m2 under carriageway |
-| 3 | osm:way/743674704 | -593.0, 454.5 | cobbles: 3056 m2 under carriageway |
-| 4 | osm:way/782307470 | 78.1, 495.7 | cobbles: 2522 m2 under carriageway |
-| 5 | osm:way/168134399 | 461.9, -41.4 | cobbles: 1968 m2 under carriageway |
+| 3 | osm:way/743674704 | -592.8, 454.3 | cobbles: 3056 m2 under carriageway |
+| 4 | osm:way/782307470 | 78.5, 494.4 | cobbles: 2522 m2 under carriageway |
+| 5 | osm:way/168134399 | 461.6, -41.0 | cobbles: 1890 m2 under carriageway |
 | 6 | osm:way/667398483 | 208.1, -408.9 | cobbles: 1501 m2 under carriageway |
-| 7 | osm:way/549545292 | 655.9, 743.2 | cobbles: 788 m2 under carriageway |
-| 8 | osm:way/25822563 | 707.1, 444.8 | setts: 663 m2 under carriageway |
-| 9 | osm:way/123204483 | 656.4, 740.5 | setts: 313 m2 under carriageway |
+| 7 | osm:way/549545292 | 656.2, 742.9 | cobbles: 788 m2 under carriageway |
+| 8 | osm:way/25822563 | 706.6, 444.1 | setts: 663 m2 under carriageway |
+| 9 | osm:way/123204483 | 656.9, 740.1 | setts: 313 m2 under carriageway |
 | 10 | osm:way/24739672 | 740.1, 486.3 | setts: 240 m2 under carriageway |
-
-#### `overlap:benches+benches` (med): benches overlaps benches (>= 20% of the smaller footprint)
-
-Count **92** of 938 (9.81%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | benches[613] x benches[665] | 721.2, 353.6 | 0.99 m2 (100% of smaller) |
-| 2 | benches[614] x benches[663] | 729.0, 350.9 | 0.99 m2 (100% of smaller) |
-| 3 | benches[615] x benches[664] | 727.1, 351.6 | 0.99 m2 (100% of smaller) |
-| 4 | benches[616] x benches[668] | 718.5, 354.4 | 0.99 m2 (100% of smaller) |
-| 5 | benches[655] x benches[666] | 723.6, 353.3 | 0.99 m2 (100% of smaller) |
-| 6 | benches[656] x benches[662] | 725.3, 352.7 | 0.99 m2 (100% of smaller) |
-| 7 | benches[530] x benches[531] | 293.6, -55.3 | 0.99 m2 (100% of smaller) |
-| 8 | benches[22] x benches[26] | 658.1, 664.4 | 0.99 m2 (100% of smaller) |
-| 9 | benches[22] x benches[636] | 658.1, 664.4 | 0.99 m2 (100% of smaller) |
-| 10 | benches[22] x benches[651] | 658.1, 664.4 | 0.99 m2 (100% of smaller) |
-
-#### `on-cycletrack:bins` (med): bins on a cycle track (>= 25% of footprint)
-
-Count **37** of 539 (6.86%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bins[81] | 556.3, -177.8 | 100% of footprint |
-| 2 | bins[252] | 674.1, -208.1 | 100% of footprint |
-| 3 | bins[289] | -261.4, 21.7 | 100% of footprint |
-| 4 | bins[390] | -665.6, -342.7 | 100% of footprint |
-| 5 | bins[468] | 457.8, -245.1 | 100% of footprint |
-| 6 | bins[513] | 675.3, -206.6 | 100% of footprint |
-| 7 | bins[55] | 479.0, -254.4 | 100% of footprint |
-| 8 | bins[57] | 622.6, -299.5 | 100% of footprint |
-| 9 | bins[170] | 474.9, -129.7 | 100% of footprint |
-| 10 | bins[268] | 562.0, -202.4 | 100% of footprint |
-
-#### `in-building-partial:stands` (med): stands straddles a facade (25-90% of footprint inside a building)
-
-Count **47** of 740 (6.35%). half inside the wall: visible poking through the facade
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | stands[94] | 406.8, -358.4 | 89% of footprint |
-| 2 | stands[617] | -191.4, -196.5 | 88% of footprint |
-| 3 | stands[201] | 265.4, -314.2 | 87% of footprint |
-| 4 | stands[680] | 706.6, 69.9 | 87% of footprint |
-| 5 | stands[549] | 421.8, 361.2 | 84% of footprint |
-| 6 | stands[37] | -257.6, -304.6 | 83% of footprint |
-| 7 | stands[338] | 631.4, 613.0 | 83% of footprint |
-| 8 | stands[259] | 546.0, -295.2 | 82% of footprint |
-| 9 | stands[629] | 224.2, 680.9 | 82% of footprint |
-| 10 | stands[88] | -413.4, -622.0 | 81% of footprint |
-
-#### `on-cycletrack:bollards` (med): bollards on a cycle track (>= 25% of footprint)
-
-Count **21** of 396 (5.3%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bollards[230] | 471.8, -131.2 | 100% of footprint |
-| 2 | bollards[131] | -404.4, -571.6 | 100% of footprint |
-| 3 | bollards[372] | -399.1, -565.2 | 100% of footprint |
-| 4 | bollards[374] | -406.3, -568.7 | 100% of footprint |
-| 5 | bollards[197] | -456.5, -474.7 | 100% of footprint |
-| 6 | bollards[269] | 265.6, -27.6 | 100% of footprint |
-| 7 | bollards[270] | 266.5, -25.0 | 100% of footprint |
-| 8 | bollards[377] | -458.1, -470.6 | 100% of footprint |
-| 9 | bollards[379] | -451.5, -467.6 | 100% of footprint |
-| 10 | bollards[380] | -450.3, -466.8 | 100% of footprint |
 
 #### `ground-jump-centreline` (med): Height step > 0.15 m ALONG a carriageway centreline
 
-Count **247** of 4690 (5.27%). cars/cyclists/pedestrians read this field: a step on the roadway = a pavement/cycle/surface slab covering the asphalt there
+Count **245** of 4690 (5.22%). cars/cyclists/pedestrians read this field: a step on the roadway = a pavement/cycle/surface slab covering the asphalt there
 
 | # | id | x, z | measure |
 |---:|---|---|---|
@@ -993,32 +299,6 @@ Count **247** of 4690 (5.27%). cars/cyclists/pedestrians read this field: a step
 | 8 | osm:way/160726988#2 | 378.2, -31.6 | Israels Plads centreline dh +0.19 |
 | 9 | osm:way/160726988#2 | 377.3, -32.0 | Israels Plads centreline dh +0.19 |
 | 10 | osm:way/150918586 | -355.3, 293.7 |  centreline dh -0.19 |
-
-#### `on-cycletrack:benches` (med): benches on a cycle track (>= 25% of footprint)
-
-Count **40** of 938 (4.26%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | benches[31] | 430.4, -145.9 | 100% of footprint |
-| 2 | benches[657] | -714.2, -369.5 | 100% of footprint |
-| 3 | benches[658] | -712.2, -368.5 | 100% of footprint |
-| 4 | benches[905] | -691.9, -356.9 | 100% of footprint |
-| 5 | benches[906] | -710.1, -367.2 | 100% of footprint |
-| 6 | benches[935] | -265.3, 18.2 | 100% of footprint |
-| 7 | benches[19] | -734.5, -381.7 | 100% of footprint |
-| 8 | benches[52] | 151.4, 568.0 | 100% of footprint |
-| 9 | benches[147] | 528.0, -334.3 | 100% of footprint |
-| 10 | benches[197] | 477.2, -128.6 | 100% of footprint |
-
-#### `on-cycletrack:meters` (med): meters on a cycle track (>= 25% of footprint)
-
-Count **2** of 47 (4.26%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | meters[21] | 40.8, 209.0 | 100% of footprint |
-| 2 | meters[22] | 370.1, 226.7 | 100% of footprint |
 
 #### `lake-wall-too-tall` (med): Lake wall more than 2.0 m above the water at a shore vertex (8 m spacing)
 
@@ -1037,91 +317,6 @@ Count **62** of 1631 (3.8%). free-board p5/p50/p95 0.30 / 0.82 / 1.75 m; the wat
 | 9 | lake:3 | 291.0, 213.5 | wall 2.57 m above the water |
 | 10 | lake:0 | 158.0, -438.2 | wall 2.52 m above the water |
 
-#### `tree-crown-facade` (med): Crown penetrates a facade by > 1 m (crown base below the eave)
-
-Count **184** of 4905 (3.75%). leaf cards and the mid-LOD crown blob cut through walls; the engine places trees at data x,z and never moves them off buildings
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | tree[1870] generic h13 r7.9 | -396.5, -678.5 | crown reaches 6.9 m into gdk:1064713388 (eave 22.0) |
-| 2 | tree[1648] lime h20 r7.9 | 385.8, -467.5 | crown reaches 5.9 m into gdk:1064713812 (eave 8.8) |
-| 3 | tree[4887] generic h12 r6.8 | 547.5, 359.5 | crown reaches 5.5 m into gdk:1215799882 (eave 4.6) |
-| 4 | tree[4849] generic h12 r6.7 | 509.5, 216.5 | crown reaches 5.4 m into gdk:1064712556 (eave 5.9) |
-| 5 | tree[4345] generic h8 r6.0 | 524.5, -716.5 | crown reaches 5.0 m into gdk:1220524988 (eave 7.0) |
-| 6 | tree[1628] lime h20 r7.9 | 411.6, -443.5 | crown reaches 4.9 m into gdk:1064713815 (eave 19.9) |
-| 7 | tree[4856] generic h18 r5.9 | 610.5, 248.5 | crown reaches 4.8 m into gdk:1064717929 (eave 19.7) |
-| 8 | tree[2471] generic h14 r6.3 | -349.5, -120.5 | crown reaches 4.8 m into gdk:1064802201 (eave 8.5) |
-| 9 | tree[1752] plane h22 r9.0 | -391.0, -374.6 | crown reaches 4.8 m into gdk:1064734687 (eave 15.8) |
-| 10 | tree[4341] generic h14 r7.6 | 436.5, -728.5 | crown reaches 4.7 m into gdk:1064781823 (eave 12.8) |
-
-#### `rack-giant` (med): Rack with capacity > 40 (> 20 m row, > 40 bikes)
-
-Count **38** of 1035 (3.67%). one record per whole KK stand field; the engine lays a single straight row of up to 24 m
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | rack[7] cap 48 | 183.0, 666.1 | 24 m row |
-| 2 | rack[171] cap 80 | -464.9, 26.4 | 24 m row |
-| 3 | rack[208] cap 52 | 621.8, 693.4 | 24 m row |
-| 4 | rack[217] cap 80 | 512.9, -122.0 | 24 m row |
-| 5 | rack[218] cap 54 | 528.6, -146.2 | 24 m row |
-| 6 | rack[241] cap 64 | 79.3, 68.6 | 24 m row |
-| 7 | rack[251] cap 52 | 74.0, 71.9 | 24 m row |
-| 8 | rack[262] cap 90 | 14.9, 333.2 | 24 m row |
-| 9 | rack[301] cap 52 | 184.8, -273.9 | 24 m row |
-| 10 | rack[318] cap 52 | 608.4, -63.2 | 24 m row |
-
-#### `in-building-partial:bikes` (med): bikes straddles a facade (25-90% of footprint inside a building)
-
-Count **256** of 7102 (3.6%). half inside the wall: visible poking through the facade
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bikes[2252] | 171.3, -245.3 | 90% of footprint |
-| 2 | bikes[581] | 590.9, -155.1 | 87% of footprint |
-| 3 | bikes[580] | 590.5, -155.3 | 87% of footprint |
-| 4 | bikes[579] | 589.2, -156.1 | 86% of footprint |
-| 5 | bikes[2828] | 584.5, -49.6 | 86% of footprint |
-| 6 | bikes[578] | 588.8, -156.4 | 86% of footprint |
-| 7 | bikes[86] | 157.4, 638.9 | 86% of footprint |
-| 8 | bikes[577] | 588.4, -156.7 | 85% of footprint |
-| 9 | bikes[576] | 587.9, -156.9 | 85% of footprint |
-| 10 | bikes[575] | 587.5, -157.2 | 85% of footprint |
-
-#### `in-building-hidden:bins` (med): bins entirely inside a building footprint (>= 90%)
-
-Count **18** of 539 (3.34%). hidden inside the wall volume (invisible, but a data/placement error and wasted instances)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bins[236] | 608.5, -79.2 | 100% of footprint |
-| 2 | bins[403] | -555.0, -474.0 | 100% of footprint |
-| 3 | bins[407] | -555.0, -474.0 | 100% of footprint |
-| 4 | bins[488] | 677.2, 519.1 | 100% of footprint |
-| 5 | bins[19] | 651.6, 27.1 | 100% of footprint |
-| 6 | bins[381] | 573.1, 513.4 | 100% of footprint |
-| 7 | bins[396] | 585.9, -64.8 | 100% of footprint |
-| 8 | bins[406] | -290.5, -322.3 | 100% of footprint |
-| 9 | bins[410] | -290.5, -322.3 | 100% of footprint |
-| 10 | bins[459] | -294.4, 45.6 | 100% of footprint |
-
-#### `on-cycletrack:trees` (med): trees on a cycle track (>= 25% of footprint)
-
-Count **161** of 4905 (3.28%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | trees[321] | -358.0, -80.7 | 100% of footprint |
-| 2 | trees[415] | 445.4, 115.7 | 100% of footprint |
-| 3 | trees[749] | -380.4, -67.2 | 100% of footprint |
-| 4 | trees[800] | 532.9, -94.5 | 100% of footprint |
-| 5 | trees[801] | 542.0, -88.7 | 100% of footprint |
-| 6 | trees[816] | -362.7, -87.0 | 100% of footprint |
-| 7 | trees[1222] | -353.3, -74.6 | 100% of footprint |
-| 8 | trees[1223] | -349.0, -68.8 | 100% of footprint |
-| 9 | trees[1567] | 523.4, -100.1 | 100% of footprint |
-| 10 | trees[1667] | 550.4, -83.7 | 100% of footprint |
-
 #### `lod2-spire` (med): LoD2 roof top > 8 m above geodata eave
 
 Count **68** of 2114 (3.22%). tall pitched roofs / towers / vegetation points in the cloud
@@ -1139,35 +334,9 @@ Count **68** of 2114 (3.22%). tall pitched roofs / towers / vegetation points in
 | 9 | gdk:1064712965 | 335.2, 638.8 | roof top 23.5 vs eave 3.4 |
 | 10 | gdk:1064813533 | -54.3, 761.4 | roof top 23.7 vs eave 4.0 |
 
-#### `overlap:glass+stands` (med): glass overlaps stands (>= 20% of the smaller footprint)
-
-Count **23** of 763 (3.01%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | glass[0] x stands[43] | -352.0, -599.8 | 1.37 m2 (100% of smaller) |
-| 2 | glass[19] x stands[487] | 184.7, -337.4 | 1.37 m2 (100% of smaller) |
-| 3 | glass[1] x stands[56] | -338.8, -445.0 | 1.37 m2 (100% of smaller) |
-| 4 | glass[17] x stands[526] | -50.0, -605.0 | 1.37 m2 (100% of smaller) |
-| 5 | glass[15] x stands[47] | -11.2, 417.0 | 1.37 m2 (100% of smaller) |
-| 6 | glass[12] x stands[49] | 132.4, 18.4 | 1.37 m2 (100% of smaller) |
-| 7 | glass[8] x stands[52] | -344.2, 40.0 | 1.37 m2 (100% of smaller) |
-| 8 | glass[2] x stands[57] | -283.6, -367.8 | 1.37 m2 (100% of smaller) |
-| 9 | glass[18] x stands[45] | 472.6, -225.8 | 1.37 m2 (100% of smaller) |
-| 10 | glass[22] x stands[44] | -63.4, -437.2 | 1.37 m2 (100% of smaller) |
-
-#### `on-cycletrack:monuments` (med): monuments on a cycle track (>= 25% of footprint)
-
-Count **2** of 76 (2.63%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | monuments[29] | -369.0, -95.4 | 100% of footprint |
-| 2 | monuments[60] | 612.5, -168.4 | 93% of footprint |
-
 #### `ground-jump-gt25cm` (med): Walking-height field steps by > 0.25 m over 1 m (carriageway edge/centre probes)
 
-Count **119** of 4690 (2.54%). 1743 steps > 0.15 m total, 247 on carriageway centrelines (should be 0: asphalt is flat at 0.02). Kerb steps are 0.10-0.18 m by design
+Count **117** of 4690 (2.49%). 1732 steps > 0.15 m total, 245 on carriageway centrelines (should be 0: asphalt is flat at 0.02). Kerb steps are 0.10-0.18 m by design
 
 | # | id | x, z | measure |
 |---:|---|---|---|
@@ -1182,26 +351,9 @@ Count **119** of 4690 (2.54%). 1743 steps > 0.15 m total, 247 on carriageway cen
 | 9 | osm:way/150825053 | -498.5, -7.4 |  offset 9 dh +0.67 |
 | 10 | osm:way/69974781 | 137.3, 568.3 | Vandværksviadukten offset 10.5 dh -0.65 |
 
-#### `overlap:bins+bins` (med): bins overlaps bins (>= 20% of the smaller footprint)
-
-Count **13** of 539 (2.41%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bins[472] x bins[475] | 2.6, -724.6 | 0.27 m2 (100% of smaller) |
-| 2 | bins[163] x bins[408] | -186.2, -492.5 | 0.27 m2 (100% of smaller) |
-| 3 | bins[411] x bins[499] | -214.8, -458.7 | 0.27 m2 (100% of smaller) |
-| 4 | bins[406] x bins[410] | -290.5, -322.3 | 0.27 m2 (100% of smaller) |
-| 5 | bins[495] x bins[496] | 432.5, -36.8 | 0.27 m2 (100% of smaller) |
-| 6 | bins[4] x bins[5] | -384.6, -172.8 | 0.27 m2 (100% of smaller) |
-| 7 | bins[403] x bins[407] | -555.0, -474.0 | 0.27 m2 (100% of smaller) |
-| 8 | bins[481] x bins[482] | -19.3, 526.5 | 0.27 m2 (100% of smaller) |
-| 9 | bins[207] x bins[439] | -429.4, 19.1 | 0.27 m2 (100% of smaller) |
-| 10 | bins[207] x bins[474] | -429.4, 19.1 | 0.27 m2 (100% of smaller) |
-
 #### `road-road-overlap` (med): Two carriageways overlap away from junctions / road ends (>= 3 m2)
 
-Count **19** of 916 (2.07%). 893 further overlaps are at junctions (expected); here: duplicate/parallel centrelines or an unmodelled bridge/underpass crossing
+Count **19** of 916 (2.07%). 892 further overlaps are at junctions (expected); here: duplicate/parallel centrelines or an unmodelled bridge/underpass crossing
 
 | # | id | x, z | measure |
 |---:|---|---|---|
@@ -1215,40 +367,6 @@ Count **19** of 916 (2.07%). 893 further overlaps are at junctions (expected); h
 | 8 | Dronning Louises Bro x Dronning Louises Bro | 38.8, -513.2 | 60 m2 away from any junction/road end |
 | 9 | osm:way/127496823 x Gyldenløvesgade | -158.9, 108.1 | 40 m2 away from any junction/road end |
 | 10 | osm:way/502189573 x H.C. Andersens Boulevard | 197.8, 382.3 | 32 m2 away from any junction/road end |
-
-#### `car-orientation` (med): Parked car axis > 25 deg off the kerb for parallel bays, or < 35 deg for perpendicular bays
-
-Count **47** of 2694 (1.74%). bay `yaw` is a kerb-line direction; the 90-degree convention of angled/perp bays is derived without the road side
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | car[117] par | 729.1, 265.1 | 90 deg to the road (parallel bay) |
-| 2 | car[118] par | 734.0, 262.8 | 90 deg to the road (parallel bay) |
-| 3 | car[2054] perp | 141.8, 467.4 | 0 deg to the road (perpendicular bay) |
-| 4 | car[125] par | 738.8, 277.5 | 90 deg to the road (parallel bay) |
-| 5 | car[126] par | 743.3, 275.4 | 90 deg to the road (parallel bay) |
-| 6 | car[2050] perp | 168.6, 435.0 | 0 deg to the road (perpendicular bay) |
-| 7 | car[124] par | 733.7, 279.9 | 90 deg to the road (parallel bay) |
-| 8 | car[2676] par | 390.6, 240.3 | 90 deg to the road (parallel bay) |
-| 9 | car[1673] perp | -38.6, 728.6 | 1 deg to the road (perpendicular bay) |
-| 10 | car[110] par | 663.7, 294.6 | 89 deg to the road (parallel bay) |
-
-#### `overlap:stands+stands` (med): stands overlaps stands (>= 20% of the smaller footprint)
-
-Count **12** of 740 (1.62%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | stands[72] x stands[73] | 529.0, 563.0 | 1.37 m2 (100% of smaller) |
-| 2 | stands[421] x stands[422] | 369.0, -272.0 | 1.37 m2 (100% of smaller) |
-| 3 | stands[165] x stands[166] | -493.0, -246.0 | 1.37 m2 (100% of smaller) |
-| 4 | stands[668] x stands[669] | -71.5, 358.4 | 1.37 m2 (100% of smaller) |
-| 5 | stands[606] x stands[607] | -343.7, -326.9 | 1.37 m2 (100% of smaller) |
-| 6 | stands[395] x stands[397] | 526.0, -302.0 | 1.37 m2 (100% of smaller) |
-| 7 | stands[385] x stands[387] | -632.0, -307.0 | 1.37 m2 (100% of smaller) |
-| 8 | stands[385] x stands[386] | -632.0, -307.0 | 1.37 m2 (100% of smaller) |
-| 9 | stands[386] x stands[387] | -632.0, -307.0 | 1.37 m2 (100% of smaller) |
-| 10 | stands[522] x stands[617] | -192.0, -196.5 | 0.58 m2 (43% of smaller) |
 
 #### `water-surface` (med): Ground-material polygon overlaps open water after surface_cuts (>= 1 m2)
 
@@ -1277,47 +395,9 @@ Count **23** of 2517 (0.91%). road asphalt/kerbs run through the building volume
 | 9 | gdk:1064712554 x osm:way/1138533582 | 523.7, 158.4 | 10 m2 overlap |
 | 10 | gdk:1202350417 x osm:way/150896096 | -399.1, -36.6 | 9 m2 overlap |
 
-#### `on-cycletrack:stands` (med): stands on a cycle track (>= 25% of footprint)
-
-Count **6** of 740 (0.81%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | stands[61] | 299.8, 440.2 | 100% of footprint |
-| 2 | stands[641] | 73.4, 494.0 | 100% of footprint |
-| 3 | stands[45] | 472.6, -225.8 | 100% of footprint |
-| 4 | stands[524] | 277.9, 428.5 | 98% of footprint |
-| 5 | stands[298] | 137.6, -258.8 | 84% of footprint |
-| 6 | stands[523] | 356.9, 245.2 | 33% of footprint |
-
-#### `in-water:lamp-poles` (med): lamp-poles in open water (>= 25% of footprint)
-
-Count **3** of 467 (0.64%). 0 are more than 1 m from the shore; the rest sit on the quay edge. Items stand at y = ground field (0) while the water plane is 0.8 m lower
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lamp-poles[258] | 110.5, -452.9 | 0.1 m from shore |
-| 2 | lamp-poles[281] | 103.1, -457.4 | 0.1 m from shore |
-| 3 | lamp-poles[171] | 95.8, -462.0 | 0.0 m from shore |
-
-#### `overlap:benches+lamp-poles` (med): benches overlaps lamp-poles (>= 20% of the smaller footprint)
-
-Count **8** of 1405 (0.57%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lamp-poles[404] x benches[864] | 547.5, 679.0 | 0.10 m2 (100% of smaller) |
-| 2 | lamp-poles[2] x benches[379] | 354.6, 20.2 | 0.08 m2 (83% of smaller) |
-| 3 | lamp-poles[434] x benches[863] | 554.8, 690.1 | 0.07 m2 (72% of smaller) |
-| 4 | lamp-poles[389] x benches[86] | 457.7, 715.6 | 0.06 m2 (58% of smaller) |
-| 5 | lamp-poles[413] x benches[862] | 560.4, 694.6 | 0.06 m2 (55% of smaller) |
-| 6 | lamp-poles[420] x benches[863] | 552.8, 688.6 | 0.05 m2 (51% of smaller) |
-| 7 | lamp-poles[400] x benches[783] | 599.0, 703.6 | 0.05 m2 (50% of smaller) |
-| 8 | lamp-poles[251] x benches[729] | -261.7, -398.6 | 0.05 m2 (48% of smaller) |
-
 #### `cycle-carriageway` (med): Cycle track strip overlaps another road's carriageway away from a junction (>= 3 m2)
 
-Count **3** of 584 (0.51%). 1 more are at junction mouths
+Count **3** of 583 (0.51%). 1 more are at junction mouths
 
 | # | id | x, z | measure |
 |---:|---|---|---|
@@ -1342,151 +422,14 @@ Count **25** of 4905 (0.51%). height p50 8 p95 20 max 31; crown p50 3.5 p95 7.5 
 | 9 | tree[140] generic | 358.0, -4.2 | h 20 m, crown r 9.2 m |
 | 10 | tree[1023] generic | 266.6, 344.0 | h 20 m, crown r 9.1 m |
 
-#### `overlap:benches+bins` (med): benches overlaps bins (>= 20% of the smaller footprint)
+#### `on-cycletrack:benches` (med): benches on a cycle track (>= 25% of footprint)
 
-Count **7** of 1477 (0.47%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | benches[288] x bins[359] | 679.1, 280.9 | 0.25 m2 (92% of smaller) |
-| 2 | benches[68] x bins[292] | 703.9, 451.5 | 0.24 m2 (87% of smaller) |
-| 3 | benches[173] x bins[97] | 542.3, -85.5 | 0.13 m2 (47% of smaller) |
-| 4 | benches[602] x bins[369] | 219.1, 720.3 | 0.11 m2 (39% of smaller) |
-| 5 | benches[181] x bins[88] | 351.8, 165.4 | 0.10 m2 (35% of smaller) |
-| 6 | benches[799] x bins[84] | 551.6, 677.9 | 0.09 m2 (34% of smaller) |
-| 7 | benches[392] x bins[59] | 367.4, 109.6 | 0.08 m2 (31% of smaller) |
-
-#### `overlap:benches+bikes` (med): benches overlaps bikes (>= 20% of the smaller footprint)
-
-Count **31** of 8040 (0.39%). 
+Count **2** of 860 (0.23%). blocks the track (bikes/hoops: racks laid over the track)
 
 | # | id | x, z | measure |
 |---:|---|---|---|
-| 1 | benches[829] x bikes[5766] | -439.6, -550.3 | 0.29 m2 (33% of smaller) |
-| 2 | benches[872] x bikes[5761] | -506.3, -550.1 | 0.28 m2 (32% of smaller) |
-| 3 | benches[745] x bikes[1379] | -534.6, -442.0 | 0.28 m2 (32% of smaller) |
-| 4 | benches[745] x bikes[1380] | -534.6, -442.0 | 0.28 m2 (32% of smaller) |
-| 5 | benches[728] x bikes[5222] | -279.5, -369.8 | 0.28 m2 (32% of smaller) |
-| 6 | benches[728] x bikes[5221] | -279.5, -369.8 | 0.28 m2 (32% of smaller) |
-| 7 | benches[728] x bikes[403] | -279.5, -369.8 | 0.28 m2 (31% of smaller) |
-| 8 | benches[842] x bikes[5419] | -571.2, -569.5 | 0.28 m2 (31% of smaller) |
-| 9 | benches[841] x bikes[5416] | -592.7, -569.5 | 0.28 m2 (31% of smaller) |
-| 10 | benches[847] x bikes[5422] | -544.6, -563.1 | 0.28 m2 (31% of smaller) |
-
-#### `in-building-hidden:cars` (med): cars entirely inside a building footprint (>= 90%)
-
-Count **10** of 2694 (0.37%). hidden inside the wall volume (invisible, but a data/placement error and wasted instances)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | cars[1073] | -359.2, -160.3 | 100% of footprint |
-| 2 | cars[1074] | -366.0, -153.5 | 100% of footprint |
-| 3 | cars[1075] | -369.5, -149.9 | 100% of footprint |
-| 4 | cars[1076] | -376.6, -142.8 | 100% of footprint |
-| 5 | cars[2093] | -743.5, -472.1 | 100% of footprint |
-| 6 | cars[2094] | -741.3, -470.8 | 100% of footprint |
-| 7 | cars[58] | -376.9, -168.3 | 100% of footprint |
-| 8 | cars[59] | -366.2, -178.1 | 100% of footprint |
-| 9 | cars[65] | -371.8, -173.5 | 100% of footprint |
-| 10 | cars[2092] | -747.9, -474.6 | 100% of footprint |
-
-#### `overlap:benches+trees` (med): benches overlaps trees (>= 20% of the smaller footprint)
-
-Count **18** of 5843 (0.31%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | trees[1788] x benches[726] | 395.0, -59.0 | 0.27 m2 (96% of smaller) |
-| 2 | trees[300] x benches[12] | 431.5, 627.0 | 0.27 m2 (95% of smaller) |
-| 3 | trees[528] x benches[785] | 578.3, 694.0 | 0.26 m2 (93% of smaller) |
-| 4 | trees[347] x benches[10] | 444.9, 643.9 | 0.25 m2 (89% of smaller) |
-| 5 | trees[837] x benches[723] | 415.9, -28.3 | 0.25 m2 (87% of smaller) |
-| 6 | trees[1149] x benches[712] | 410.1, -101.3 | 0.21 m2 (74% of smaller) |
-| 7 | trees[1584] x benches[14] | 411.1, 636.0 | 0.19 m2 (68% of smaller) |
-| 8 | trees[1658] x benches[681] | 407.3, -87.1 | 0.18 m2 (65% of smaller) |
-| 9 | trees[668] x benches[11] | 440.9, 632.1 | 0.14 m2 (48% of smaller) |
-| 10 | trees[1413] x benches[786] | 582.5, 696.1 | 0.12 m2 (44% of smaller) |
-
-#### `in-building-partial:hoops` (med): hoops straddles a facade (25-90% of footprint inside a building)
-
-Count **17** of 6128 (0.28%). half inside the wall: visible poking through the facade
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | hoops[492] | 717.7, 180.4 | 89% of footprint |
-| 2 | hoops[329] | -314.6, -372.1 | 85% of footprint |
-| 3 | hoops[4956] | -496.8, -509.1 | 84% of footprint |
-| 4 | hoops[2710] | 720.5, -200.7 | 74% of footprint |
-| 5 | hoops[2672] | 715.8, -215.7 | 68% of footprint |
-| 6 | hoops[92] | 159.4, 642.4 | 68% of footprint |
-| 7 | hoops[916] | 531.4, -188.2 | 67% of footprint |
-| 8 | hoops[1959] | 171.5, -245.8 | 63% of footprint |
-| 9 | hoops[2757] | 545.9, -14.8 | 62% of footprint |
-| 10 | hoops[656] | 539.0, -695.0 | 48% of footprint |
-
-#### `overlap:bikes+lamp-poles` (med): bikes overlaps lamp-poles (>= 20% of the smaller footprint)
-
-Count **15** of 7569 (0.2%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lamp-poles[72] x bikes[413] | -344.3, -433.0 | 0.10 m2 (100% of smaller) |
-| 2 | lamp-poles[52] x bikes[68] | 210.7, 705.5 | 0.10 m2 (98% of smaller) |
-| 3 | lamp-poles[142] x bikes[5219] | -275.4, -376.0 | 0.10 m2 (94% of smaller) |
-| 4 | lamp-poles[121] x bikes[148] | 160.2, 718.4 | 0.09 m2 (93% of smaller) |
-| 5 | lamp-poles[21] x bikes[473] | 714.0, 338.2 | 0.08 m2 (81% of smaller) |
-| 6 | lamp-poles[425] x bikes[2957] | 604.9, -27.4 | 0.08 m2 (81% of smaller) |
-| 7 | lamp-poles[453] x bikes[6691] | 588.7, -44.5 | 0.08 m2 (74% of smaller) |
-| 8 | lamp-poles[251] x bikes[5202] | -261.7, -398.6 | 0.07 m2 (70% of smaller) |
-| 9 | lamp-poles[251] x bikes[366] | -261.7, -398.6 | 0.07 m2 (66% of smaller) |
-| 10 | lamp-poles[451] x bikes[2594] | 600.5, -59.2 | 0.06 m2 (61% of smaller) |
-
-#### `overlap:benches+hoops` (med): benches overlaps hoops (>= 20% of the smaller footprint)
-
-Count **11** of 7066 (0.16%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | benches[841] x hoops[4598] | -592.7, -569.5 | 0.03 m2 (100% of smaller) |
-| 2 | benches[829] x hoops[4927] | -439.6, -550.3 | 0.03 m2 (100% of smaller) |
-| 3 | benches[826] x hoops[4924] | -483.2, -575.8 | 0.03 m2 (100% of smaller) |
-| 4 | benches[826] x hoops[4923] | -483.2, -575.8 | 0.03 m2 (100% of smaller) |
-| 5 | benches[845] x hoops[4600] | -558.8, -561.3 | 0.03 m2 (100% of smaller) |
-| 6 | benches[847] x hoops[4601] | -544.6, -563.1 | 0.03 m2 (100% of smaller) |
-| 7 | benches[842] x hoops[4599] | -571.2, -569.5 | 0.03 m2 (100% of smaller) |
-| 8 | benches[728] x hoops[348] | -279.5, -369.8 | 0.03 m2 (100% of smaller) |
-| 9 | benches[678] x hoops[170] | 658.0, 350.4 | 0.03 m2 (100% of smaller) |
-| 10 | benches[142] x hoops[3046] | -661.7, -340.1 | 0.03 m2 (100% of smaller) |
-
-#### `overlap:bikes+trees` (med): bikes overlaps trees (>= 20% of the smaller footprint)
-
-Count **14** of 12007 (0.12%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | trees[362] x bikes[149] | 159.5, 718.0 | 0.26 m2 (92% of smaller) |
-| 2 | trees[1126] x bikes[352] | -270.6, -385.1 | 0.26 m2 (91% of smaller) |
-| 3 | trees[206] x bikes[402] | -281.2, -368.0 | 0.24 m2 (86% of smaller) |
-| 4 | trees[197] x bikes[419] | -343.5, -436.1 | 0.19 m2 (67% of smaller) |
-| 5 | trees[444] x bikes[206] | 650.1, 353.6 | 0.19 m2 (66% of smaller) |
-| 6 | trees[314] x bikes[4673] | 69.5, 742.6 | 0.16 m2 (56% of smaller) |
-| 7 | trees[1506] x bikes[1208] | -448.6, 25.9 | 0.15 m2 (54% of smaller) |
-| 8 | trees[1283] x bikes[4700] | 68.5, 717.5 | 0.13 m2 (46% of smaller) |
-| 9 | trees[314] x bikes[4672] | 69.5, 742.6 | 0.13 m2 (46% of smaller) |
-| 10 | trees[1385] x bikes[4550] | 84.6, 600.5 | 0.11 m2 (39% of smaller) |
-
-#### `overlap:bikes+bollards` (med): bikes overlaps bollards (>= 20% of the smaller footprint)
-
-Count **6** of 7498 (0.08%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bollards[22] x bikes[670] | 722.0, 269.4 | 0.04 m2 (47% of smaller) |
-| 2 | bollards[117] x bikes[220] | -219.8, -461.7 | 0.02 m2 (100% of smaller) |
-| 3 | bollards[297] x bikes[273] | -146.1, -585.6 | 0.02 m2 (100% of smaller) |
-| 4 | bollards[273] x bikes[5514] | 380.9, 259.5 | 0.02 m2 (100% of smaller) |
-| 5 | bollards[52] x bikes[5409] | -728.6, -527.7 | 0.02 m2 (100% of smaller) |
-| 6 | bollards[53] x bikes[5406] | -727.9, -528.9 | 0.02 m2 (100% of smaller) |
+| 1 | benches[857] | 338.7, 278.4 | 100% of footprint |
+| 2 | benches[856] | 97.1, 250.6 | 86% of footprint |
 
 #### `bld-cycletrack` (med): Building footprint overlaps cycletrack (>= 2 m2)
 
@@ -1498,15 +441,35 @@ Count **0** of 143 (0.0%). 0 are inside open water
 
 #### `cycle-cycle-overlap` (med): Two cycle tracks overlap (KK cykelsti vs road-side strips; >= 2 m2)
 
-Count **0** of 584 (0.0%). doubled cycle track meshes at 0.12 / 0.118: coplanar z-fighting
+Count **0** of 583 (0.0%). doubled cycle track meshes at 0.12 / 0.118: coplanar z-fighting
 
 #### `pavement-carriageway` (med): Pavement polygon overlaps a carriageway (>= 2 m2)
 
 Count **0** of 1026 (0.0%). pavement at 0.2 sits 18 cm above the asphalt: a raised slab in the roadway (carriageway cap wider than the real kerb-to-kerb)
 
+#### `tree-crown-facade` (med): Crown penetrates a facade by > 1 m (crown base below the eave)
+
+Count **0** of 4782 (0.0%). leaf cards and the mid-LOD crown blob cut through walls; the engine places trees at data x,z and never moves them off buildings
+
+#### `rack-rows` (med): Rack row (capacity x 0.5 m, centred on the point) >= 30% in a building / on the carriageway or in water
+
+Count **0** of 982 (0.0%). capacity median 5, p95 12, max 12; engine caps rows at 48 slots = 24 m, centred on the data point
+
+#### `rack-giant` (med): Rack with capacity > 40 (> 20 m row, > 40 bikes)
+
+Count **0** of 982 (0.0%). one record per whole KK stand field; the engine lays a single straight row of up to 24 m
+
+#### `car-orientation` (med): Parked car axis > 25 deg off the kerb for parallel bays, or < 35 deg for perpendicular bays
+
+Count **0** of 1067 (0.0%). bay `yaw` is a kerb-line direction; the 90-degree convention of angled/perp bays is derived without the road side
+
+#### `wire-floating-anchor` (med): Wire anchor > 2.5 m from the nearest facade
+
+Count **0** of 502 (0.0%). the cable ends in mid-air at 8.9 m
+
 #### `wire-too-low` (med): Wire or lantern lower than 5 m above ground (KK clearance 8.5 m published; modelled 8 m)
 
-Count **0** of 1239 (0.0%). 
+Count **0** of 502 (0.0%). 
 
 #### `signal-in-building` (med): Signal point inside a building
 
@@ -1514,79 +477,32 @@ Count **0** of 164 (0.0%).
 
 #### `busstop-in-building` (med): Stop flag inside a building
 
-Count **0** of 47 (0.0%). 
+Count **0** of 41 (0.0%). 
+
+#### `shelter-conflict` (med): Shelter footprint >= 15% in a building, or >= 10% on the carriageway / cycle track
+
+Count **0** of 17 (0.0%). 
 
 #### `on-carriageway:cars` (low): cars on the capped carriageway (>= 25% of footprint)
 
-Count **2370** of 2694 (87.97%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
+Count **1067** of 1067 (100.0%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
 
 | # | id | x, z | measure |
 |---:|---|---|---|
-| 1 | cars[1776] | -8.7, 617.8 | 100% of footprint |
-| 2 | cars[100] | 497.9, -233.5 | 100% of footprint |
-| 3 | cars[142] | 279.4, -450.0 | 100% of footprint |
-| 4 | cars[169] | 117.6, 685.0 | 100% of footprint |
-| 5 | cars[185] | 127.4, 687.0 | 100% of footprint |
-| 6 | cars[208] | 25.3, 732.2 | 100% of footprint |
-| 7 | cars[219] | 38.0, 733.5 | 100% of footprint |
-| 8 | cars[329] | -253.5, -277.6 | 100% of footprint |
-| 9 | cars[333] | -284.4, -296.4 | 100% of footprint |
-| 10 | cars[334] | -320.8, -320.4 | 100% of footprint |
+| 1 | cars[387] | -27.9, -643.9 | 100% of footprint |
+| 2 | cars[626] | 142.7, 123.5 | 100% of footprint |
+| 3 | cars[5] | -721.4, -370.7 | 100% of footprint |
+| 4 | cars[10] | -680.2, -367.3 | 100% of footprint |
+| 5 | cars[11] | -674.7, -489.9 | 100% of footprint |
+| 6 | cars[13] | -673.7, -382.2 | 100% of footprint |
+| 7 | cars[14] | -670.2, -487.2 | 100% of footprint |
+| 8 | cars[29] | -652.9, -477.0 | 100% of footprint |
+| 9 | cars[33] | -647.9, -323.9 | 100% of footprint |
+| 10 | cars[47] | -588.8, -488.6 | 100% of footprint |
 
 #### `tree-generic-genus` (low): Tree genus not resolved ('generic' look)
 
 Count **3709** of 4905 (75.62%). genus mix {'maple': 60, 'generic': 3709, 'poplar': 48, 'chestnut': 171, 'robinia': 68, 'hawthorn': 180, 'conifer': 19, 'lime': 271, 'cherry': 148, 'elm': 74, 'birch': 6, 'oak': 40, 'ash': 19, 'plane': 49, 'willow': 43}
-
-#### `in-building-hidden:stands` (low): stands entirely inside a building footprint (>= 90%)
-
-Count **317** of 740 (42.84%). hidden inside the wall volume (invisible, but a data/placement error and wasted instances)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | stands[69] | 626.2, -726.8 | 100% of footprint |
-| 2 | stands[70] | 635.4, -736.4 | 100% of footprint |
-| 3 | stands[74] | 583.6, 609.8 | 100% of footprint |
-| 4 | stands[80] | 490.4, 511.8 | 100% of footprint |
-| 5 | stands[112] | 148.8, 38.6 | 100% of footprint |
-| 6 | stands[164] | -503.0, -252.0 | 100% of footprint |
-| 7 | stands[165] | -493.0, -246.0 | 100% of footprint |
-| 8 | stands[166] | -493.0, -246.0 | 100% of footprint |
-| 9 | stands[170] | -353.2, -129.4 | 100% of footprint |
-| 10 | stands[172] | -354.6, -131.2 | 100% of footprint |
-
-#### `busstop-in-carriageway` (low): Stop flag inside the capped carriageway
-
-Count **17** of 47 (36.17%). expected for kerbside poles on narrow caps
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | stop[4] Vester Farimagsgade | 60.0, 270.6 | flag inside the carriageway |
-| 2 | stop[6] Forum St. | -553.5, 92.0 | flag inside the carriageway |
-| 3 | stop[7] Forum St. | -558.3, 102.2 | flag inside the carriageway |
-| 4 | stop[8] Nørreport St. | 604.1, -155.6 | flag inside the carriageway |
-| 5 | stop[10] Nørre Farimagsgade | 463.9, -247.4 | flag inside the carriageway |
-| 6 | stop[13] H. C. Ørsteds Vej | -691.8, -251.4 | flag inside the carriageway |
-| 7 | stop[16] Sølvtorvet | 709.6, -735.1 | flag inside the carriageway |
-| 8 | stop[17] Danas Plads | -514.1, 467.0 | flag inside the carriageway |
-| 9 | stop[18] Rådhuspladsen St. | 332.9, 566.4 | flag inside the carriageway |
-| 10 | stop[20] Nørreport St. | 724.4, -251.7 | flag inside the carriageway |
-
-#### `on-carriageway:bollards` (low): bollards on the capped carriageway (>= 25% of footprint)
-
-Count **140** of 396 (35.35%). standing in the roadway (cars/bollards/flags at the kerb are partly expected)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bollards[102] | -200.4, -485.9 | 100% of footprint |
-| 2 | bollards[104] | -230.5, -436.9 | 100% of footprint |
-| 3 | bollards[114] | -224.8, -443.6 | 100% of footprint |
-| 4 | bollards[115] | -212.1, -474.2 | 100% of footprint |
-| 5 | bollards[116] | -209.4, -478.8 | 100% of footprint |
-| 6 | bollards[117] | -219.8, -461.7 | 100% of footprint |
-| 7 | bollards[118] | -194.8, -494.5 | 100% of footprint |
-| 8 | bollards[119] | -224.5, -452.7 | 100% of footprint |
-| 9 | bollards[241] | 130.1, 18.4 | 100% of footprint |
-| 10 | bollards[242] | 132.9, 16.4 | 100% of footprint |
 
 #### `road-width-cap` (low): Engine carriageway is > 10 m narrower than the data width
 
@@ -1622,148 +538,6 @@ Count **741** of 4905 (15.11%).
 | 9 | tree[2330] | -487.5, -292.5 | crown r 8.1 / h 2.9 = 2.79 |
 | 10 | tree[3280] | -307.5, 623.5 | crown r 6.9 / h 2.5 = 2.76 |
 
-#### `in-building-hidden:monuments` (low): monuments entirely inside a building footprint (>= 90%)
-
-Count **8** of 76 (10.53%). hidden inside the wall volume (invisible, but a data/placement error and wasted instances)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | monuments[2] | 547.3, 737.2 | 100% of footprint |
-| 2 | monuments[18] | 726.0, 106.6 | 100% of footprint |
-| 3 | monuments[54] | 563.0, 723.6 | 100% of footprint |
-| 4 | monuments[58] | 391.3, -570.0 | 100% of footprint |
-| 5 | monuments[68] | 541.8, 745.0 | 100% of footprint |
-| 6 | monuments[69] | 552.8, 730.4 | 100% of footprint |
-| 7 | monuments[70] | 559.0, 723.2 | 100% of footprint |
-| 8 | monuments[1] | 533.5, 743.2 | 99% of footprint |
-
-#### `on-cycletrack:bikes` (low): bikes on a cycle track (>= 25% of footprint)
-
-Count **418** of 7102 (5.89%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bikes[6646] | 594.0, -32.0 | 100% of footprint |
-| 2 | bikes[645] | 529.6, -204.2 | 100% of footprint |
-| 3 | bikes[712] | 582.2, -735.0 | 100% of footprint |
-| 4 | bikes[1094] | 300.1, 432.6 | 100% of footprint |
-| 5 | bikes[1100] | 299.4, 429.2 | 100% of footprint |
-| 6 | bikes[1101] | 299.3, 428.7 | 100% of footprint |
-| 7 | bikes[1102] | 299.1, 427.7 | 100% of footprint |
-| 8 | bikes[3013] | 742.8, -229.5 | 100% of footprint |
-| 9 | bikes[3031] | 740.7, -227.2 | 100% of footprint |
-| 10 | bikes[3032] | 741.1, -226.9 | 100% of footprint |
-
-#### `in-building-hidden:hoops` (low): hoops entirely inside a building footprint (>= 90%)
-
-Count **353** of 6128 (5.76%). hidden inside the wall volume (invisible, but a data/placement error and wasted instances)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | hoops[1373] | 461.5, 26.3 | 100% of footprint |
-| 2 | hoops[1374] | 460.7, 25.7 | 100% of footprint |
-| 3 | hoops[1375] | 459.8, 25.2 | 100% of footprint |
-| 4 | hoops[1376] | 459.0, 24.7 | 100% of footprint |
-| 5 | hoops[1377] | 458.2, 24.1 | 100% of footprint |
-| 6 | hoops[1378] | 457.3, 23.6 | 100% of footprint |
-| 7 | hoops[1379] | 456.5, 23.1 | 100% of footprint |
-| 8 | hoops[1380] | 455.6, 22.5 | 100% of footprint |
-| 9 | hoops[1381] | 454.8, 22.0 | 100% of footprint |
-| 10 | hoops[2758] | 546.5, -15.7 | 100% of footprint |
-
-#### `on-cycletrack:hoops` (low): hoops on a cycle track (>= 25% of footprint)
-
-Count **324** of 6128 (5.29%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | hoops[5677] | 511.0, -214.2 | 100% of footprint |
-| 2 | hoops[5678] | 510.2, -214.8 | 100% of footprint |
-| 3 | hoops[5679] | 509.3, -215.3 | 100% of footprint |
-| 4 | hoops[5680] | 502.3, -219.6 | 100% of footprint |
-| 5 | hoops[5681] | 501.5, -220.1 | 100% of footprint |
-| 6 | hoops[5682] | 500.6, -220.7 | 100% of footprint |
-| 7 | hoops[5683] | 499.8, -221.2 | 100% of footprint |
-| 8 | hoops[5684] | 499.0, -221.8 | 100% of footprint |
-| 9 | hoops[5685] | 490.5, -226.7 | 100% of footprint |
-| 10 | hoops[5686] | 489.7, -227.2 | 100% of footprint |
-
-#### `wire-no-span` (low): Wire-mounted lamp without span geometry (engine stands it on a 6.2 m tube pole)
-
-Count **67** of 1306 (5.13%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lamp | 599.0, 703.6 | bracket on a tube pole |
-| 2 | lamp | 550.4, 678.0 | bracket on a tube pole |
-| 3 | lamp | 647.3, 734.7 | bracket on a tube pole |
-| 4 | lamp | -58.4, 124.9 | bracket on a tube pole |
-| 5 | lamp | 547.5, 679.0 | bracket on a tube pole |
-| 6 | lamp | -487.9, -220.9 | bracket on a tube pole |
-| 7 | lamp | -229.8, 70.1 | bracket on a tube pole |
-| 8 | lamp | 562.1, 684.2 | bracket on a tube pole |
-| 9 | lamp | 589.6, 718.0 | bracket on a tube pole |
-| 10 | lamp | 176.4, -419.9 | bracket on a tube pole |
-
-#### `in-building-hidden:bikes` (low): bikes entirely inside a building footprint (>= 90%)
-
-Count **358** of 7102 (5.04%). hidden inside the wall volume (invisible, but a data/placement error and wasted instances)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bikes[758] | 537.2, -692.6 | 100% of footprint |
-| 2 | bikes[3301] | 554.9, -28.9 | 100% of footprint |
-| 3 | bikes[388] | -314.9, -371.7 | 100% of footprint |
-| 4 | bikes[552] | 716.8, 180.8 | 100% of footprint |
-| 5 | bikes[719] | 575.9, -726.6 | 100% of footprint |
-| 6 | bikes[754] | 538.4, -694.2 | 100% of footprint |
-| 7 | bikes[757] | 537.5, -693.0 | 100% of footprint |
-| 8 | bikes[780] | 536.0, -695.5 | 100% of footprint |
-| 9 | bikes[813] | 576.1, -726.2 | 100% of footprint |
-| 10 | bikes[816] | 573.4, -722.6 | 100% of footprint |
-
-#### `on-cycletrack:lamp-poles` (low): lamp-poles on a cycle track (>= 25% of footprint)
-
-Count **22** of 467 (4.71%). blocks the track (bikes/hoops: racks laid over the track)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lamp-poles[335] | 387.9, -96.0 | 100% of footprint |
-| 2 | lamp-poles[336] | 405.5, -124.9 | 100% of footprint |
-| 3 | lamp-poles[349] | 391.9, 740.2 | 100% of footprint |
-| 4 | lamp-poles[350] | -120.8, 164.5 | 100% of footprint |
-| 5 | lamp-poles[354] | -221.1, 103.4 | 100% of footprint |
-| 6 | lamp-poles[360] | -95.9, 131.4 | 100% of footprint |
-| 7 | lamp-poles[362] | -146.1, 100.8 | 100% of footprint |
-| 8 | lamp-poles[363] | -171.9, 85.3 | 100% of footprint |
-| 9 | lamp-poles[364] | -200.2, 67.9 | 100% of footprint |
-| 10 | lamp-poles[154] | 651.1, 740.0 | 100% of footprint |
-
-#### `in-building-hidden:glass` (low): glass entirely inside a building footprint (>= 90%)
-
-Count **1** of 23 (4.35%). hidden inside the wall volume (invisible, but a data/placement error and wasted instances)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | glass[11] | 451.8, -7.9 | 100% of footprint |
-
-#### `mast-height-high` (low): Mast taller than 10 m (visual-refs: 5-9 m)
-
-Count **16** of 400 (4.0%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lamp | 423.8, 10.0 | pole tube poleH 15 |
-| 2 | lamp | 461.5, -51.2 | pole tube poleH 15 |
-| 3 | lamp | 478.4, -78.9 | pole tube poleH 15 |
-| 4 | lamp | 441.2, -18.2 | pole tube poleH 15 |
-| 5 | lamp | 350.3, -34.9 | pole tube poleH 15 |
-| 6 | lamp | 367.4, -62.9 | pole tube poleH 15 |
-| 7 | lamp | 387.9, -96.0 | pole tube poleH 15 |
-| 8 | lamp | 405.5, -124.9 | pole tube poleH 15 |
-| 9 | lamp | -289.4, 524.8 | pole tube poleH 10.4 |
-| 10 | lamp | -193.6, 535.0 | pole tube poleH 10.4 |
-
 #### `surf-surf-sameclass` (low): Duplicate / overlapping polygons of the same class (>= 2 m2)
 
 Count **8** of 229 (3.49%). 
@@ -1796,58 +570,22 @@ Count **22** of 1026 (2.14%). handled by `skip` in buildGroundBuckets; reported 
 | 9 | 96809355f0af#0 x kk:cykelsti:157#1 | -161.3, 92.1 | 32 m2 |
 | 10 | d-648164a3ff08 x kk:cykelsti:628 | 200.7, 477.2 | 15 m2 |
 
-#### `in-building-hidden:meters` (low): meters entirely inside a building footprint (>= 90%)
+#### `mast-height-high` (low): Mast taller than 10 m (visual-refs: 5-9 m)
 
-Count **1** of 47 (2.13%). hidden inside the wall volume (invisible, but a data/placement error and wasted instances)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | meters[43] | -390.4, -164.5 | 100% of footprint |
-
-#### `wire-too-short` (low): Wire span < 8 m
-
-Count **24** of 1239 (1.94%). 
+Count **16** of 1188 (1.35%). 
 
 | # | id | x, z | measure |
 |---:|---|---|---|
-| 1 | lamp[1180] | 444.5, 607.4 | span 6 m |
-| 2 | lamp[88] | 558.1, -332.0 | span 6 m |
-| 3 | lamp[332] | 229.6, -402.4 | span 6 m |
-| 4 | lamp[1160] | 156.3, 746.1 | span 6 m |
-| 5 | lamp[259] | 536.6, -340.7 | span 6 m |
-| 6 | lamp[488] | 538.9, -345.4 | span 6 m |
-| 7 | lamp[119] | 117.7, -146.0 | span 6 m |
-| 8 | lamp[468] | 474.5, 441.7 | span 6 m |
-| 9 | lamp[847] | 297.3, -569.1 | span 6 m |
-| 10 | lamp[626] | 258.3, -511.5 | span 7 m |
-
-#### `in-building-hidden:bollards` (low): bollards entirely inside a building footprint (>= 90%)
-
-Count **4** of 396 (1.01%). hidden inside the wall volume (invisible, but a data/placement error and wasted instances)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bollards[318] | -254.1, -158.2 | 100% of footprint |
-| 2 | bollards[275] | 559.9, -25.8 | 100% of footprint |
-| 3 | bollards[150] | -361.7, -356.0 | 100% of footprint |
-| 4 | bollards[217] | -368.3, -342.7 | 100% of footprint |
-
-#### `wire-too-long` (low): Wire span > 45 m (visual-refs 25-35 m)
-
-Count **11** of 1239 (0.89%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lamp[32] | -64.7, 174.5 | span 85 m |
-| 2 | lamp[263] | -76.4, 167.3 | span 85 m |
-| 3 | lamp[479] | -46.7, 185.4 | span 85 m |
-| 4 | lamp[587] | -28.8, 196.4 | span 85 m |
-| 5 | lamp[1011] | -15.1, 204.7 | span 85 m |
-| 6 | lamp[192] | -103.5, -600.3 | span 78 m |
-| 7 | lamp[597] | -126.2, -613.9 | span 78 m |
-| 8 | lamp[1122] | -143.2, -624.0 | span 78 m |
-| 9 | lamp[14] | -53.8, 197.9 | span 70 m |
-| 10 | lamp[442] | -84.7, 179.1 | span 70 m |
+| 1 | lamp | 423.8, 10.0 | pole tube poleH 15 |
+| 2 | lamp | 461.5, -51.2 | pole tube poleH 15 |
+| 3 | lamp | 478.4, -78.9 | pole tube poleH 15 |
+| 4 | lamp | 441.2, -18.2 | pole tube poleH 15 |
+| 5 | lamp | 350.5, -34.8 | pole tube poleH 15 |
+| 6 | lamp | 368.9, -63.0 | pole tube poleH 15 |
+| 7 | lamp | 388.9, -95.9 | pole tube poleH 15 |
+| 8 | lamp | 406.7, -124.6 | pole tube poleH 15 |
+| 9 | lamp | -289.2, 524.9 | pole tube poleH 10.4 |
+| 10 | lamp | -193.6, 535.0 | pole tube poleH 10.4 |
 
 #### `water-paths` (low): Footway/cycleway centreline runs > 3 m through open water
 
@@ -1869,254 +607,41 @@ Count **1** of 229 (0.44%). hidden by the wall volumes
 |---:|---|---|---|
 | 1 | kk:belaegning:ff2cf081-7f44-44e9-ba4a-468e73008cd1#0 | -599.9, -739.2 | kbh_fortov: 12 m2 (71%) under buildings |
 
-#### `overlap:bollards+monuments` (low): bollards overlaps monuments (>= 20% of the smaller footprint)
-
-Count **1** of 472 (0.21%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bollards[260] x monuments[49] | 216.2, -121.7 | 0.02 m2 (100% of smaller) |
-
-#### `overlap:bins+lamp-poles` (low): bins overlaps lamp-poles (>= 20% of the smaller footprint)
-
-Count **2** of 1006 (0.2%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lamp-poles[196] x bins[369] | 219.3, 720.8 | 0.06 m2 (57% of smaller) |
-| 2 | lamp-poles[307] x bins[28] | 171.9, 684.7 | 0.03 m2 (32% of smaller) |
-
-#### `overlap:bins+glass` (low): bins overlaps glass (>= 20% of the smaller footprint)
-
-Count **1** of 562 (0.18%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bins[419] x glass[18] | 472.5, -226.2 | 0.27 m2 (100% of smaller) |
-
-#### `overlap:bollards+cars` (low): bollards overlaps cars (>= 20% of the smaller footprint)
-
-Count **4** of 3090 (0.13%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | cars[114] x bollards[18] | 714.1, 271.8 | 0.05 m2 (53% of smaller) |
-| 2 | cars[116] x bollards[23] | 724.2, 267.3 | 0.03 m2 (34% of smaller) |
-| 3 | cars[126] x bollards[9] | 743.3, 275.4 | 0.03 m2 (34% of smaller) |
-| 4 | cars[855] x bollards[230] | 469.9, -132.4 | 0.02 m2 (100% of smaller) |
-
-#### `in-building-hidden:trees` (low): trees entirely inside a building footprint (>= 90%)
-
-Count **6** of 4905 (0.12%). hidden inside the wall volume (invisible, but a data/placement error and wasted instances)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | trees[3908] | 328.5, -87.5 | 100% of footprint |
-| 2 | trees[4302] | 238.5, 596.5 | 100% of footprint |
-| 3 | trees[4844] | 578.5, 198.5 | 100% of footprint |
-| 4 | trees[1322] | -5.2, 380.4 | 100% of footprint |
-| 5 | trees[1633] | -6.2, 390.2 | 100% of footprint |
-| 6 | trees[2335] | -476.5, -286.5 | 100% of footprint |
-
-#### `in-building-hidden:benches` (low): benches entirely inside a building footprint (>= 90%)
-
-Count **1** of 938 (0.11%). hidden inside the wall volume (invisible, but a data/placement error and wasted instances)
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | benches[802] | 558.7, 668.5 | 100% of footprint |
-
-#### `overlap:lamp-poles+trees` (low): lamp-poles overlaps trees (>= 20% of the smaller footprint)
-
-Count **5** of 5372 (0.09%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | trees[532] x lamp-poles[94] | 559.9, 692.5 | 0.07 m2 (73% of smaller) |
-| 2 | trees[1310] x lamp-poles[107] | 382.4, 172.6 | 0.03 m2 (30% of smaller) |
-| 3 | trees[1421] x lamp-poles[7] | 568.6, 688.9 | 0.03 m2 (27% of smaller) |
-| 4 | trees[1405] x lamp-poles[141] | 574.3, 695.9 | 0.03 m2 (25% of smaller) |
-| 5 | trees[1406] x lamp-poles[68] | 563.0, 692.6 | 0.02 m2 (22% of smaller) |
-
 #### `overlap:benches+lakeLights` (low): benches overlaps lakeLights (>= 20% of the smaller footprint)
 
-Count **1** of 1081 (0.09%). 
+Count **1** of 1003 (0.1%). 
 
 | # | id | x, z | measure |
 |---:|---|---|---|
-| 1 | benches[230] x lakeLights[56] | -116.0, 85.9 | 0.02 m2 (100% of smaller) |
-
-#### `overlap:bins+stands` (low): bins overlaps stands (>= 20% of the smaller footprint)
-
-Count **1** of 1279 (0.08%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bins[419] x stands[45] | 472.5, -226.2 | 0.19 m2 (72% of smaller) |
-
-#### `overlap:bikes+bins` (low): bikes overlaps bins (>= 20% of the smaller footprint)
-
-Count **5** of 7641 (0.07%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bins[370] x bikes[66] | 211.8, 705.4 | 0.22 m2 (81% of smaller) |
-| 2 | bins[328] x bikes[895] | 676.6, 446.1 | 0.15 m2 (54% of smaller) |
-| 3 | bins[328] x bikes[896] | 676.6, 446.1 | 0.13 m2 (47% of smaller) |
-| 4 | bins[328] x bikes[900] | 676.6, 446.1 | 0.10 m2 (37% of smaller) |
-| 5 | bins[395] x bikes[2914] | 607.6, -33.3 | 0.06 m2 (21% of smaller) |
-
-#### `overlap:benches+bollards` (low): benches overlaps bollards (>= 20% of the smaller footprint)
-
-Count **1** of 1334 (0.07%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bollards[166] x benches[930] | -455.4, -664.0 | 0.02 m2 (100% of smaller) |
-
-#### `overlap:bikes+glass` (low): bikes overlaps glass (>= 20% of the smaller footprint)
-
-Count **4** of 7125 (0.06%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | glass[17] x bikes[5428] | -50.0, -605.0 | 0.60 m2 (69% of smaller) |
-| 2 | glass[17] x bikes[5429] | -50.0, -605.0 | 0.60 m2 (69% of smaller) |
-| 3 | glass[17] x bikes[5430] | -50.0, -605.0 | 0.60 m2 (69% of smaller) |
-| 4 | glass[22] x bikes[4489] | -63.4, -437.2 | 0.23 m2 (26% of smaller) |
-
-#### `overlap:trees+trees` (low): trees overlaps trees (>= 20% of the smaller footprint)
-
-Count **3** of 4905 (0.06%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | trees[1503] x trees[1504] | 148.0, -273.4 | 0.28 m2 (100% of smaller) |
-| 2 | trees[1543] x trees[1544] | 150.7, -279.9 | 0.28 m2 (100% of smaller) |
-| 3 | trees[67] x trees[68] | -741.6, -650.8 | 0.28 m2 (100% of smaller) |
-
-#### `overlap:bins+cars` (low): bins overlaps cars (>= 20% of the smaller footprint)
-
-Count **2** of 3233 (0.06%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | cars[2502] x bins[113] | 574.2, -235.9 | 0.27 m2 (99% of smaller) |
-| 2 | cars[1761] x bins[79] | -11.9, 651.9 | 0.08 m2 (28% of smaller) |
-
-#### `overlap:bikes+stands` (low): bikes overlaps stands (>= 20% of the smaller footprint)
-
-Count **4** of 7842 (0.05%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | stands[526] x bikes[5428] | -50.0, -605.0 | 0.36 m2 (41% of smaller) |
-| 2 | stands[526] x bikes[5429] | -50.0, -605.0 | 0.36 m2 (41% of smaller) |
-| 3 | stands[513] x bikes[3338] | 523.8, 47.5 | 0.36 m2 (41% of smaller) |
-| 4 | stands[513] x bikes[3339] | 523.8, 47.5 | 0.36 m2 (41% of smaller) |
-
-#### `overlap:glass+hoops` (low): glass overlaps hoops (>= 20% of the smaller footprint)
-
-Count **3** of 6151 (0.05%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | glass[17] x hoops[4609] | -50.0, -605.0 | 0.03 m2 (100% of smaller) |
-| 2 | glass[17] x hoops[4610] | -50.0, -605.0 | 0.03 m2 (100% of smaller) |
-| 3 | glass[17] x hoops[4611] | -50.0, -605.0 | 0.03 m2 (100% of smaller) |
-
-#### `tree-trunk-facade` (low): Trunk < 0.5 m from a facade
-
-Count **2** of 4905 (0.04%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | tree[3776] | -265.5, -315.5 | trunk 0.01 m from facade |
-| 2 | tree[3798] | -204.5, -286.5 | trunk 0.44 m from facade |
-
-#### `overlap:cars+glass` (low): cars overlaps glass (>= 20% of the smaller footprint)
-
-Count **1** of 2717 (0.04%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | cars[1587] x glass[17] | -51.0, -604.1 | 3.38 m2 (74% of smaller) |
-
-#### `overlap:cars+meters` (low): cars overlaps meters (>= 20% of the smaller footprint)
-
-Count **1** of 2741 (0.04%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | cars[1806] x meters[18] | 248.7, 16.3 | 0.15 m2 (100% of smaller) |
-
-#### `overlap:hoops+trees` (low): hoops overlaps trees (>= 20% of the smaller footprint)
-
-Count **3** of 11033 (0.03%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | trees[385] x hoops[3984] | 68.6, 709.2 | 0.03 m2 (100% of smaller) |
-| 2 | trees[362] x hoops[134] | 159.5, 718.0 | 0.03 m2 (98% of smaller) |
-| 3 | trees[444] x hoops[178] | 650.1, 353.6 | 0.02 m2 (75% of smaller) |
-
-#### `overlap:bins+hoops` (low): bins overlaps hoops (>= 20% of the smaller footprint)
-
-Count **2** of 6667 (0.03%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | bins[370] x hoops[70] | 211.8, 705.4 | 0.02 m2 (90% of smaller) |
-| 2 | bins[370] x hoops[5375] | 211.8, 705.4 | 0.02 m2 (74% of smaller) |
-
-#### `overlap:hoops+stands` (low): hoops overlaps stands (>= 20% of the smaller footprint)
-
-Count **2** of 6868 (0.03%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | stands[513] x hoops[2827] | 523.8, 47.5 | 0.03 m2 (100% of smaller) |
-| 2 | stands[526] x hoops[4610] | -50.0, -605.0 | 0.03 m2 (100% of smaller) |
-
-#### `overlap:cars+lamp-poles` (low): cars overlaps lamp-poles (>= 20% of the smaller footprint)
-
-Count **1** of 3161 (0.03%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lamp-poles[76] x cars[113] | 706.5, 274.1 | 0.03 m2 (27% of smaller) |
-
-#### `overlap:stands+trees` (low): stands overlaps trees (>= 20% of the smaller footprint)
-
-Count **1** of 5645 (0.02%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | trees[3689] x stands[511] | 368.5, -439.5 | 0.22 m2 (79% of smaller) |
-
-#### `overlap:bins+trees` (low): bins overlaps trees (>= 20% of the smaller footprint)
-
-Count **1** of 5444 (0.02%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | trees[3734] x bins[156] | 156.5, -376.5 | 0.16 m2 (59% of smaller) |
-
-#### `overlap:bikes+meters` (low): bikes overlaps meters (>= 20% of the smaller footprint)
-
-Count **1** of 7149 (0.01%). 
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | meters[25] x bikes[1567] | 670.3, 649.7 | 0.14 m2 (98% of smaller) |
+| 1 | benches[221] x lakeLights[56] | -116.0, 85.9 | 0.02 m2 (100% of smaller) |
 
 #### `pavement-in-bld` (low): Pavement polygon overlaps a building footprint (>= 3 m2)
 
 Count **0** of 1026 (0.0%). mostly hidden inside the wall volume; matters where the building ground is below the pavement 0.2 m
 
+#### `tree-trunk-facade` (low): Trunk < 0.5 m from a facade
+
+Count **0** of 4782 (0.0%). 
+
+#### `wire-too-long` (low): Wire span > 45 m (visual-refs 25-35 m)
+
+Count **0** of 502 (0.0%). 
+
+#### `wire-too-short` (low): Wire span < 8 m
+
+Count **0** of 502 (0.0%). 
+
+#### `wire-no-span` (low): Wire-mounted lamp without span geometry (engine stands it on a 6.2 m tube pole)
+
+Count **0** of 502 (0.0%). 
+
 #### `mast-height-low` (low): Mast with pole height < 2.5 m (park-type bollards, 'pole_h' 0 renders a head at ground level)
 
-Count **0** of 400 (0.0%). 
+Count **0** of 1188 (0.0%). 
+
+#### `busstop-in-carriageway` (low): Stop flag inside the capped carriageway
+
+Count **0** of 41 (0.0%). expected for kerbside poles on narrow caps
 
 ### Scale: prop dimensions vs visual-refs
 
@@ -2124,7 +649,7 @@ Count **0** of 400 (0.0%).
 |---|---|---|---|
 | Pole mast head / lantern | pendant Ø0.46 x 0.36 (CGS441) | published 462 x 363 mm | ok |
 | Wire lantern height | model ~8.3 m (anchor 8.9 m, sag 3 %) | visual-refs 1a: 8 m | ok |
-| Mast height | median 4.0 m, max 15.0 | SAB: 5-9 m (park posts lower) | check tails |
+| Mast height | median 6.2 m, max 15.0 | SAB: 5-9 m (park posts lower) | check tails |
 | Lake post | 0.98 m | est. 0.9-1.1 m | ok |
 | Round bollard | Ø0.15-0.16 x 0.82 m | published Ø89/114 mm x 800 mm | ~35% fat |
 | Granite bollard | 0.30 x 0.30 x 0.76 m | est. 0.25 x 0.25 x 0.8 | ok |

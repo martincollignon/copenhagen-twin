@@ -814,6 +814,24 @@ def cut_at_buildings(geo, newpts, roads_out, ctx):
     return passages, pieces, removed
 
 
+def self_gap(pts, min_arc=20.0):
+    """Smallest distance between two stretches of one polyline that are at least `min_arc` metres apart along it (a hairpin, a closed
+    loop): a carriageway cannot be wider than that gap or it folds over itself."""
+    n = len(pts) // 2
+    segs = [LineString([(pts[2 * i], pts[2 * i + 1]), (pts[2 * i + 2], pts[2 * i + 3])]) for i in range(n - 1)]
+    cum = [0.0]
+    for sg in segs:
+        cum.append(cum[-1] + sg.length)
+    best = None
+    for i in range(len(segs)):
+        for j in range(i + 2, len(segs)):
+            if cum[j] - cum[i + 1] < min_arc:
+                continue
+            d = segs[i].distance(segs[j])
+            best = d if best is None else min(best, d)
+    return best
+
+
 # ---------------------------------------------------------------------------------------------------------- the document
 def build_doc(geo, lakes, vejkant, extra=None):
     roads_out, rows, ctx = compile_roads(geo, lakes, vejkant)
@@ -836,6 +854,13 @@ def build_doc(geo, lakes, vejkant, extra=None):
             core = slice_line(ln, CLAMP_END, ln.length - CLAMP_END) if ln.length > 3 * CLAMP_END else ln
             dist = core.distance(bwall)
             hw = (rec_k["hl"] + rec_k["hr"]) / 2
+            gap = self_gap(pts)
+            if gap is not None and gap / 2 - CLEARANCE < hw:
+                hw_new = max(MIN_HALF, gap / 2 - CLEARANCE)
+                rec_k["hl"] = rec_k["hr"] = hw_new
+                rec_k["prov"] = rec["prov"] + "+loop"
+                hw = hw_new
+                clamped += 1
             if CLAMP_MIN_DIST <= dist < hw + CLEARANCE:  # (a line that touches a footprint is cut or left, not shrunk to nothing)
                 hw_new = max(MIN_HALF, dist - CLEARANCE)
                 rec_k["hl"] = rec_k["hr"] = hw_new

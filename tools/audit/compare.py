@@ -29,7 +29,12 @@ else:
     ids.sort(key=lambda i: (SEV[(B.get(i) or A[i])["severity"]], -(B.get(i) or A[i])["pct"]))
 print("| severity | check | before (count / of, %) | after (count / of, %) |")
 print("|---|---|---:|---:|")
-fmt = lambda r: "n/a" if r is None else f"{r['count']} / {r['total']} ({r['pct']}%)"
+def fmt(r, other=None):
+    if r is None:
+        # an emitted check disappears when nothing triggers it: "none found" (a check that only exists after is new)
+        return "0 (none found)" if other is not None else "n/a"
+    return f"{r['count']} / {r['total']} ({r['pct']}%)"
+
 for i in ids:
     r = B.get(i) or A.get(i)
-    print(f"| {r['severity']} | `{i}` | {fmt(B.get(i))} | {fmt(A.get(i))} |")
+    print(f"| {r['severity']} | `{i}` | {fmt(B.get(i), A.get(i))} | {fmt(A.get(i), B.get(i))} |")

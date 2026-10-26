@@ -16,6 +16,8 @@ import { buildFurniturePlan } from '../../js/street-furniture-data.js';
 const optional = (p) => import(p).catch(() => null);
 const terrainMod = await optional('../../js/terrain-cph.js');
 const layoutMod = await optional('../../js/layout-cph.js');
+const zonesMod = await optional('../../js/zones-cph.js');
+const placeMod = await optional('../../js/placement-cph.js');
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const out = process.argv[2] || resolve(root, 'tools/audit/out/layout.json');
@@ -48,7 +50,9 @@ for (const r of geo.roads) {
   roads.push({
     id: r.id, name: r.name, cls: r.class, pts: r.pts, veh, width: r.width, lanesFwd: r.lanesFwd, lanesBack: r.lanesBack,
     oneway: !!r.oneway, cycleTrack: r.cycleTrack, half: veh ? carriagewayWidth(r) / 2 : 0, cycle: cycleSides(r),
-    strips: veh ? stripsOf(r) : [], drop: !!r.drop, prov: r.cs?.prov ?? null
+    strips: veh ? stripsOf(r) : [], drop: !!r.drop, prov: r.cs?.prov ?? null,
+    // the strip the simulated traffic sweeps: lane pitch 3 m, two-way lanes start 1.5 m off the centre, a car is 1.9 m wide
+    moving: veh ? (widthMod.movingHalfWidth ? widthMod.movingHalfWidth(r) : Math.min(Math.max(1, (r.lanesFwd ?? 1) + (r.oneway ? 0 : (r.lanesBack ?? 1))) * 3.0, carriagewayWidth(r)) / 2) : 0
   });
 }
 
@@ -60,7 +64,14 @@ if (terrain && !terrain.flat) {
   lakeWalls = { level: arrays.level, freeboards: arrays.freeboards.map((f) => ({ id: f.id, x: +f.x.toFixed(1), z: +f.z.toFixed(1), free: +f.free.toFixed(2) })) };
 }
 
-const plan = buildFurniturePlan(furniture, ground, { seed: 1 });
+// the placer: ONE spatial constraint map (footprints, water, carriageway, strips, pavements) places the furniture
+let zones = null;
+if (zonesMod && placeMod && streetsDoc) {
+  const lakesDoc = read('data/cph-lakes.json');
+  const { applySurfaceCuts } = await import('../../js/lakes-cph.js');
+  zones = zonesMod.createZoneMap({ geo, lakes: lakesDoc, surfaces: applySurfaceCuts(surfaces, lakesDoc.surface_cuts) });
+}
+const plan = buildFurniturePlan(furniture, ground, { seed: 1, place: zones ? (d) => placeMod.placeFurniture(d, { zones, geo }) : null });
 const slim = (list, keys) => list.map((i) => Object.fromEntries(keys.map((k) => [k, i[k]])));
 const base = ['x', 'z', 'y', 'yaw'];
 // Buildings as the engine stands them: `ground`, and the height of the street (walking surface) just outside the outline
@@ -104,6 +115,8 @@ const layout = {
   layers: { asphalt: tris(layers.asphalt), cycle: tris(layers.cycle), blue: layers.blue ? tris(layers.blue) : [] },
   sidewalks: geo.sidewalks.map((s) => ({ id: s.id, ring: s.ring, holes: s.holes || [] })),
   cycleTracks: (geo.cycleTracks || []).map((c) => ({ id: c.id, pts: c.pts, width: c.width || null })),
+  placed: { bikeRacks: plan.placedDoc.bikeRacks, parkingBays: plan.placedDoc.parkingBays, busStops: plan.placedDoc.busStops },
+  placement: plan.report ? { counts: plan.report.counts, dropped: plan.report.dropped.length, moved: plan.report.moved.length } : null,
   roadGraph: { nodes: geo.roadGraph.nodes, links: geo.roadGraph.links },
   streets: streetsDoc ? { version: streetsDoc.version, stats: streetsDoc.stats } : null,
   terrain: terrain && !terrain.flat ? { min: terrainDoc.min, max: terrainDoc.max, lakes: terrainDoc.lakes } : null,

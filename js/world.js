@@ -14,6 +14,8 @@ import { loadCphFurniture } from './street-furniture-data.js';
 import { loadCphTerrain, createTerrain, buildTerrainMeshArrays } from './terrain-cph.js';
 import { applyTerrainGround, applyStreets, loadCphStreets } from './layout-cph.js';
 import { createStreetFurniture } from './street-furniture-cph.js';
+import { createZoneMap } from './zones-cph.js';
+import { placeFurniture } from './placement-cph.js';
 
 // js/world.js
 // The Copenhagen world: a ground plane in the Copenhagen frame (docs/cph-geodata-schema.md) plus data/cph-geodata.json,
@@ -339,8 +341,10 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   }
 
   let traffic = null;
+  let surfacesCut = null;
   if (geo?.roadGraph && !debug.split(',').includes('noroads')) {
-    traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: applySurfaceCuts(await loadCphSurfaces(), lakesDoc?.surface_cuts), terrain });
+    surfacesCut = applySurfaceCuts(await loadCphSurfaces(), lakesDoc?.surface_cuts);
+    traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: surfacesCut, terrain });
   }
 
   // M4: street furniture (data/cph-furniture.json): trees, lamps, parked cars, bins, bollards, benches, racks, bus stops
@@ -348,8 +352,10 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   if (geo && !debug.split(',').includes('nofurniture')) {
     const doc = await loadCphFurniture();
     if (doc) {
-      furniture = createStreetFurniture(scene, doc, { groundHeight: traffic?.surfaces?.groundHeight || null });
-      markInit(`furniture(${furniture.plan.trees.length} trees, ${furniture.plan.lamps.length} lamps, ${furniture.plan.cars.length} cars)`);
+      // ONE spatial constraint map (footprints, water, the measured carriageway, cycle strips, pavements) places every item
+      const zones = streetsStats && !debug.split(',').includes('noplace') ? createZoneMap({ geo, lakes: lakesDoc, surfaces: surfacesCut }) : null;
+      furniture = createStreetFurniture(scene, doc, { groundHeight: traffic?.surfaces?.groundHeight || null, place: zones ? (d) => placeFurniture(d, { zones, geo }) : null });
+      markInit(`furniture(${furniture.plan.trees.length} trees, ${furniture.plan.lamps.length} lamps, ${furniture.plan.cars.length} cars${furniture.plan.report ? `, ${furniture.plan.report.dropped.length} dropped` : ''})`);
     }
   }
 

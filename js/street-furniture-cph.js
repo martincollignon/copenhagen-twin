@@ -116,8 +116,8 @@ function textSprite(text) {
   return sprite;
 }
 
-export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 1 } = {}) {
-  const plan = buildFurniturePlan(doc, groundHeight, { seed });
+export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 1, place = null } = {}) {
+  const plan = buildFurniturePlan(doc, groundHeight, { seed, place });
   const group = new THREE.Group();
   group.name = 'CopenhagenStreetFurniture';
   scene.add(group);

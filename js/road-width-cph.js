@@ -103,3 +103,39 @@ export function slicePts(pts, s0, s1) {
   }
   return out;
 }
+
+// Per-vertex unit normals of a polyline (right-hand side positive offset: right of travel with z south is (-dz, dx))
+export function rightNormals(pts) {
+  const n = pts.length / 2;
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let dx = 0;
+    let dz = 0;
+    for (const [a, b] of [[i - 1, i], [i, i + 1]]) {
+      if (a < 0 || b >= n) continue;
+      const sx = pts[2 * b] - pts[2 * a];
+      const sz = pts[2 * b + 1] - pts[2 * a + 1];
+      const l = Math.hypot(sx, sz) || 1;
+      dx += sx / l;
+      dz += sz / l;
+    }
+    const l = Math.hypot(dx, dz) || 1;
+    out[i] = [-dz / l, dx / l];
+  }
+  return out;
+}
+
+export const SIM_LANE = 3.0; // m: the traffic simulation's lane pitch (js/road-network.js CPH_LANE)
+export const VEHICLE_HALF = 0.95; // m: half the width of a simulated car
+
+/**
+ * Half width (m) of the strip the simulated traffic sweeps, from the centreline: two-way lanes start half a lane off the
+ * centre (1.5 m), one-way lanes are centred; a car is 1.9 m wide. A parked car must stay outside it.
+ */
+export function movingHalfWidth(road) {
+  const nf = Math.min(4, road.lanesFwd ?? 1);
+  const nb = road.oneway ? 0 : Math.min(4, road.lanesBack ?? 1);
+  const n = Math.max(1, nf, nb);
+  const extent = road.oneway ? ((Math.max(nf, road.lanesBack ?? 0, 1) - 1) * SIM_LANE) / 2 + VEHICLE_HALF : SIM_LANE / 2 + (n - 1) * SIM_LANE + VEHICLE_HALF;
+  return Math.min(extent, carriagewayWidth(road) / 2);
+}

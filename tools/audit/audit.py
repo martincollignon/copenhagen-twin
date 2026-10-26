@@ -125,6 +125,10 @@ fur = load("data/cph-furniture.json")
 lod_index = load("data/lod2/index.json")
 lay = json.loads((OUT / "layout.json").read_text())
 plan = lay["plan"]
+# the furniture records AFTER placement (racks, bays, bus stops): the audit judges what the engine builds, not the register
+for _k, _v in (lay.get("placed") or {}).items():
+    if _v is not None:
+        fur[_k] = _v
 
 # buildings, as the engine stands them (terrain ground applied by js/layout-cph.js; see dump_layout.mjs)
 B = geo["buildings"]
@@ -149,8 +153,8 @@ carriage_union = unary_union(carriage)
 ctree = STRtree(carriage)
 corr = []
 for ln, r in zip(road_lines, roads):
-    lanes = max(1, (r["lanesFwd"] or 1) + (0 if r["oneway"] else (r["lanesBack"] or 1)))
-    corr.append(ln.buffer(min(lanes * LANE_W, r["half"] * 2) / 2, cap_style="flat", join_style="mitre", mitre_limit=3.0))
+    # the strip the simulated traffic sweeps (dump_layout.mjs movingHalfWidth: lanes at 1.5 m + n x 3 m, cars 1.9 m wide)
+    corr.append(ln.buffer(r["moving"], cap_style="flat", join_style="mitre", mitre_limit=3.0))
 corr_union = unary_union(corr)
 rtree = STRtree(road_lines)
 
@@ -193,8 +197,9 @@ def tri_union(flat):
 
 eng_asphalt = tri_union(lay["layers"]["asphalt"])
 eng_cycle = tri_union(lay["layers"]["cycle"])
-carriage_union = unary_union([carriage_union, eng_asphalt])
-cyc_union = unary_union([cyc_union, eng_cycle])
+# props are judged against what is drawn (the per-road polygons above, with mitred corners, are a little wider at bends)
+carriage_union = eng_asphalt
+cyc_union = eng_cycle
 
 # pavement
 sw = [ring_poly(s["ring"], s.get("holes")) for s in lay["sidewalks"]]
@@ -669,7 +674,7 @@ for i, t in enumerate(tr):
         if poly.contains(p):
             continue
         d = poly.distance(p)
-        top = b["eave"]
+        top = b["eave"] - b["ground"]  # height of the eave above the building's own ground (the terrain is not flat)
         if top <= crown_base:
             continue
         depth = t["crownR"] - d
