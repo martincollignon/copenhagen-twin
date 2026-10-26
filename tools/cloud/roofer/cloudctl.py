@@ -37,7 +37,7 @@ JOB = "cph-roofer"
 IMAGE_NAME = "cph-roofer"
 SA = f"{PROJECT_NUMBER}-compute@developer.gserviceaccount.com"  # default compute SA: already secretAccessor on the Datafordeler key
 LABELS = {"app": "cph-twin"}
-CPU, MEM, TIMEOUT, RETRIES = "8", "32Gi", "10800s", 2
+CPU, MEM, TIMEOUT, RETRIES = "4", "16Gi", "10800s", 2  # pilot at 8 vCPU / 32 GiB: peak RSS 1.7 GB, download-bound (roofer ~1 min)
 R2_ENV = {"R2_ACCOUNT_ID": "691682f9ad7a2e6378c27998ceffaaf9", "R2_LIDAR_BUCKET": "dk-lidar-cache", "R2_SECRET_PROJECT": "integrations-484814"}
 # Cloud Run Jobs list prices, europe-west1 (tier 1): https://cloud.google.com/run/pricing  (checked 2026-10; re-check before relying on it)
 PRICE_VCPU_S, PRICE_GIB_S = 0.000024, 0.0000025
@@ -53,7 +53,7 @@ def token() -> str:
     return _token["v"]
 
 
-def call(method: str, url: str, body=None, raw: bytes | None = None, ctype="application/json", ok404=False):
+def call(method: str, url: str, body=None, raw: bytes | None = None, ctype="application/json", ok404=False, binary=False):
     data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
     req = urllib.request.Request(url, data=data, method=method, headers={
         "Authorization": f"Bearer {token()}", "x-goog-user-project": PROJECT, **({"Content-Type": ctype} if data is not None else {})})
@@ -61,7 +61,7 @@ def call(method: str, url: str, body=None, raw: bytes | None = None, ctype="appl
         try:
             with urllib.request.urlopen(req, timeout=300) as r:
                 b = r.read()
-                return json.loads(b) if b and b[:1] in b"{[" else b
+                return b if binary or not b or b[:1] not in b"{[" else json.loads(b)
         except urllib.error.HTTPError as e:
             msg = e.read().decode()[:1500]
             if e.code == 404 and ok404:
@@ -87,7 +87,7 @@ def gcs_put(name: str, data: bytes, ctype="application/octet-stream") -> None:
 
 
 def gcs_get(name: str) -> bytes | None:
-    r = call("GET", f"{GCS}/o/{urllib.parse.quote(name, safe='')}?alt=media", ok404=True)
+    r = call("GET", f"{GCS}/o/{urllib.parse.quote(name, safe='')}?alt=media", ok404=True, binary=True)
     return r
 
 
@@ -166,7 +166,7 @@ def cmd_build(a):
 # ------------------------------------------------------------------------------------------------------------- job
 def job_body(digest: str, parallelism: int, task_count: int) -> dict:
     image = f"{REGION}-docker.pkg.dev/{PROJECT}/{REPO}/{IMAGE_NAME}@{digest}"
-    env = [{"name": k, "value": v} for k, v in {"BUCKET": BUCKET, "IMAGE_REF": image, "WORK": "/work", **R2_ENV}.items()]
+    env = [{"name": k, "value": v} for k, v in {"BUCKET": BUCKET, "IMAGE_REF": image, "WORK": "/work", "ROOFER_JOBS": CPU, **R2_ENV}.items()]
     env.append({"name": "DATAFORDELER_GRAPHQL_API_KEY", "valueSource": {"secretKeyRef": {"secret": "datafordeler-graphql-api-key", "version": "latest"}}})
     return {"labels": LABELS, "template": {"labels": LABELS, "parallelism": parallelism, "taskCount": task_count, "template": {
         "maxRetries": RETRIES, "timeout": TIMEOUT, "serviceAccount": SA, "executionEnvironment": "EXECUTION_ENVIRONMENT_GEN2",
@@ -264,7 +264,7 @@ def cmd_report(a):
     done, failed = markers()
     failed = {c: f for c, f in failed.items() if c not in done}
     hours = sum(d["task_s"] for d in done.values()) / 3600
-    cost = sum(d["task_s"] for d in done.values()) * (float(CPU) * PRICE_VCPU_S + 32 * PRICE_GIB_S)
+    cost = sum(d["task_s"] for d in done.values()) * (float(CPU) * PRICE_VCPU_S + float(MEM[:-2]) * PRICE_GIB_S)
     src = {}
     for d in done.values():
         for t, s in d.get("lidar", {}).items():
