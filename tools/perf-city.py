@@ -37,7 +37,7 @@ try:
                 page = b.new_page(viewport={'width': 1600, 'height': 900})
                 errs = []
                 page.on('console', lambda m: errs.append(m.text[:160]) if m.type == 'error' else None)
-                page.goto(f'http://127.0.0.1:{port}/index.html?hooks&{query}')
+                page.goto(f'http://127.0.0.1:{port}/index.html?hooks&{query}', timeout=300000)
                 page.wait_for_function('globalThis.__twin && globalThis.__twin.world', timeout=600000)
                 page.wait_for_timeout(1500)
                 page.evaluate("() => document.querySelector('[data-time=\"midday\"]')?.click()")
