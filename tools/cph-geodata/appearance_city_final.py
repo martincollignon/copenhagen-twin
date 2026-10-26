@@ -389,7 +389,7 @@ def _job(args):
 def run_pool(fn: str, cells: list[str], workers: int, extra=()) -> list[dict]:
     out = []
     t0 = time.time()
-    with ProcessPoolExecutor(workers, max_tasks_per_child=4) as ex:
+    with ProcessPoolExecutor(workers) as ex:
         futs = [ex.submit(_job, (fn, c, extra)) for c in cells]
         for f in as_completed(futs):
             r = f.result()

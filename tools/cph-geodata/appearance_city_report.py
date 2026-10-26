@@ -116,6 +116,11 @@ def kommuner():
     return out
 
 
+def ring_area(r) -> float:
+    n = len(r) // 2
+    return 0.5 * sum(r[2 * i] * r[2 * ((i + 1) % n) + 1] - r[2 * ((i + 1) % n)] * r[2 * i + 1] for i in range(n))
+
+
 def coverage() -> str:
     from PIL import Image, ImageDraw
     from shapely.geometry import Point
@@ -123,9 +128,11 @@ def coverage() -> str:
     kom = kommuner()
     idx = C.tile_index()
     rows: dict[str, dict] = {}
+    tiles_stat: dict[str, dict] = {}  # tile -> counts / footprint area / dominant kommune
     pool = []
     def row(name):
-        return rows.setdefault(name, {"buildings": 0, "wall_obs": 0, "roof_obs": 0, "atlas": 0, "walls": 0, "walls_observed": 0, "tile_bytes": 0})
+        return rows.setdefault(name, {"buildings": 0, "wall_obs": 0, "roof_obs": 0, "atlas": 0, "walls": 0, "walls_observed": 0, "tile_bytes": 0,
+                                           "area": 0.0, "area_wall": 0.0, "area_roof": 0.0, "area_atlas": 0.0})
     tex_look = C.ROOT / "data" / "tex-look"
     for tid, info in idx.items():
         pa, pb = C.TILES / tid / "appearance.json", C.TILES / tid / "buildings.json"
@@ -134,6 +141,7 @@ def coverage() -> str:
         bs = C.jload(pb)["buildings"]
         ap = C.jload(pa)["buildings"] if pa.exists() else {}
         tb = pa.stat().st_size if pa.exists() else 0
+        ts = tiles_stat.setdefault(tid, {"n": 0, "area": 0.0, "wall": 0.0, "roof": 0.0, "atlas": 0.0, "komm": {}, "layer": pa.exists()})
         for b in bs:
             if len(b.get("ring", [])) < 6:
                 continue
@@ -141,6 +149,9 @@ def coverage() -> str:
             e, n = cx + 723900.0, 6176500.0 - cz
             name = next((k for k, g in kom.items() if g.contains(Point(e, n))), "outside DAGI boundary")
             r = row(name)
+            area = abs(ring_area(b["ring"]))
+            r["area"] += area
+            ts["n"] += 1; ts["area"] += area; ts["komm"][name] = ts["komm"].get(name, 0) + 1
             r["buildings"] += 1
             r["tile_bytes"] += tb / max(len(bs), 1)
             a = ap.get(b["id"])
@@ -153,6 +164,8 @@ def coverage() -> str:
             r["roof_obs"] += roof.get("conf") == "observed"
             has_atlas = bool(a.get("atlas")) and (tex_look / (b["id"].replace(":", "_") + ".webp")).exists()
             r["atlas"] += has_atlas
+            r["area_wall"] += area * bool(obsw); r["area_roof"] += area * (roof.get("conf") == "observed"); r["area_atlas"] += area * has_atlas
+            ts["wall"] += area * bool(obsw); ts["roof"] += area * (roof.get("conf") == "observed"); ts["atlas"] += area * has_atlas
             pool.append((b["id"], name, tid, bool(obsw), roof.get("conf") == "observed", has_atlas))
     tot = {k: sum(r[k] for r in rows.values()) for k in ("buildings", "wall_obs", "roof_obs", "atlas", "walls", "walls_observed")}
     pct = lambda x, n: f"{100 * x / max(n, 1):.1f} %"
@@ -164,11 +177,39 @@ def coverage() -> str:
                  f"{r['walls_observed']:,} / {r['walls']:,} ({pct(r['walls_observed'], r['walls'])}) | {r['atlas']:,} ({pct(r['atlas'], r['buildings'])}) |")
     L.append(f"| **all** | {tot['buildings']:,} | {tot['wall_obs']:,} ({pct(tot['wall_obs'], tot['buildings'])}) | {tot['roof_obs']:,} ({pct(tot['roof_obs'], tot['buildings'])}) | "
              f"{tot['walls_observed']:,} / {tot['walls']:,} ({pct(tot['walls_observed'], tot['walls'])}) | {tot['atlas']:,} ({pct(tot['atlas'], tot['buildings'])}) |")
+    ta = {k: sum(r[k] for r in rows.values()) for k in ("area", "area_wall", "area_roof", "area_atlas")}
+    L += ["", "## Share of building footprint area", "", "| kommune | footprint area | wall tone observed | roof tone observed | photo atlas (local `data/tex-look`) |", "|---|---:|---:|---:|---:|"]
+    for name, r in sorted(rows.items()):
+        L.append(f"| {name} | {r['area'] / 1e6:.2f} km2 | {pct(r['area_wall'], r['area'])} | {pct(r['area_roof'], r['area'])} | {pct(r['area_atlas'], r['area'])} |")
+    L.append(f"| **all** | {ta['area'] / 1e6:.2f} km2 | {pct(ta['area_wall'], ta['area'])} | {pct(ta['area_roof'], ta['area'])} | {pct(ta['area_atlas'], ta['area'])} |")
+    have = [t for t, v in tiles_stat.items() if v["layer"]]
+    L += ["", f"Tiles: {len(idx)} in the index, {len(tiles_stat)} with buildings, {len(have)} with an `appearance.json`; "
+          f"{sum(1 for t in have if tiles_stat[t]['atlas'] > 0)} tiles have at least one local atlas, "
+          f"{sum(1 for t in have if tiles_stat[t]['area'] and tiles_stat[t]['wall'] / tiles_stat[t]['area'] >= 0.9)} tiles have wall tones on >= 90 % of their footprint area.", ""]
+    gaps = []
+    for t, v in tiles_stat.items():
+        if not v["area"]:
+            continue
+        main = max(v["komm"], key=v["komm"].get)
+        gaps.append((v["wall"] / v["area"], t, main, v))
+    gaps.sort()
+    L += ["## Gaps: lowest wall-tone coverage by tile (footprint area)", "", "| tile | kommune | buildings | wall tone | roof tone | atlas |", "|---|---|---:|---:|---:|---:|"]
+    for _, t, main, v in gaps[:15]:
+        L.append(f"| {t} | {main} | {v['n']} | {pct(v['wall'], v['area'])} | {pct(v['roof'], v['area'])} | {pct(v['atlas'], v['area'])} |")
+    n_desc = sum(1 for t in have for a in C.jload(C.TILES / t / "appearance.json")["buildings"].values() if a.get("atlas"))
+    L += ["", f"Atlas descriptors (`observed.atlas`, written by the `attach` mode) exist for {n_desc:,} buildings; the engine draws a photo wall only for a building that has one, and its webp has to be fetchable. "
+          "Buildings without a descriptor keep tone facades, whatever sits in the bucket.", ""]
+    L += ["## Where the atlases live and how the engine gets them", "",
+          "- Produced by the Cloud Run job `cph-skraafoto` (`tools/cloud/skraafoto/`, mode `atlas`) into `gs://lun-integrations-dev-cph-twin/skraafoto/tex-look/<gdk_id>.webp`; tile layers (`skraafoto/tiles/<tile>/appearance.json`) next to them.",
+          "- `python3 tools/cloud/skraafoto/cloudctl.py sync [--atlas-cap-gb 1.5]` copies the tile layers into `data/tiles/<tile>/appearance.json` and the inner-city atlases (nearest to the centre first, up to the cap) into `data/tex-look/`. The rest stay in the bucket.",
+          "- The engine does NOT read the bucket. `js/buildings-real.js` requests `./data/tex-look/<id>.webp` relative to the page; a 404 leaves that building on its tone facade (no retry, no console spam once any atlas has loaded). Serving the remaining atlases needs a static host or CDN for `data/tex-look/` (not set up yet); `data/tiles/` and `data/tex-look/` are git-ignored, so a deployment has to publish them separately.", ""]
     sizes = sum(p.stat().st_size for p in C.TILES.glob("*/appearance.json"))
     look = sum(p.stat().st_size for p in tex_look.glob("*.webp")) if tex_look.exists() else 0
     L += ["", f"Tile layers total {sizes / 1e6:.1f} MB; `data/tex-look` holds {look / 1e6:.0f} MB of webp atlases.", ""]
     try:
         v = validate()
+        if not v.get("compared"):
+            raise RuntimeError("no cell final.pkl.gz in the work dir (APPEARANCE_WORK), run on the machine that ran the job or after a cloudctl sync of the cells")
         L += ["## District validation (this pipeline vs `data/cph-geodata.json`, district buildings)", "", "```json", json.dumps(v, indent=1), "```", ""]
     except Exception as exc:  # noqa: BLE001
         L += [f"District validation not available: {exc}", ""]
