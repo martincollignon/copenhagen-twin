@@ -19,6 +19,7 @@ import { createStreetFurniture } from './street-furniture-cph.js';
 import { createZoneMap } from './zones-cph.js';
 import { placeFurniture } from './placement-cph.js';
 import { createGrass } from './grass-cph.js';
+import { openTileStore } from './tile-store.js';
 
 // js/world.js
 // The Copenhagen world: a ground plane in the Copenhagen frame (docs/cph-geodata-schema.md) plus data/cph-geodata.json,
@@ -74,6 +75,23 @@ async function loadCphLakes(url = CPH_LAKES_URL, fetchImpl = globalThis.fetch) {
     console.info('[cph] no lakes loaded:', error?.message || error);
     return null;
   }
+}
+
+/** Opens the tile store and loads every tile touching the district; null when data/tiles/index.json is absent (monolithic files). */
+async function loadTileSet() {
+  try {
+    const store = await openTileStore();
+    return store ? await store.loadArea(CPH_FRAME.bbox) : null;
+  } catch (error) {
+    console.warn('[cph] tiles unreadable, falling back to the monolithic files:', error?.message || error);
+    return null;
+  }
+}
+
+function checkGeodata(geo) {
+  const o = geo?.frame?.origin;
+  if (o && o.some((v, i) => Math.abs(v - CPH_FRAME.origin[i]) > 1e-6)) console.warn('[cph] geodata frame origin differs from city-config.js', o, CPH_FRAME.origin);
+  return geo;
 }
 
 /** Fetches the compiled geodata. Returns null when it is absent or unreadable: the engine boots without it. */
@@ -324,24 +342,28 @@ function createLocator(geo) {
 
 async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH_GEODATA_URL, water = '', treeDate } = {}) {
   setCalibration(!debug.split(',').includes('nocal'));
-  const geo = await loadCphGeodata(geoUrl);
+  // Tiled layers (data/tiles/index.json, tools/cph-geodata/tile_split.py) when they exist, the monolithic data/cph-*.json otherwise.
+  // C1 loads every tile of the district up front; the layer modules below only see the assembled documents.
+  const tileSet = debug.split(',').includes('notiles') || geoUrl !== CPH_GEODATA_URL ? null : await loadTileSet();
+  if (tileSet) markInit(`tiles(${tileSet.tiles.length})`);
+  const geo = tileSet ? checkGeodata(tileSet.geo) : await loadCphGeodata(geoUrl);
   globalThis.CPH_GEO = geo;
   markInit(geo ? 'geodata' : 'geodata(absent)');
 
   // ONE ground height model (data/cph-terrain.json, DHM terrain): buildings, roads, pavements, lakes, furniture, cars and
   // pedestrians all take their ground from it. `?debug=flat` boots on the old flat plane (y = 0) for comparisons.
-  const terrain = createTerrain(geo && !debug.split(',').includes('flat') ? await loadCphTerrain() : null);
+  const terrain = createTerrain(geo && !debug.split(',').includes('flat') ? (tileSet ? tileSet.terrain : await loadCphTerrain()) : null);
   if (geo && !terrain.flat) applyTerrainGround(geo, terrain);
   globalThis.CPH_TERRAIN = terrain;
   // ONE street cross-section (data/cph-streets.json): measured carriageways, cycle strips, pavements. `?debug=nostreets` keeps
   // the OSM centrelines with their capped widths.
-  const streetsStats = geo && !debug.split(',').includes('nostreets') ? applyStreets(geo, await loadCphStreets()) : null;
+  const streetsStats = geo && !debug.split(',').includes('nostreets') ? applyStreets(geo, tileSet ? tileSet.streets : await loadCphStreets()) : null;
   if (streetsStats) markInit(`streets(${streetsStats.roads} roads, ${streetsStats.dropped} dropped, ${streetsStats.sidewalks} pavements)`);
   markInit(terrain.flat ? 'terrain(flat)' : `terrain(${terrain.doc.min}..${terrain.doc.max} m)`);
 
   // Lakes (the Soerne): the ground plane is cut open over the water, so the plain plane is only built without them
-  const lakesDoc = geo && !debug.split(',').includes('nowater') ? await loadCphLakes() : null;
-  const furnitureDoc = geo ? await loadCphFurniture() : null;
+  const lakesDoc = geo && !debug.split(',').includes('nowater') ? (tileSet ? tileSet.lakes : await loadCphLakes()) : null;
+  const furnitureDoc = geo ? (tileSet ? tileSet.furniture : await loadCphFurniture()) : null;
   let bridgeDLB = null;
   if (lakesDoc?.lakes?.length && !debug.split(',').includes('nobridge')) {
     bridgeDLB = buildBridgeDLB(scene, geo, lakesDoc, { terrain, furnitureDoc });
@@ -367,8 +389,8 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   let buildings = null;
   if (geo?.buildings?.length && !debug.split(',').includes('nobuildings')) {
     // Optional LoD2 roofs (tools/lod2 -> data/lod2); `?debug=nolod2` keeps the flat extrusions for before/after shots
-    const lod2 = debug.split(',').includes('nolod2') ? null : await loadLod2();
-    buildings = await buildRealBuildings(scene, geo, { lod2, ...(debug.split(',').includes('nodoors') ? { entrances: null } : {}), observed: !debug.split(',').includes('noobserved'), terrain: terrain.flat ? null : terrain });
+    const lod2 = debug.split(',').includes('nolod2') ? null : tileSet ? tileSet.lod2 : await loadLod2();
+    buildings = await buildRealBuildings(scene, geo, { lod2, ...(tileSet ? { entrances: tileSet.entrances, venues: tileSet.venues } : {}), ...(debug.split(',').includes('nodoors') ? { entrances: null } : {}), observed: !debug.split(',').includes('noobserved'), terrain: terrain.flat ? null : terrain });
     markInit(`buildings(${buildings.stats.buildings})`);
   }
 
@@ -377,8 +399,8 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   let vegetation = null;
   let grass = null;
   if (geo?.roadGraph && !debug.split(',').includes('noroads')) {
-    vegetation = debug.split(',').includes('nograss') ? null : await loadCphVegetation();
-    surfacesCut = applySurfaceCuts(withVegetation(await loadCphSurfaces(), vegetation), mergeSurfaceCuts(lakesDoc?.surface_cuts, geo.surfaceCuts));
+    vegetation = debug.split(',').includes('nograss') ? null : tileSet ? tileSet.vegetation : await loadCphVegetation();
+    surfacesCut = applySurfaceCuts(withVegetation(tileSet ? tileSet.surfaces : await loadCphSurfaces(), vegetation), mergeSurfaceCuts(lakesDoc?.surface_cuts, geo.surfaceCuts));
     traffic = await buildCphTraffic(scene, geo, { markInit, surfacesDoc: surfacesCut, lakesDoc, terrain, debug });
   }
 

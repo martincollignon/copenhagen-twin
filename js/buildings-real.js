@@ -392,12 +392,10 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
   // extrusion. The join is by building id, so the geodata compiler never needs to know about LoD2.
   const lod2Records = new Map();
   if (lod2) {
-    await lod2.prefetch();
-    for (const b of buildings) {
-      if (heroIds.has(b.id) || b.footprintFix) continue; // a footprint the street layout clipped no longer matches its roofer edges
-      const rec = await lod2.ready(b.id);
-      if (rec) lod2Records.set(b.id, rec);
-    }
+    // Records are fetched per owning tile on first use (loadLod2: 1 km binaries, tile store: one lod2.bin per tile), all in parallel.
+    const wanted = buildings.filter((b) => !heroIds.has(b.id) && !b.footprintFix); // a footprint the street layout clipped no longer matches its roofer edges
+    const recs = await Promise.all(wanted.map((b) => lod2.ready(b.id)));
+    wanted.forEach((b, i) => { if (recs[i]) lod2Records.set(b.id, recs[i]); });
   }
 
   const leafNodes = collectLeaves(tree);

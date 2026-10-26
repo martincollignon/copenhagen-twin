@@ -76,7 +76,13 @@ Facade look: photo walls are on by default between about 14 m and 150 m of the c
 uv run tools/cph-geodata/build.py --env-file <path>   # a .env with DHM_TERRAIN_TOKEN (or GSEARCH_TOKEN) for DHM heights
 ```
 
-Raw downloads are cached under `data/raw/`, so reruns are offline. See `tools/cph-geodata/build.py` for options.
+Raw downloads are cached under `data/raw/`, so reruns are offline. See `tools/cph-geodata/build.py` for options. `tools/cph-geodata/frame.py` is the one place for the origin, the district bbox and the 500 m tile grid; compiler steps accept `--bbox` / `--tile` for another area.
+
+The twin loads per-tile layers when `data/tiles/index.json` exists (generated, gitignored, otherwise the files above are used):
+
+```sh
+uv run tools/cph-geodata/tile_split.py   # data/cph-*.json + data/lod2 -> data/tiles/<e500>_<n500>/, data/city/ (format: docs/cph-geodata-schema.md)
+```
 
 `data/cph-surfaces.json` (ground-material polygons and road markings, M4) is a separate generated file:
 

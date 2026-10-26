@@ -52,7 +52,7 @@ export function createTerrain(doc) {
   if (!doc) return FLAT_TERRAIN;
   const { width: w, height: h, cell } = doc;
   const [x0, z0] = doc.bbox;
-  const grid = decodeGrid(doc.data, w * h);
+  const grid = doc.grid || decodeGrid(doc.data, w * h); // tiles hand over `grid` already decoded (js/tile-store.js)
   const heightAt = (x, z) => {
     let fx = (x - x0) / cell - 0.5;
     let fz = (z - z0) / cell - 0.5;

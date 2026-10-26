@@ -241,3 +241,15 @@ The document's attribution includes GeoDanmark orthophoto and DHM Punktsky.
 Regenerate with `uv run tools/cph-geodata/tree_canopy.py`. Raw inputs remain read-only.
 The derived height cache defaults to `.context/tree-heights.npz`; `--height-cache`
 can select another writable scratch path.
+
+## Tiles (`cph-tiles/1`, `tools/cph-geodata/tile_split.py`, `js/tile-store.js`)
+
+Generated from the layer files above, gitignored (about 40 MB); the engine reads `data/tiles/index.json` when it exists and the monolithic `data/cph-*.json` otherwise (`?debug=notiles` forces the monolithic path). Regenerate with `uv run tools/cph-geodata/tile_split.py`.
+
+- Grid: fixed 500 m in EPSG:25832, id `<floor(E/500)>_<floor(N/500)>` (`frame.py`, `js/tile-grid.js`); four tiles fill one 1 km DHM / LoD2 cell. The district touches 4 x 4 tiles (`1446_12351` .. `1449_12354`).
+- `data/tiles/index.json`: `{version, tileSize, frame, city: {meta, roadgraph, streets, lakes}, tiles: {id: {utm, local, layers: {name: bytes}, counts, bytes}}}`.
+- `data/tiles/<id>/<layer>.json`, each `{tile, ord, ...lists}`: `buildings` (geodata buildings), `roads` (roads, cycleTracks, sidewalks, water, parks, `points.<kind>`), `surfaces` (surfaces, markings), `furniture` (the cph-furniture lists), `vegetation` (surfaces, canopy), `entrances` (entrances, stairwells), `groundfloor` (venues), `terrain` (`chunk`: int16 cm cells owned by the tile, base64, plus per-building ground levels), `lod2` (+ `lod2.bin`: that tile's roofer records, offsets relative to the tile file).
+- Ownership is by centroid (bbox centre of a ring or polyline, x/z of a point); nothing is split, so an item may stick out of its tile. Terrain is owned by cell centre. Entrances, stairwells, per-building terrain levels and LoD2 records follow their building.
+- `ord[list]` is each item's index in the source list; assembling every tile restores the source documents exactly (tested in `tools/cph-geodata/tests/test_tile_split.py` and `tests/tile-store.test.mjs`).
+- `data/city/meta.json` holds what is not tile-owned (versions, frames, attributions, stats, terrain header and `cut`, heroes, appearance, `lod2` header); `data/city/roadgraph.json` is the citywide road graph; `streets.json` and `lakes.json` are copies of `cph-streets.json` and `cph-lakes.json`.
+- Compiler steps take `--bbox MINE MINN MAXE MAXN` or `--tile <id>` (repeatable) for an area other than the district; the raw cache then goes to `data/raw/areas/<bbox>/` and `--out` is required.
