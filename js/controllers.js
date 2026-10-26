@@ -212,13 +212,13 @@ function addBikeCable(parent, points, material, radius = 0.0032) {
 // Walking surface for the player's pedestrian (its rig samples it around its feet)
 const personGround = (controllers, x, z) => controllers.getGroundHeight(x, z, 'person');
 
-function collisionBody(mode, radius, heading, margin = 0) {
+function collisionBody(mode, radius, heading, margin = 0, spec = null) {
   const car = mode === 'car';
   const cargoBike = mode === 'cargobike';
   const oriented = car || cargoBike;
   const sin = Math.sin(heading), cos = Math.cos(heading);
-  const hx = (car ? 0.86 : cargoBike ? 0.38 : radius) + margin;
-  const hz = (car ? 2.18 : cargoBike ? 1.34 : radius) + margin;
+  const hx = (car ? (spec?.width || 1.72) / 2 : cargoBike ? 0.38 : radius) + margin;
+  const hz = (car ? (spec?.length || 4.36) / 2 : cargoBike ? 1.34 : radius) + margin;
   return {
     car, oriented, sin, cos, hx, hz, radius: radius + margin,
     extX: oriented ? Math.abs(cos) * hx + Math.abs(sin) * hz : radius + margin,
@@ -278,27 +278,6 @@ function buildingContact(c, x, y, z, body, contact) {
     contact.depth = depth;
   }
   return true;
-}
-
-function createLicensePlateTexture() {
-  // Danish-style plate: white with a red border and a made-up registration
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 128;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#f4f4ef';
-  ctx.fillRect(0, 0, 256, 128);
-  ctx.strokeStyle = '#c8102e';
-  ctx.lineWidth = 8;
-  ctx.strokeRect(6, 6, 244, 116);
-  ctx.fillStyle = '#17212c';
-  ctx.font = '900 44px JetBrains Mono, monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('XA 10 001', 128, 66);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
 }
 
 class ThirdPersonControllerManager {
@@ -495,7 +474,7 @@ class ThirdPersonControllerManager {
     const heli = this.activeMode === 'helicopter';
     const radius = heli ? 4.5 : this.activeMode === 'person' ? 0.48 : this.activeMode === 'cargobike' ? 1.4 : 0.65;
     const sinH = Math.sin(heading), cosH = Math.cos(heading);
-    const shape = collisionBody(this.activeMode, radius, heading, 0.1);
+    const shape = collisionBody(this.activeMode, radius, heading, 0.1, this.getActiveEntity()?.bodySpec);
     const reach = Math.max(shape.extX, shape.extZ);
     const margin = heli ? 6000 : 0;
     const entity = this.getActiveEntity();
@@ -598,7 +577,7 @@ class ThirdPersonControllerManager {
     const chassisPivot = new THREE.Group();
     root.add(chassisPivot);
 
-    const spec = BODY_SPECS.sedan;
+    const spec = BODY_SPECS.hatch;
     const carLoftMat = createLoftedCarMaterial(spec, 0x1d3b6c);
 
     // 1. 3D Lofted Body + Curved Windscreens + Crowned Roof + Side Mirrors
@@ -607,17 +586,6 @@ class ThirdPersonControllerManager {
     carBodyMesh.castShadow = true;
     carBodyMesh.receiveShadow = true;
     chassisPivot.add(carBodyMesh);
-
-    // 2. Danish-style license plates on the bumpers
-    const plateTex = createLicensePlateTexture();
-    const plateMat = new THREE.MeshStandardNodeMaterial({ map: plateTex, roughness: 0.28 });
-    const rearPlate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.02), plateMat);
-    rearPlate.position.set(0, spec.plates[1], spec.zRear - 0.006);
-    chassisPivot.add(rearPlate);
-
-    const frontPlate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.02), plateMat);
-    frontPlate.position.set(0, spec.plates[0], spec.zFront + 0.006);
-    chassisPivot.add(frontPlate);
 
     // 3b. Brake lights, CHMSL & turn signals are lit by the car material from its carState uniform (see updateCar)
     const carState = carLoftMat.userData.carState;
@@ -645,7 +613,7 @@ class ThirdPersonControllerManager {
     }
 
     // 5. Soft Under-Car Contact Shadow (AO) + Clustered Dual LED Headlight SpotLights & Rear Brake PointLight
-    const carShadowGeo = new THREE.PlaneGeometry(2.22, 5.05);
+    const carShadowGeo = new THREE.PlaneGeometry(spec.width + 0.3, spec.length + 0.5);
     carShadowGeo.rotateX(-Math.PI * 0.5);
     const carShadow = new THREE.Mesh(carShadowGeo, createContactShadowMaterial());
     carShadow.position.set(0, 0.02, 0.0);
@@ -664,6 +632,7 @@ class ThirdPersonControllerManager {
 
     return {
       type: 'car',
+      bodySpec: spec,
       label: 'Car',
       mesh: root,
       chassisPivot,
@@ -1570,7 +1539,7 @@ class ThirdPersonControllerManager {
       }
     }
 
-    const body = collisionBody(this.activeMode, radius, entity?.heading || 0);
+    const body = collisionBody(this.activeMode, radius, entity?.heading || 0, 0, entity?.bodySpec);
     const { sin: sinH, cos: cosH, extX, extZ } = body;
     const contact = this._buildingContact ??= { nx: 0, nz: 0, depth: 0 };
 
@@ -1808,7 +1777,7 @@ class ThirdPersonControllerManager {
     }
 
     const forwardDist = (c.position.x - prevX) * Math.sin(c.heading) + (c.position.z - prevZ) * Math.cos(c.heading);
-    const rawWheelStep = forwardDist / 0.35;
+    const rawWheelStep = forwardDist / (c.bodySpec?.wheelRadius || 0.35);
     const wheelStep = Math.sign(rawWheelStep) * Math.min(Math.abs(rawWheelStep), 0.48);
     c.wheelSpin = (c.wheelSpin + wheelStep) % (Math.PI * 2);
     for (const w of c.wheels) {

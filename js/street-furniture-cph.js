@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { CAR_BODY_TYPES } from './vehicle-fleet.js';
 import { BODY_SPECS, buildCarGeometry, buildCarProxyGeometry, createLoftedCarMaterial } from './actor-models.js';
 import {
   TREE_STYLES, buildFurniturePlan, composeYaw, composeYawPitch, indexItems, planCounts
@@ -261,8 +262,8 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
 
   // ------------------------------------------------------------------------------------------- cars
   const carSets = {};
-  for (const body of ['sedan', 'suv']) {
-    const spec = BODY_SPECS[body];
+  for (const body of CAR_BODY_TYPES) {
+    const spec = { ...BODY_SPECS[body], taxiSign: false };
     const mat = createLoftedCarMaterial(spec);
     const n = plan.cars.filter((c) => c.body === body).length;
     carSets[body] = {
@@ -395,7 +396,7 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     for (const c of carIndex.queryRange(cx, cz, CAR_FAR)) {
       const d = Math.hypot(c.x - cx, c.z - cz);
       const set = carSets[c.body][d <= CAR_NEAR ? 'near' : 'far'];
-      set.put(c.x, c.y, c.z, c.yaw, 1, 1, 1, null, [c.paint[0] ** 2.2 * c.shade, c.paint[1] ** 2.2 * c.shade, c.paint[2] ** 2.2 * c.shade]);
+      set.put(c.x, c.y, c.z, c.yaw, 1, 1, 1, null, colorArr(lin(c.paint), c.shade));
     }
 
     // props

@@ -5,6 +5,7 @@
 // Frame: x east, z south, y up. `yaw` is the direction an item faces: model +z -> (sin yaw, cos yaw), i.e. rotation.y.
 
 import { Quadtree } from './quadtree.js';
+import { fleetVehicle } from './vehicle-fleet.js';
 
 export const FURNITURE_URL = './data/cph-furniture.json';
 
@@ -216,11 +217,6 @@ export function mapLamps(lamps, groundHeight) {
 
 // ----------------------------------------------------------------------------------------------- parking and bikes
 
-const CAR_PAINTS = [
-  [0.07, 0.075, 0.085], [0.07, 0.075, 0.085], [0.78, 0.80, 0.83], [0.78, 0.80, 0.83], [0.92, 0.93, 0.94], [0.92, 0.93, 0.94],
-  [0.33, 0.35, 0.38], [0.33, 0.35, 0.38], [0.12, 0.2, 0.36], [0.35, 0.1, 0.12], [0.55, 0.53, 0.48], [0.16, 0.24, 0.2]
-];
-
 export const CAR_DENSITY = [0.70, 0.85];
 
 /** Occupancy of a block: a stable value inside CAR_DENSITY from a 60 m cell. */
@@ -249,8 +245,10 @@ export function parkedCars(bays, groundHeight, seed = 1) {
     const x = b.x + Math.sin(b.yaw) * along;
     const z = b.z + Math.cos(b.yaw) * along;
     const y = groundHeight ? groundHeight.heightAt(x, z) : 0;
+    const choice = fleetVehicle(j(5), j(6), j(8), true);
+    const rgb = [16, 8, 0].map((shift) => ((choice.paint >>> shift) & 255) / 255);
     out.push({
-      cx: x, cz: z, x, y, z, yaw, body: j(5) < 0.42 ? 'suv' : 'sedan', paint: CAR_PAINTS[Math.floor(j(6) * CAR_PAINTS.length)],
+      cx: x, cz: z, x, y, z, yaw, body: choice.body, paint: rgb,
       shade: 0.92 + j(7) * 0.16
     });
   }
