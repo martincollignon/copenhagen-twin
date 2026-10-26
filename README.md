@@ -70,7 +70,11 @@ Every pull request runs the required `texture-memory-budget` check. It replays t
 node --test tests/texture-memory-budget.test.mjs
 ```
 
-On a WebGPU machine, the local browser harness also samples the live resident and in-flight facade estimate while moving through that route, and prints the renderer's total texture allocation for context:
+The same required check tests building-batch picking and streaming visibility, preserves the sun shadow depth target, and checks module loading. Static building cells share material batches while retaining their geometry and individual culling. On WebGPU, the sun cascades use their original depth maps without allocating an unused colour attachment; at 3072 pixels per cascade this saves 72 MiB without changing shadow resolution.
+
+The [rendering measurements](docs/research/rendering-optimization.md) record the allocation and frame-time comparisons, verification and remaining limits.
+
+On a WebGPU machine, the local browser harness samples the live resident and in-flight facade estimate while moving through that route, fails on rendering errors, and prints the renderer's texture estimate for context. That estimate excludes some backing allocations, including multisampled colour textures; it is not a physical GPU memory reading:
 
 ```sh
 uv run --with playwright python tools/shoot-m2.py --perf

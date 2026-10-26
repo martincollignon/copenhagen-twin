@@ -13,6 +13,7 @@ import { PHOTO, selectPhotoSet, texRequested, lookFile, estimateTextureBytes } f
 import { createContext as createGroundContext } from './groundfloor.js';
 import { createEntranceIndex, createDoorAccumulator, addDoors } from './entrances.js';
 import { CPH_FRAME, toLocal } from './city-config.js';
+import { batchBuildingCells, updateBuildingCellVisibility } from './building-batches.js';
 
 // js/buildings-real.js
 // Copenhagen's real buildings (M2): every geodata building is extruded from its measured footprint (rings with holes)
@@ -620,6 +621,8 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     }
   }));
 
+  batchBuildingCells(root, leaves, pickables);
+
   const neon = createIrmaNeon(root, byId, lod2Records);
   const texManager = tex ? createTexManager(root, texCandidates) : null;
   const raycaster = new THREE.Raycaster();
@@ -635,7 +638,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     for (const g of leaves) {
       const dx = g.userData.centre[0] - x;
       const dz = g.userData.centre[1] - z;
-      g.visible = Math.hypot(dx, dz) - g.userData.radius < STREAM_RADIUS;
+      updateBuildingCellVisibility(g, Math.hypot(dx, dz) - g.userData.radius < STREAM_RADIUS);
     }
   }
 
@@ -691,10 +694,12 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     });
   }
 
+  let meshCount = 0;
+  root.traverse((object) => { if (object.isMesh) meshCount++; });
   const stats = {
     tex: texManager ? { candidates: texCandidates.length } : null,
     buildings: buildings.length - heroIds.size, heroes: heroStatus, cells: leaves.length, triangles, doors: doorCount, lod2: lod2Records.size, neon: neon.stats,
-    meshes: pickables.length + heroGroups.reduce((n, g) => n + g.children[0].children.length, 0)
+    meshes: meshCount
   };
 
   return { group: root, leaves, update, pick, attach, showBuilding, stats, byId, heroGroups, heroStatus, texManager, neon };
