@@ -25,9 +25,37 @@ export function toEtrs(x, z, y = 0) {
   return { e: x + CPH_FRAME.origin[0], n: CPH_FRAME.origin[1] - z, h: y + CPH_FRAME.origin[2] };
 }
 
-// The playable district. Players may roam a margin beyond it (controllers.js clamps to these bounds).
+// The playable area. Players may roam a margin beyond it (controllers.js clamps to these bounds). It starts as the
+// district frame and is replaced by the extent of the tile index (setCityBounds, called by world.js) so the clamp
+// follows the data: the object is mutated in place, every importer sees the new values.
 const ISLAND_BOUNDS = { minX: BX0, maxX: BX1, minZ: BZ0, maxZ: BZ1, sidewalkHeight: 0.15, waterLevel: -2.2 };
-const getIslandBoundsAtZ = () => ({ westX: BX0, eastX: BX1 });
+const getIslandBoundsAtZ = () => ({ westX: ISLAND_BOUNDS.minX, eastX: ISLAND_BOUNDS.maxX });
+
+const checkBbox = (bbox) => {
+  const [x0, z0, x1, z1] = bbox;
+  if (![x0, z0, x1, z1].every(Number.isFinite) || x1 <= x0 || z1 <= z0) throw new Error(`bad bounds ${bbox}`);
+  return [x0, z0, x1, z1];
+};
+
+// The extent of the COMPILED data (tile index `frame.bbox`; the district frame until a tile index says otherwise). Water, the
+// ground field, placement zones and the lawn mask are rasters / outlines over it, and a lake that reaches its edge is continued
+// beyond it, so they take it from here instead of hardcoding the district.
+let dataBbox = [...CPH_FRAME.bbox];
+export const getDataBbox = () => dataBbox;
+
+/**
+ * Sets the playable / loaded extent [minX, minZ, maxX, maxZ] in the local frame (the union of the tile index), and optionally
+ * the extent of the compiled data (`frame`).
+ */
+export function setCityBounds(bbox, { frame = null } = {}) {
+  const [x0, z0, x1, z1] = checkBbox(bbox);
+  Object.assign(ISLAND_BOUNDS, { minX: x0, minZ: z0, maxX: x1, maxZ: z1 });
+  if (frame) dataBbox = checkBbox(frame);
+  return ISLAND_BOUNDS;
+}
+
+/** The current playable / loaded extent as [minX, minZ, maxX, maxZ]. */
+export const getCityBounds = () => [ISLAND_BOUNDS.minX, ISLAND_BOUNDS.minZ, ISLAND_BOUNDS.maxX, ISLAND_BOUNDS.maxZ];
 
 // Teleport presets (local frame; positions and headings taken from the roadGraph centrelines of the named streets,
 // heading = direction of travel along the street: forward is (sin h, cos h)). The scenic cameras (cameras.js) frame

@@ -1,5 +1,6 @@
 import { triangulatePolygon, pointInRing } from './polygon-cph.js';
 import { densifyRing } from './terrain-cph.js';
+import { getDataBbox } from './city-config.js';
 
 // js/lakes-cph.js
 // Pure (no three.js) geometry for the Soerne (Peblinge, Sortedams and Sankt Joergens Soe) and the other lakes of
@@ -223,7 +224,7 @@ function surfaceArrays(ring, holes, y) {
  *   walls:   lake walls (faces towards the water), granite coping on top, bridge soffits and fascias
  *   ground:  the lakes' extended outlines (holes of the ground plane) and the islands inside them
  */
-export function buildLakeArrays(doc, { bbox = [-750, -750, 750, 750], terrain = null, modelBridge = () => false } = {}) {
+export function buildLakeArrays(doc, { bbox = getDataBbox(), terrain = null, modelBridge = () => false } = {}) {
   const lakes = doc?.lakes || [];
   const measured = terrain && !terrain.flat ? terrain : null;
   // With terrain every lake sits at its MEASURED water level (the DTM over the lake is the water surface); lakes within
@@ -391,7 +392,7 @@ export function inLake(doc, x, z) {
  * grid (value = distance * 255 / shoreMax). The water shader samples it bilinearly for the soft shoreline.
  * Rasterised at cell centres; cells outside the grid count as water (no shore at the district edge).
  */
-export function shoreDistanceField(doc, { bbox = [-750, -750, 750, 750], cell = WATER.cell, max = WATER.shoreMax } = {}) {
+export function shoreDistanceField(doc, { bbox = getDataBbox(), cell = WATER.cell, max = WATER.shoreMax } = {}) {
   const [x0, z0, x1, z1] = bbox;
   const w = Math.ceil((x1 - x0) / cell);
   const h = Math.ceil((z1 - z0) / cell);

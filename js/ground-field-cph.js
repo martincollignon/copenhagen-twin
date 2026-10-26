@@ -1,4 +1,5 @@
 import { extendBeyondBbox } from './lakes-cph.js';
+import { getDataBbox } from './city-config.js';
 
 // js/ground-field-cph.js
 // Pure raster behind the lake-path ground shader (js/water-cph.js applyGroundField): for every cell of the district
@@ -75,7 +76,7 @@ export function chamfer(source, w, h) {
  * @param {Array<{ring: number[], holes?: number[][]}>} parks green areas
  * @returns {{ data: Uint8Array, width: number, height: number, bbox: number[], cell: number, max: number }} RGBA bytes
  */
-export function groundField(lakesDoc, parks = [], { bbox = [-750, -750, 750, 750], cell = LAND.cell, max = LAND.max } = {}) {
+export function groundField(lakesDoc, parks = [], { bbox = getDataBbox(), cell = LAND.cell, max = LAND.max } = {}) {
   const [x0, z0, x1, z1] = bbox;
   const w = Math.ceil((x1 - x0) / cell);
   const h = Math.ceil((z1 - z0) / cell);
