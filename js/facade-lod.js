@@ -9,9 +9,20 @@ const PHOTO = {
   near: 115, // m: fully photographic up to here
   far: 150, // m: fully procedural from here (smoothstep crossfade in between)
   residency: 165, // m: buildings inside this radius may hold an atlas (a little beyond `far` so nothing pops in mid-fade)
-  budget: 56, // atlases resident at once (nearest first)
-  concurrency: 4
+  budget: 56, // hard resident count cap (nearest first)
+  maxTextureDimension: 2048, // clamp tall WebP atlases before GPU upload
+  maxResidentBytes: 48 * 1024 * 1024, // decoded RGBA8 plus mipmaps, shared across resident photo walls
+  concurrency: 2
 };
+
+/** Conservative RGBA8 allocation estimate, including the full mip chain. */
+function estimateTextureBytes(size, p = PHOTO) {
+  const [width, height] = size || [];
+  if (!(width > 0 && height > 0)) return 0;
+  const maxDimension = p.maxTextureDimension || Math.max(width, height);
+  const scale = Math.min(1, maxDimension / Math.max(width, height));
+  return Math.ceil(width * scale) * Math.ceil(height * scale) * 4 * (4 / 3);
+}
 
 const smooth = (a, b, x) => {
   const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
@@ -37,10 +48,20 @@ function selectPhotoSet(candidates, x, z, p = PHOTO) {
   const near = [];
   for (const c of candidates) {
     const d = Math.hypot(c.cx - x, c.cz - z);
-    if (d < p.residency) near.push([d, c.id]);
+    if (d < p.residency) near.push([d, c]);
   }
   near.sort((a, b) => a[0] - b[0]);
-  return { want: near.slice(0, p.budget).map((e) => e[1]), inRange: new Set(near.map((e) => e[1])) };
+  const want = [];
+  let residentBytes = 0;
+  const maxResidentBytes = p.maxResidentBytes ?? Infinity;
+  for (const [, candidate] of near) {
+    if (want.length >= p.budget) break;
+    const bytes = estimateTextureBytes(candidate.walls?.size || candidate.size, p);
+    if (residentBytes + bytes > maxResidentBytes) continue;
+    want.push(candidate.id);
+    residentBytes += bytes;
+  }
+  return { want, inRange: new Set(near.map((e) => e[1].id)) };
 }
 
 /** Atlas file the photo walls are read from: the processed RGBA look atlas (tools/cph-geodata/facade_look.py) first. */

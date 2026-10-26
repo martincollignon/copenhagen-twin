@@ -237,18 +237,29 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
   const loader = typeof createImageBitmap === 'function';
   const byId = new Map(candidates.map((c) => [c.id, c]));
 
-  async function fetchBitmap(file) {
+  async function fetchBlob(file) {
     const response = await fetchImpl(`./data/${file}`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const blob = await response.blob();
-    return createImageBitmap(blob, { imageOrientation: 'none', premultiplyAlpha: 'none' });
+    return response.blob();
   }
 
   async function atlasBitmap(c) {
+    const [width, height] = c.walls.size || [];
+    const scale = width > 0 && height > 0
+      ? Math.min(1, PHOTO.maxTextureDimension / Math.max(width, height))
+      : 1;
+    const bitmapOptions = { imageOrientation: 'none', premultiplyAlpha: 'none' };
+    if (scale < 1) {
+      bitmapOptions.resizeWidth = Math.max(1, Math.floor(width * scale));
+      bitmapOptions.resizeHeight = Math.max(1, Math.floor(height * scale));
+      bitmapOptions.resizeQuality = 'high';
+    }
     try {
-      return { bitmap: await fetchBitmap(lookFile(c.walls.file)), hasMask: true };
+      const blob = await fetchBlob(lookFile(c.walls.file));
+      return { bitmap: await createImageBitmap(blob, bitmapOptions), hasMask: true };
     } catch {
-      return { bitmap: await fetchBitmap(c.walls.file), hasMask: false };
+      const blob = await fetchBlob(c.walls.file);
+      return { bitmap: await createImageBitmap(blob, bitmapOptions), hasMask: false };
     }
   }
 
@@ -308,11 +319,11 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
   function update(x, z, now = performance.now()) {
     if (!state.enabled || !loader || now - state.lastRun < 350) return;
     state.lastRun = now;
-    const { want, inRange } = selectPhotoSet(candidates, x, z);
+    const { want } = selectPhotoSet(candidates, x, z);
     const wantSet = new Set(want);
-    for (const id of [...state.resident.keys()]) if (!inRange.has(id)) evict(id);
-    // Over budget: drop the residents that lost their slot to a nearer building
-    for (const id of [...state.resident.keys()]) if (!wantSet.has(id) && state.resident.size + state.loading.size > PHOTO.budget) evict(id);
+    // The nearest set is capped by both count and estimated decoded GPU bytes. Evict anything that no longer fits
+    // before starting replacements, so a dense block of large atlases cannot exceed the texture memory budget.
+    for (const id of [...state.resident.keys()]) if (!wantSet.has(id)) evict(id);
     const todo = want.filter((id) => !state.resident.has(id) && !state.loading.has(id) && !state.failed.has(id)).map((id) => byId.get(id));
     const run = async () => {
       if (!state.probed && todo.length) {
