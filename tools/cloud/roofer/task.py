@@ -302,6 +302,14 @@ def process_cell(cell: str, store: Store, work: Path, jobs: int, force: bool) ->
     feats = doc["features"]
     n_own = sum(1 for f in feats if f["properties"].get("own"))
     log(f"{cell}: {n_own} own buildings, {len(feats)} footprints, {jobs} roofer jobs")
+    if n_own == 0:  # sea / margin-only cell: nothing to reconstruct (roofer fails on an empty footprint set)
+        base = f"cells/{cell}"
+        store.put_bytes(f"{base}/manifest.json", json.dumps({"tile": cell, "scan": {"scan_date": None}, "buildings": {}, "footprints": len(feats),
+                                                             "neighbour_tiles_read": []}).encode())
+        done = {"cell": cell, "finished": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "task_s": round(time.time() - t_start, 1),
+                "own_buildings": 0, "footprints": len(feats), "no_own_buildings": True, "lidar": {}, "image": os.environ.get("IMAGE_REF", "")}
+        store.put_bytes(f"{base}/DONE.json", json.dumps(done, indent=1).encode())
+        return done
 
     wd = work / cell
     shutil.rmtree(wd, ignore_errors=True)
