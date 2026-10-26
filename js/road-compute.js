@@ -59,7 +59,7 @@ export function computeRoadSurfaces(job) {
     surfaces = { ...sf };
     if (surfacesOwn) surfaces.own = { surfaces: new Set(surfacesOwn.surfaces.map((i) => sf.surfaces[i])), markings: new Set(surfacesOwn.markings.map((i) => sf.markings[i])) };
   }
-  const meshes = computeSurfaceMeshes(geo, near ? surfaces : null, terrain);
+  const meshes = computeSurfaceMeshes(geo, near ? surfaces : null, terrain, { lite: !near });
   let heightGrid = null;
   if (near && bounds) {
     const grid = buildGroundHeightGrid(geo, surfaces, [bounds[0] - HEIGHT_MARGIN, bounds[1] - HEIGHT_MARGIN, bounds[2] + HEIGHT_MARGIN, bounds[3] + HEIGHT_MARGIN]);

@@ -110,6 +110,8 @@ def remap_graph(graph: dict, survey: dict | None, city: dict) -> tuple[dict, dic
         ends.setdefault((l[1], l[0]), li)
 
     def link_of(li: int):
+        if not 0 <= li < len(survey["links"]):
+            return None
         l = survey["links"][li]
         a, b = node_map.get(l[0]), node_map.get(l[1])
         return None if a is None or b is None else ends.get((a, b))
@@ -200,6 +202,9 @@ def main() -> int:
 
     sizes = {}
     for t, payload in per.items():
+        if not (tiles_dir / t).is_dir():  # a tile the compiler has not made (yet): nothing to put it in
+            miss["tiles"] = miss.get("tiles", 0) + 1
+            continue
         data = json.dumps(payload, separators=(",", ":")).encode()
         (tiles_dir / t / "streets.json").write_bytes(data)
         sizes[t] = len(data)

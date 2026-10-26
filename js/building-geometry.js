@@ -383,7 +383,7 @@ function addBuilding(acc, b, opts = {}) {
     }
     addLod2Roof(acc.roof, lod2, roofColour, roofTriangles);
   } else {
-    addRoof(acc.roof, b, outerPts, holePts, eave, roofColour);
+    addRoof(acc.roof, b, outerPts, holePts, eave, roofColour, lite);
   }
 
   // Details share the existing roof material, buffers, shadows, culling and picking range: zero extra draws.
@@ -451,7 +451,18 @@ function insetRing(ring, t) {
   });
 }
 
-function addRoof(r, b, outer, holes, eave, colour) {
+function addRoof(r, b, outer, holes, eave, colour, lite = false) {
+  if (lite) {
+    // the mid ring: a flat deck at the eave, no parapet ring (a hipped cap of a plain quad stays as it is)
+    const hippedLite = holes.length === 0 && outer.length === 4 && b.roof !== 'flat' && b.ridge > eave + 1.5;
+    if (!hippedLite) {
+      const tri = triangulate(outer.map(([x, z]) => [x, -z]), holes.map((h) => h.map(([x, z]) => [x, -z])));
+      const base = r.position.length / 3;
+      for (const [x, n] of tri.points) pushRoofVertex(r, x, eave, -n, 0, 1, 0, colour);
+      for (const k of tri.indices) r.index.push(base + k);
+      return;
+    }
+  }
   const hipped = holes.length === 0 && outer.length === 4 && b.roof !== 'flat' && b.ridge > eave + 1.5;
   if (hipped) {
     addHippedRoof(r, outer, eave, Math.min(b.ridge - eave, 6.5), colour);

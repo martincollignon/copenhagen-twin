@@ -202,7 +202,8 @@ test('building compute: a job survives the trip to a worker; lite and full agree
   const wall = lite.leaves.find((l) => l.wall).wall;
   assert.ok(wall.color && !wall.facadeUV, 'a colour per vertex, no facade frame');
   assert.equal(wall.color.length, wall.position.length);
-  assert.ok(lite.stats.triangles <= direct.stats.triangles);
+  assert.ok(lite.stats.triangles < direct.stats.triangles * 0.8, `${lite.stats.triangles} lite vs ${direct.stats.triangles} full triangles: no parapets, no details`);
+  assert.equal(lite.leaves.length, 1, 'a tone-only tile is one cell: one wall and one roof mesh');
   assert.equal(lite.doorInfo.length, 0);
   assert.equal(lite.stats.doors, 0);
   // a lite building has one tone: every wall vertex of one range carries the same colour
@@ -256,6 +257,10 @@ test('road compute: the worker build (terrain chunks, owned indices, structured 
   const roadMesh = got.meshes.find((x) => x.index);
   assert.deepEqual([...roadMesh.normal.slice(0, 9)], [...vertexNormals(roadMesh.position, roadMesh.index).slice(0, 9)]);
   assert.ok(transferablesOf(got).length >= got.meshes.length * 3);
+  // the mid ring: carriageways, kerbs and cycle tracks only, no height grid
+  const mid = computeRoadSurfaces(structuredClone(makeRoadJob(data.tileContext(id, 'mid'), { near: false, terrain })));
+  assert.ok(mid.meshes.length > 0 && mid.meshes.every((x) => ['road-asphalt', 'road-kerb', 'road-cycle'].includes(x.name)), mid.meshes.map((x) => x.name).join());
+  assert.equal(mid.heightGrid, null);
 });
 
 test('furniture compute: placing in a worker equals placing against the zone map on the main thread', { skip: !isDistrict && 'run tile_split.py first' }, async () => {

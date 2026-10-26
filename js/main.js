@@ -685,7 +685,7 @@ async function initApp() {
   }
 
   // `?hooks`: the frames that took over 60 ms, split by section (globalThis.__twin.frameLog), for tools/shoot-stream.py
-  const frameProbe = new URLSearchParams(location.search).has('hooks') ? [] : null;
+  const frameProbe = new URLSearchParams(location.search).has('hooks') ? Object.assign([], { lastGeoms: 0, lastTex: 0 }) : null;
   if (frameProbe) globalThis.__twin.frameLog = frameProbe;
   renderer.setAnimationLoop((now) => {
     const rawDt = (now - lastTime) * 0.001;
@@ -741,7 +741,11 @@ async function initApp() {
     renderPipeline.render();
     if (frameProbe) {
       const T4 = performance.now();
-      if (T4 - T0 > 60) frameProbe.push({ t: Math.round(now), total: Math.round(T4 - T0), traffic: Math.round(T1 - T0), world: Math.round(T2 - T1), other: Math.round(T3 - T2), render: Math.round(T4 - T3) });
+      const g = renderer.info.memory.geometries;
+      const tx = renderer.info.memory.textures;
+      if (T4 - T0 > 60) frameProbe.push({ t: Math.round(now), total: Math.round(T4 - T0), traffic: Math.round(T1 - T0), world: Math.round(T2 - T1), other: Math.round(T3 - T2), render: Math.round(T4 - T3), dGeom: g - frameProbe.lastGeoms, dTex: tx - frameProbe.lastTex, calls: renderer.info.render.drawCalls });
+      frameProbe.lastGeoms = g;
+      frameProbe.lastTex = tx;
     }
     if (!warmedUp) {
       warmedUp = true;

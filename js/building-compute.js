@@ -91,7 +91,8 @@ export function* buildingSteps(job) {
     x0 = Math.min(x0, cx); x1 = Math.max(x1, cx); z0 = Math.min(z0, cz); z1 = Math.max(z1, cz);
   }
   if (!items.length) { x0 = z0 = -750; x1 = z1 = 750; }
-  const tree = new Quadtree({ minX: x0 - 50, maxX: x1 + 50, minZ: z0 - 50, maxZ: z1 + 50 }, LEAF_CAPACITY, LEAF_DEPTH);
+  // a tone-only tile is one cell (one wall and one roof mesh): at mid range the cells exist for the draw calls, not for culling
+  const tree = new Quadtree({ minX: x0 - 50, maxX: x1 + 50, minZ: z0 - 50, maxZ: z1 + 50 }, lite ? Infinity : LEAF_CAPACITY, LEAF_DEPTH);
   for (const it of items) tree.insert(it);
 
   // ground-floor kinds per wall: street side from the road network, party walls from neighbouring footprints, shops from venue data

@@ -725,7 +725,8 @@ try:
             body = page.inner_text('body').replace('Based on Slop New York by mrdoob (MIT)', '')
             check('no NYC strings in the HUD', not any(k in body for k in ('mph', 'NYC', 'New York', 'Manhattan', 'Taxi', 'Empire', 'Times Square')))
             check('vehicle label', page.text_content('#hud-active-mode') == 'Car', page.text_content('#hud-active-mode'))
-            check('teleports', page.eval_on_selector_all('.tp-btn', 'els => els.map(e => e.querySelector(".pop-name").textContent)') == ['Nørre Søgade 37', 'Dronning Louises Bro', 'Peblinge Sø', 'Nørrebrogade', 'Blågårds Plads'])
+            tp = page.eval_on_selector_all('.tp-btn:not([hidden])', 'els => els.map(e => e.querySelector(".pop-name").textContent)')
+            check('teleports', tp[:5] == ['Nørre Søgade 37', 'Dronning Louises Bro', 'Peblinge Sø', 'Nørrebrogade', 'Blågårds Plads'], str(tp))  # the district presets first; citywide ones follow where the tiles cover them
             info = page.evaluate("""() => { const t = globalThis.__twin; const ts = t.trafficSystem;
               return { buildings: t.world.buildings && t.world.buildings.stats, cars: ts.cars.filter((c) => c.edge).length, buses: ts.buses.filter((c) => c.edge).length,
                        cyclists: (ts.cyclists || []).length, drawCalls: t.renderer.info.render.drawCalls, location: document.querySelector('#hud-location').textContent }; }""")

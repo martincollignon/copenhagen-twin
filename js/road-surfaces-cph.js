@@ -771,19 +771,23 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
 }
 
 /** Meshes of one road-surface document into `group`; `materials` are shared (createRoadSurfaceMaterials). Returns the stats. */
+const LITE_SKIPS = new Set(['paint', 'blue', 'red', 'yellow', 'sidewalk']); // layers a mid-ring tile does not draw
+
 /**
  * The meshes a set of road surfaces makes, as typed arrays (pure: a worker runs it, js/road-compute.js): the carriageway, kerb,
  * cycle, paint ... layers (indexed) and the pavement / register-ground buckets (one non-indexed mesh per material class, each
  * triangle with its own kerb frame), with their normals. `cls` is the key into the materials.
  */
-export function computeSurfaceMeshes(geo, surfaces, terrain) {
+export function computeSurfaceMeshes(geo, surfaces, terrain, { lite = false } = {}) {
   const meshes = [];
   const layers = buildRoadSurfaceArrays(geo, { surfaces, pavement: true, terrain });
   for (const [name, layer] of Object.entries(layers)) {
     if (!layer.vertexCount) continue;
+    if (lite && LITE_SKIPS.has(name)) continue;
     const { position, kuv, index } = layer.arrays();
     meshes.push({ name: `road-${name}`, cls: name, ground: false, position, kuv, index, seed: null, normal: vertexNormals(position, index) });
   }
+  if (lite) return meshes; // the mid ring: carriageways, kerbs and cycle tracks; no markings, pavements or register ground
   for (const [key, bucket] of buildGroundBuckets(geo, surfaces, terrain)) {
     if (!bucket.vertexCount || key === 'ground:other') continue; // classes without a look (tree grates, ...) are not drawn
     const { position, kuv, seed } = bucket.arrays();
@@ -792,8 +796,8 @@ export function computeSurfaceMeshes(geo, surfaces, terrain) {
   return meshes;
 }
 
-async function fillSurfaceGroup(THREE, group, geo, surfaces, terrain, materials, slice = null, computed = null) {
-  const meshes = computed || computeSurfaceMeshes(geo, surfaces, terrain);
+async function fillSurfaceGroup(THREE, group, geo, surfaces, terrain, materials, slice = null, computed = null, lite = false) {
+  const meshes = computed || computeSurfaceMeshes(geo, surfaces, terrain, { lite });
   if (slice) await slice();
   const stats = { pavementTriangles: 0, markings: surfaces?.markings?.length || 0 };
 
@@ -854,7 +858,7 @@ export async function createRoadSurfaceLayer(scene, { terrain = null, tiledHeigh
       const tileGroup = new THREE.Group();
       tileGroup.name = `road-surfaces-${id}`;
       group.add(tileGroup); // its meshes appear as they are made
-      const st = await fillSurfaceGroup(THREE, tileGroup, geo, near ? surfaces : null, terrain, materials, slice, computed?.meshes || null);
+      const st = await fillSurfaceGroup(THREE, tileGroup, geo, near ? surfaces : null, terrain, materials, slice, computed?.meshes || null, !near);
       if (slice) await slice();
       if (near && tiledHeight && bounds) {
         const grid = computed ? (computed.heightGrid ? createHeightGrid(computed.heightGrid) : null)
