@@ -16,6 +16,7 @@ ap.add_argument('--water', action='store_true', help='M4 lakes + calibrated faca
 ap.add_argument('--furniture', action='store_true', help='M4 street furniture: Nørre Søgade day+night (wire lamps), parked cars, lake-path trees, a bus stop; fps and draw calls (default out docs/m4-furniture)')
 ap.add_argument('--audit-sweep', action='store_true', help='QA audit: ~30 eye-level and 6 aerial shots at the points in docs/qa/sweep-points.json (tools/audit/audit.py) into docs/qa/sweep + contact sheets')
 ap.add_argument('--oneway', action='store_true', help='traffic direction: 10 simulated minutes of live cars checked against the one-way roads (docs/oneway/sim-cars.json), contraflow / track / overview-with-arrows shots into --out (default docs/oneway)')
+ap.add_argument('--kerbs', default=None, metavar='VIEWS.json', help='kerb check: eye-level and top-down shots of the views in VIEWS.json (node tools/audit/kerbs.mjs --views) into --out')
 ap.add_argument('--perf', action='store_true', help='unthrottled frame timing instead of captures')
 args = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -295,13 +296,30 @@ try:
         logs = []
         page.on('console', lambda m: logs.append(f'{m.type}: {m.text}'))
         page.on('pageerror', lambda e: logs.append(f'pageerror: {e}'))
-        page.goto(f'http://127.0.0.1:{port}/index.html?{("hooks&" + args.query.lstrip("&")) if (args.furniture or args.audit_sweep or args.oneway) else args.query.lstrip("&")}')
+        page.goto(f'http://127.0.0.1:{port}/index.html?{("hooks&" + args.query.lstrip("&")) if (args.furniture or args.audit_sweep or args.oneway or args.kerbs) else args.query.lstrip("&")}')
         page.wait_for_function('globalThis.__twin && globalThis.__twin.world', timeout=120000)
         page.wait_for_timeout(4000)
         view = lambda pos, look, fov=60: page.evaluate('([p,l,f]) => { globalThis.__twin.cameraSystem.debugView = {pos:p, look:l, fov:f}; }', [pos, look, fov])
         def shot(name):
             page.wait_for_timeout(2500)
             page.screenshot(path=f'{args.out}/{name}.png')
+        if args.kerbs:
+            os.makedirs(args.out, exist_ok=True)
+            views = json.load(open(args.kerbs))
+            # eye-level points are heights above the ground (the terrain is added in the page); y >= 80 is absolute
+            free = lambda pos, look, fov=60: page.evaluate('''([p,l,f]) => { const t = globalThis.__twin.world.terrain; const g = (x, z) => (t && !t.flat && p[1] < 80) ? t.heightAt(x, z) : 0;
+              globalThis.__twin.freeCam = {pos:[p[0], p[1] + g(p[0], p[2]), p[2]], target:[l[0], l[1] + g(l[0], l[2]), l[2]], fov:f}; }''', [pos, look, fov])
+            page.evaluate("(id) => document.querySelector(`[data-time=\"${id}\"]`).click()", 'midday')
+            page.wait_for_timeout(2500)
+            for v in views:
+                free(v['pos'], v['look'], v.get('fov', 60))
+                page.wait_for_timeout(3500)
+                page.screenshot(path=f"{args.out}/{v['name']}.png")
+                print('shot', v['name'], v['at'])
+            errs = [l for l in logs if l.startswith(('error', 'pageerror'))]
+            print('\n'.join(errs[:20]))
+            browser.close()
+            raise SystemExit(0)
         if args.audit_sweep:
             out_dir = args.out if args.out != 'docs/m2' else 'docs/qa/sweep'
             os.makedirs(out_dir, exist_ok=True)
