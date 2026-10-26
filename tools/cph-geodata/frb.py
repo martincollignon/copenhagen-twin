@@ -236,7 +236,7 @@ def apply_points(pts: dict, osm_nodes: dict | None) -> tuple[dict, list]:
            "signals": pts["signals"] + sg}
     rows = [
         {"item": "trees (geodata points.trees, furniture trees)", "source": "GC2 byrum_ekstern.registrerede_traer + byrum.vejtraer", "count": len(tr),
-         "note": "heights are the register's 5 m class midpoints (inferred) or 10 m when unclassed; crown = 0.5 x height (inferred); no crown polygons"},
+         "note": "heights are the register's 5 m class midpoints (inferred) or 10 m when unclassed; crown = 0.5 x height (inferred); KK's 310k auto-detected crowns (heights, crown areas) stop at the border, so Frederiksberg has no crown polygons and fewer garden trees"},
         {"item": "bike racks", "source": "GC2 mobilitet.cykelstativer", "count": len(rk), "note": "capacity from antal_pladser; 5 (inferred) when empty"},
         {"item": "benches", "source": "GC2 byrum.baenk (43, 2018) + OSM amenity=bench", "count": len(bn), "note": "positions only"},
         {"item": "traffic signals", "source": "GC2 byrum.signalanlaeg (OSM signals were already citywide)", "count": len(sg), "note": "only signals more than 25 m from an OSM/KK signal"},
@@ -334,7 +334,7 @@ def furniture(F, roads, osm_street_nodes: dict | None) -> tuple[dict, list]:
         x, z = _local((e, n_))
         src = [f"osm:node/{el['id']}"]
         if t.get("barrier") == "bollard":
-            out["bollards"].append({"x": x, "z": z, "material": "other", "colour": None, "src": src, "conf": "observed",
+            out["bollards"].append({"x": x, "z": z, "material": "other", "colour": "raw", "mount": None, "type": None, "src": src, "conf": "observed",
                                     "conf_fields": {"material": "inferred", "colour": "inferred"}, "licence": "ODbL"})
         elif t.get("amenity") == "waste_basket":
             out["bins"].append({"x": x, "z": z, "kind": "litter", "model": None, "yaw": F.face_road(roads, x, z), "src": src,

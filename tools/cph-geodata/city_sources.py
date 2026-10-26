@@ -224,6 +224,36 @@ def fetch_geodk_bygning(bbox, force: bool = False) -> dict:
     return info
 
 
+def fetch_geodk_vejkant(bbox, force: bool = False) -> dict:
+    """GeoDanmark Vejkant (GEODKV `vejkant_current`) for a bbox -> raw/city/geodk_vejkant_frb.json in the KK `vejkant` schema
+    (`vejtype` = GEODKV `type`; the value domains are the same). KK's layer stops at the kommune border."""
+    path = RAW_CITY / "geodk_vejkant_frb.json"
+    if path.exists() and not force:
+        return {"cached": True}
+    user, pw = env("DATAFORDELER_USERNAME"), env("DATAFORDELER_PASSWORD")
+    x0, y0, x1, y1 = bbox
+    feats, seen, start, page = [], set(), 0, 5000
+    while True:
+        r = request("GET", GEODKV, what=f"geodk:vejkant@{start}", params={
+            "username": user, "password": pw, "service": "WFS", "version": "2.0.0", "request": "GetFeature",
+            "typeNames": "geodkv_v001:vejkant_current", "outputFormat": "application/json", "count": page, "startIndex": start,
+            "bbox": f"{x0},{y0},{x1},{y1},urn:ogc:def:crs:EPSG::25832"})
+        r.raise_for_status()
+        got = r.json().get("features", [])
+        for f in got:
+            fid = f["properties"].get("id_lokalId")
+            if fid in seen:
+                continue
+            seen.add(fid)
+            feats.append({"type": "Feature", "geometry": f["geometry"], "properties": {"fot_id": fid, "vejtype": f["properties"].get("type"),
+                                                                                           "src": "geodanmark:vejkant"}})
+        if len(got) < page:
+            break
+        start += page
+    atomic_write(path, json.dumps({"type": "FeatureCollection", "features": feats}, ensure_ascii=False, separators=(",", ":")))
+    return {"features": len(feats)}
+
+
 BBR_FIELDS = "id_lokalId status byg021BygningensAnvendelse byg026Opfoerelsesaar byg032YdervaeggensMateriale byg033Tagdaekningsmateriale byg054AntalEtager"
 
 

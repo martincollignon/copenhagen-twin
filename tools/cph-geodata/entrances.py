@@ -179,6 +179,14 @@ def _secret(name: str, env: str) -> str:
     return out.stdout.strip()
 
 
+def _atomic_write(path: Path, text: str) -> None:
+    import threading
+
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(text)
+    tmp.replace(path)
+
+
 class Dar:
     def __init__(self):
         self.user = _secret("datafordeler-username", "DATAFORDELER_USERNAME")
@@ -196,13 +204,16 @@ class Dar:
         """DAR REST husnummer?<param>=<value> (cached). Returns the list of husnummer records."""
         path = self._cache(f"hn_{param}_{value}")
         if path.exists():
-            return json.loads(path.read_text())
+            try:
+                return json.loads(path.read_text())
+            except ValueError:
+                pass  # truncated by an interrupted run or a concurrent writer of the same key: fetch again
         for attempt in range(4):
             try:
                 r = self.http.get(DAR_REST, params={param: value, "format": "json", "username": self.user, "password": self.pw}, timeout=120)
                 if r.status_code == 200:
                     data = r.json()
-                    path.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+                    _atomic_write(path, json.dumps(data, ensure_ascii=False, separators=(",", ":")))
                     return data
                 if r.status_code in (400, 404):
                     return []
@@ -218,7 +229,10 @@ class Dar:
         key = hashlib.sha1(",".join(sorted(bbr_ids)).encode()).hexdigest()[:16]
         path = self._cache(f"opgang_{key}")
         if path.exists():
-            return json.loads(path.read_text())
+            try:
+                return json.loads(path.read_text())
+            except ValueError:
+                pass
         ids = json.dumps(sorted(bbr_ids))
         out, after = [], None
         while True:
@@ -235,7 +249,7 @@ class Dar:
             if not page["pageInfo"]["hasNextPage"]:
                 break
             after = page["pageInfo"]["endCursor"]
-        path.write_text(json.dumps(out, separators=(",", ":")))
+        _atomic_write(path, json.dumps(out, separators=(",", ":")))
         return out
 
 

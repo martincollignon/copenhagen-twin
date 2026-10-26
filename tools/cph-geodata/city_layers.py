@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+import traceback
 
 import build_city as BC
 import city_sources as S
@@ -279,3 +280,195 @@ def frb_contains(v) -> bool:
         _FRB = frb.frb_polygon()
     e, n = frame.to_utm(v["x"], v["z"])
     return _FRB.contains(Point(e, n))
+
+
+# ------------------------------------------------------------------------------------------------------------ streets
+
+STREETS_MARGIN = 120.0
+_VK = None
+
+
+def _vejkant_index(path):
+    """KK + GeoDanmark Vejkant lines as (bbox array, features), loaded once per process."""
+    global _VK
+    if _VK is None:
+        import numpy as np
+
+        feats = json.loads(path.read_text())["features"]
+        bb = np.array([BC._geom_bounds(f["geometry"]) for f in feats])
+        _VK = (bb, feats)
+    return _VK
+
+
+def streets_cell_job(cell: str, tids: list[str]) -> dict:
+    """streets.py's build_doc on one cell (+ margin), keeping what the cell's tiles own. The compiler's global unions and
+    footprint-wide distance queries are quadratic, so the city is done in chunks, like the other layers."""
+    name = f"streets-cell-{cell}"
+    if BC.is_done(name):
+        return {"cell": cell, "skipped": True}
+    t0 = time.time()
+    try:
+        import numpy as np
+
+        import streets as ST
+
+        allowed = set(tids)
+        core = BC.cell_bbox_utm(cell)
+        e0, n0, e1, n1 = core
+        m = STREETS_MARGIN
+        region_tiles = [t for t in frame.tiles_for_bbox((e0, n0, e1, n1), margin=m) if (BC.TILES_DIR / t).is_dir()]
+        x0, z0, x1, z1 = frame.utm_bbox_to_local((e0 - m, n0 - m, e1 + m, n1 + m))
+        hit = lambda flat: not (max(flat[0::2]) < x0 or min(flat[0::2]) > x1 or max(flat[1::2]) < z0 or min(flat[1::2]) > z1)  # noqa: E731
+        geo = {"roads": [], "sidewalks": [], "cycleTracks": [], "parks": [], "buildings": [], "heroes": []}
+        own_road, own_bld, own_sw, own_cyc = set(), set(), set(), set()
+        surf = {"surfaces": []}
+        own_surf = set()
+        for t in region_tiles:
+            p = BC.TILES_DIR / t / "roads.json"
+            if p.exists():
+                d = json.loads(p.read_text())
+                for r in d.get("roads", []):
+                    if hit(r["pts"]):
+                        geo["roads"].append(r)
+                        if T.owner_of_line(r) in allowed:
+                            own_road.add(r["id"])
+                for k, key in (("sidewalks", "ring"), ("cycleTracks", "pts"), ("parks", "ring")):
+                    for it in d.get(k, []):
+                        if hit(it[key]):
+                            geo[k].append(it)
+            p = BC.TILES_DIR / t / "buildings.json"
+            if p.exists():
+                for b in json.loads(p.read_text())["buildings"]:
+                    if hit(b["ring"]):
+                        geo["buildings"].append(b)
+                        if T.owner_of_ring(b) in allowed:
+                            own_bld.add(b["id"])
+            p = BC.TILES_DIR / t / "surfaces.json"
+            if p.exists():
+                for s_ in json.loads(p.read_text()).get("surfaces", []):
+                    if hit(s_["ring"]):
+                        surf["surfaces"].append(s_)
+                        if T.owner_of_ring(s_) in allowed:
+                            own_surf.add(s_["id"])
+        graph = json.loads((BC.CITY_DIR / "roadgraph.json").read_text())
+        geo["roadGraph"] = graph
+        lakes_doc = json.loads((BC.CITY_DIR / "lakes.json").read_text())
+        lakes = {"lakes": [l for l in lakes_doc["lakes"] if hit(l["ring"])], "ponds": [l for l in lakes_doc.get("ponds", []) if hit(l["ring"])],
+                 "bridges": [l for l in lakes_doc.get("bridges", []) if hit(l["ring"])]}
+        bb, feats = _vejkant_index(BC.WORK / "vejkant_city.json")
+        ux0, uz0 = frame.to_utm(x0, z1)  # local box -> UTM corners (z south)
+        ux1, uz1 = frame.to_utm(x1, z0)
+        sel = np.nonzero((bb[:, 2] >= ux0) & (bb[:, 0] <= ux1) & (bb[:, 3] >= uz0) & (bb[:, 1] <= uz1))[0]
+        from shapely.geometry import LineString
+
+        vk = {"car": [], "cyc": []}
+        for i in sel:
+            f = feats[i]
+            t_ = f["properties"].get("vejtype")
+            k = "car" if t_ in ST.CAR_EDGE_TYPES else "cyc" if t_ in ST.CYC_EDGE_TYPES else None
+            if not k:
+                continue
+            for ln in f["geometry"]["coordinates"]:
+                pts = [(c[0] - frame.ORIGIN[0], -(c[1] - frame.ORIGIN[1])) for c in ln]
+                if len(pts) >= 2:
+                    vk[k].append(LineString(pts))
+        owner_sw = lambda ring: T.owner_of_ring({"ring": ring})  # noqa: E731
+        surfaces = {"surfaces": surf["surfaces"], "markings": []} if surf["surfaces"] else None
+        doc = ST.build_doc(geo, lakes, vk, surfaces=surfaces)
+        # what this cell's tiles own
+        node = lambda ni: T.owner_of_point({"x": graph["nodes"][2 * ni], "z": graph["nodes"][2 * ni + 1]})  # noqa: E731
+        base = lambda rid: rid.split("#")[0]  # noqa: E731
+        out = {
+            "roads": {k: v for k, v in doc["roads"].items() if k in own_road},
+            "extraRoads": [e for e in doc["extraRoads"] if e["base"] in own_road],
+            "graph": {"nodes": [n for n in doc["graph"]["nodes"] if node(n[0]) in allowed],
+                      "widths": [w for w in doc["graph"]["widths"] if node(graph["links"][w[0]][0]) in allowed],
+                      "dropLinks": [li for li in doc["graph"]["dropLinks"] if node(graph["links"][li][0]) in allowed]},
+            "sidewalks": [sw for sw in doc["sidewalks"] if owner_sw(sw["ring"]) in allowed],
+            "cycleTracks": [c for c in doc["cycleTracks"] if T.owner_of_line(c) in allowed],
+            "buildings": {"drop": [d for d in doc["buildings"]["drop"] if base(d["id"]) in own_bld],
+                          "clip": [c for c in doc["buildings"]["clip"] if base(c["id"]) in own_bld]},
+            "buildingReport": [r for r in doc["buildingReport"] if base(r["id"]) in own_bld],
+            "surfaceCuts": [c for c in doc["surfaceCuts"] if c["id"] in own_surf],
+            "stats": {k: v for k, v in doc["stats"].items() if isinstance(v, (int, float))},
+        }
+        S.atomic_write(BC.WORK / "streets_cells" / f"{cell}.json", BC.dump(out))
+        res = {"cell": cell, "roads": len(out["roads"]), "seconds": round(time.time() - t0, 1)}
+        BC.mark_done(name, **{k: v for k, v in res.items() if k != "cell"})
+        return res
+    except Exception as e:  # noqa: BLE001
+        return {"cell": cell, "error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-500:]}
+
+
+def stage_streets(a, tiles, cells) -> None:
+    """data/city/streets.json: streets.py's measured cross-sections for the whole city (Vejkant ray casting). KK Vejkant covers
+    Koebenhavn; Frederiksberg's comes from GeoDanmark Vejkant (same type domain). Per cell, merged by ownership."""
+    if BC.is_done("streets") and not a.force_stage("streets"):
+        return
+    import multiprocessing as mp
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+
+    t0 = time.time()
+    BC.ensure_secrets("DATAFORDELER_USERNAME", "DATAFORDELER_PASSWORD")
+    _citywide(tiles)
+    vk_path = BC.WORK / "vejkant_city.json"
+    if not vk_path.exists():
+        info = S.fetch_geodk_vejkant((719500.0, 6173500.0, 724500.0, 6178500.0))  # Frederiksberg + margin
+        kk = json.loads((BC.RAW_CITY / "kk_vejkant.json").read_text())["features"]
+        frb_feats = json.loads((BC.RAW_CITY / "geodk_vejkant_frb.json").read_text())["features"]
+        from shapely.geometry import shape
+        from shapely.strtree import STRtree
+
+        tree = STRtree([shape(f["geometry"]) for f in kk])  # KK first; GeoDanmark lines only where KK has none (Frederiksberg)
+        extra = []
+        for f in frb_feats:
+            if len(tree.query(shape(f["geometry"]).buffer(1.0))) == 0:
+                geom = f["geometry"]
+                if geom["type"] == "LineString":  # the KK layer holds MultiLineStrings
+                    f = {**f, "geometry": {"type": "MultiLineString", "coordinates": [geom["coordinates"]]}}
+                extra.append(f)
+        S.atomic_write(vk_path, BC.dump({"type": "FeatureCollection", "features": kk + extra}))
+        log(f"[streets] vejkant: {len(kk)} KK + {len(extra)} GeoDanmark (Frederiksberg) lines; {info}")
+    order = [c for c in sorted(cells) if (not a.cells or c in a.cells)]
+    todo = [c for c in order if not BC.is_done(f"streets-cell-{c}")]
+    log(f"[streets] {len(todo)} of {len(order)} cells to do, {a.streets_workers} workers")
+    errors = {}
+    with ProcessPoolExecutor(a.streets_workers, mp_context=mp.get_context("spawn")) as ex:
+        futs = {ex.submit(streets_cell_job, c, cells[c]): c for c in todo}
+        for n, f in enumerate(as_completed(futs), 1):
+            r, c = f.result(), futs[f]
+            if r.get("error"):
+                errors[c] = r["error"]
+                log(f"[streets] {c} FAILED: {r['error']} {r.get('trace', '')[-300:]}")
+            else:
+                log(f"[streets] {n}/{len(todo)} {c}: {r.get('roads', '-')} roads in {r.get('seconds', '-')}s")
+    if errors or a.cells:
+        log(f"[streets] not merged ({len(errors)} failures; --cells run)" if errors else "[streets] --cells run: not merged")
+        return
+    parts = [json.loads(p.read_text()) for p in sorted((BC.WORK / "streets_cells").glob("*.json"))]
+    doc = {"version": "cph-streets/1", "frame": {"epsg": 25832, "origin": list(frame.ORIGIN), "axes": "x=east, z=south, y=up"},
+           "method": "Vejkant + fortovsmatrikel ray casting: carriageway edge, cycle strip, re-centred roads; see tools/cph-geodata/streets.py "
+                     "(compiled per 1 km cell with a 120 m margin, merged by tile ownership)",
+           "roads": {}, "extraRoads": [], "graph": {"nodes": [], "widths": [], "dropLinks": []}, "sidewalks": [], "cycleTracks": [],
+           "buildings": {"drop": [], "clip": []}, "buildingReport": [], "surfaceCuts": [], "stats": {}}
+    for p in parts:
+        doc["roads"].update(p["roads"])
+        doc["extraRoads"] += p["extraRoads"]
+        for k in ("nodes", "widths", "dropLinks"):
+            doc["graph"][k] += p["graph"][k]
+        for k in ("sidewalks", "cycleTracks", "buildingReport", "surfaceCuts"):
+            doc[k] += p[k]
+        for k in ("drop", "clip"):
+            doc["buildings"][k] += p["buildings"][k]
+    doc["stats"] = {"roads": len(doc["roads"]) + len(doc["extraRoads"]), "extraPieces": len(doc["extraRoads"]), "nodesMoved": len(doc["graph"]["nodes"]),
+                    "linkWidths": len(doc["graph"]["widths"]), "droppedLinks": len(doc["graph"]["dropLinks"]),
+                    "buildingsDropped": len(doc["buildings"]["drop"]), "buildingsClipped": len(doc["buildings"]["clip"]),
+                    "sidewalksAfter": len(doc["sidewalks"]), "cycleTracks": len(doc["cycleTracks"]), "surfaceCuts": len(doc["surfaceCuts"]),
+                    "passages": sum(1 for r in doc["roads"].values() if r.get("drop") == "passage"), "cells": len(parts),
+                    "note": "per-cell compile with a 120 m margin; counts are of the merged, ownership-filtered document"}
+    doc["graph"]["nodes"].sort()
+    doc["graph"]["widths"].sort()
+    doc["graph"]["dropLinks"].sort()
+    S.atomic_write(BC.CITY_DIR / "streets.json", BC.dump(doc))
+    BC.mark_done("streets", seconds=round(time.time() - t0), cells=len(parts), stats=doc["stats"])
+    log(f"[streets] streets.json {(BC.CITY_DIR / 'streets.json').stat().st_size / 1e6:.1f} MB, {len(doc['roads'])} roads, {doc['stats']} ({time.time() - t0:.0f}s)")

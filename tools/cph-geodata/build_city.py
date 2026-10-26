@@ -804,7 +804,7 @@ def stage_index(a, tiles, cells) -> None:
     log(f"[index] {len(idx_tiles)} tiles, {total / 1e6:.1f} MB; meta.json {(CITY_DIR / 'meta.json').stat().st_size / 1e6:.2f} MB")
 
 
-STAGES = ["fetch", "fetch2", "buildings0", "geo", "cells", "surfaces", "furniture", "groundfloor", "entrances", "vegetation", "index", "report"]
+STAGES = ["fetch", "fetch2", "buildings0", "geo", "cells", "surfaces", "furniture", "groundfloor", "streets", "entrances", "vegetation", "index", "report"]
 
 
 def main(argv=None):
@@ -816,10 +816,12 @@ def main(argv=None):
     ap.add_argument("--veg-workers", type=int, default=3, help="parallel LiDAR cell downloads / derivations (the server gives about 1 MB/s per connection)")
     ap.add_argument("--veg-limit", type=int, default=0, help="at most this many vegetation raster cells per run (0 = all)")
     ap.add_argument("--veg-rasters-only", action="store_true", help="vegetation: derive the rasters (LiDAR classes, NDVI) but do not compile yet")
+    ap.add_argument("--streets-workers", type=int, default=3, help="parallel cells for the streets stage")
     ap.add_argument("--force-fetch", action="store_true", help="refetch raw source layers")
     a = ap.parse_args(argv)
     a.workers = max(1, min(6, a.workers))
     a.veg_workers = max(1, min(6, a.veg_workers))
+    a.streets_workers = max(1, min(6, a.streets_workers))
     a.force_stage = lambda s: s in a.force or "all" in a.force  # noqa: E731
     stages = STAGES if not a.stage or "all" in a.stage else [s for s in STAGES if s in a.stage]
     tiles = load_tiles()
@@ -844,7 +846,7 @@ def main(argv=None):
             stage_geo(a, tiles, cells)
         elif s == "cells":
             stage_cells(a, tiles, cells)
-        elif s in ("surfaces", "furniture", "groundfloor"):
+        elif s in ("surfaces", "furniture", "groundfloor", "streets"):
             import city_layers
 
             getattr(city_layers, f"stage_{s}")(a, tiles, cells)
