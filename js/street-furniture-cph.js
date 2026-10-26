@@ -5,6 +5,12 @@ import {
   TREE_STYLES, buildFurniturePlan, composeYaw, composeYawPitch, indexItems, planCounts
 } from './street-furniture-data.js';
 import * as G from './street-furniture-geometry.js';
+import * as T from './tree-geometry-cph.js';
+import { resolveGenus } from './tree-species-cph.js';
+import { alignLakeFurniture } from './lake-furniture-cph.js';
+import { buildPoolWindow, encodePoolWindow, haloSize, lampPhotometry, realIntensity, selectRealLights } from './night-lights-cph.js';
+import { POOL, poolUniforms, setPoolWindow } from './pool-light-cph.js';
+import { Fn, attribute, cameraPosition, cross, float, length, normalize, positionLocal, smoothstep, uniform, uv, vec3, vec4, exp, abs } from 'three/tsl';
 
 // js/street-furniture-cph.js
 // The Copenhagen street furniture (data/cph-furniture.json, see street-furniture-data.js): trees by genus with three
@@ -15,13 +21,13 @@ import * as G from './street-furniture-geometry.js';
 // Everything is instanced. Each category lives in a quadtree; every few metres of camera travel the items around the
 // camera are written into per-LOD InstancedMeshes (dynamic counts), at the ground height computed once at load.
 
-const TREE_NEAR = 32;
+const TREE_NEAR = 34;
 const TREE_MID = 200;
 const TREE_FAR = 950;
 const CAR_NEAR = 40;
 const CAR_FAR = 300;
 const MOVE_EPS = 3;
-const MAX_LIGHTS = 6;
+const MAX_LIGHTS = 8;
 const WARM_FRAMES = 4; // while the shaders warm up, every mesh draws a degenerate instance so its pipeline compiles
 
 const lin = (srgb) => new THREE.Color().setRGB(srgb[0], srgb[1], srgb[2], THREE.SRGBColorSpace);
@@ -117,8 +123,10 @@ function textSprite(text) {
   return sprite;
 }
 
-export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 1, place = null } = {}) {
-  const plan = buildFurniturePlan(doc, groundHeight, { seed, place });
+export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 1, place = null, lakeDistance = null } = {}) {
+  // untyped laser-detected crowns get a context genus (Soerne avenues: lime / horse chestnut), js/tree-species-cph.js
+  const plan = buildFurniturePlan(doc, groundHeight, { seed, place, resolveTree: (t) => resolveGenus(t, { lakeDistance }) });
+  alignLakeFurniture(plan, lakeDistance); // benches / rescue posts face the water, lake lights project over the path
   const group = new THREE.Group();
   group.name = 'CopenhagenStreetFurniture';
   scene.add(group);
@@ -131,42 +139,32 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   const count = (n, cap) => Math.max(1, Math.min(n, cap));
 
   // ------------------------------------------------------------------------------------------- trees
-  const leafTex = G.createLeafTexture();
-  const nearMat = std({ alphaMap: leafTex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.88, metalness: 0 });
-  const crownMat = std({ roughness: 0.92, metalness: 0 });
-  const trunkMat = std({ roughness: 0.95, metalness: 0 });
-  const billMat = new THREE.MeshStandardNodeMaterial({ map: G.createBillboardTexture(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1, metalness: 0 });
+  const atlas = T.createLeafAtlas();
+  const treeMat = T.createTreeMaterial(atlas);
   const byGenus = new Map();
   for (const t of plan.trees) {
     if (!byGenus.has(t.genus)) byGenus.set(t.genus, []);
     byGenus.get(t.genus).push(t);
   }
+  const bill = T.createBillboardAtlas([...byGenus.keys()]);
+  const billMat = T.createTreeMaterial(bill.texture, { billboard: true });
   const treeNear = new Map();
-  const leafLinear = {};
-  const barkLinear = {};
+  const treeMid = new Map();
+  const treeFar = new Map();
   for (const [genus, list] of byGenus) {
-    const style = TREE_STYLES[genus];
-    leafLinear[genus] = lin(style.leaf);
-    barkLinear[genus] = lin(style.bark);
-    treeNear.set(genus, mk(`trees-near-${genus}`, G.buildNearTree(genus), nearMat, count(list.length, 260), { colored: true, cast: false }));
+    treeNear.set(genus, mk(`trees-near-${genus}`, T.buildNearTree(genus), treeMat, count(list.length, 260), { colored: true, cast: false }));
+    treeMid.set(genus, mk(`trees-mid-${genus}`, T.buildMidTree(genus), treeMat, count(list.length, 900), { colored: true, cast: false }));
+    treeFar.set(genus, mk(`trees-far-${genus}`, T.buildBillboard(bill.cellOf.get(genus)), billMat, count(list.length, 4000), { colored: true, receive: false }));
   }
-  const treeMid = mk('trees-mid-crown', G.buildMidCrown(), crownMat, count(plan.trees.length, 900), { colored: true, cast: true });
-  const treeMidTrunk = mk('trees-mid-trunk', G.buildMidTrunk(), trunkMat, count(plan.trees.length, 900), { colored: true });
-  // near trees cast their shadow from a cheap crown blob (leaf cards in the shadow pass cost more than the whole scene)
+  // crowns cast their shadow from a cheap blob (leaf cards in the shadow pass cost more than the whole scene)
   const shadowOnly = std({ roughness: 1, metalness: 0 });
   shadowOnly.colorWrite = false;
   shadowOnly.depthWrite = false;
-  const treeShadow = mk('trees-near-shadow', G.buildMidCrown(), shadowOnly, count(plan.trees.length, 400), { cast: true, receive: false });
-  const treeFar = mk('trees-far-billboard', G.buildBillboard(), billMat, count(plan.trees.length, 4000), { colored: true, receive: false });
+  const treeShadow = mk('trees-shadow', G.buildMidCrown(), shadowOnly, count(plan.trees.length, 600), { cast: true, receive: false });
 
   // ------------------------------------------------------------------------------------------- lamps
   const metal = std({ roughness: 0.45, metalness: 0.55 });
   const lensMat = new THREE.MeshBasicNodeMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-  const poolMat = new THREE.MeshBasicNodeMaterial({
-    map: G.createPoolTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0
-  });
-  poolMat.polygonOffset = true;
-  poolMat.polygonOffsetFactor = -2;
   const masts = plan.lamps.filter((l) => l.mount === 'mast');
   const wires = plan.lamps.filter((l) => l.mount === 'wire');
   const nMast = (kind) => masts.filter((l) => l.pole === kind).length;
@@ -185,13 +183,53 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   const wireSeg = mk('lamp-wires', G.buildWireSegment(), std({ roughness: 0.6, metalness: 0.5 }), 5000, {});
   wireSeg.mesh.material.vertexColors = false;
   wireSeg.mesh.material.color.setHex(0x23262a);
-  const pools = mk('lamp-pools', new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), poolMat, count(plan.lamps.length + plan.lakeLights.length, 1100), { colored: true, receive: false });
-  pools.mesh.renderOrder = 5;
+  // glare halos on the lanterns: camera-facing additive quads, sized by distance, switched with the night factor
+  const haloOn = uniform(0);
+  const haloCap = count(plan.lamps.length + plan.lakeLights.length, 1100);
+  const haloGeo = new THREE.PlaneGeometry(1, 1);
+  haloGeo.setAttribute('haloPos', new THREE.InstancedBufferAttribute(new Float32Array(haloCap * 4), 4));
+  haloGeo.setAttribute('haloCol', new THREE.InstancedBufferAttribute(new Float32Array(haloCap * 3), 3));
+  const haloMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+  haloMat.positionNode = Fn(() => {
+    const hp = attribute('haloPos', 'vec4');
+    const toCam = normalize(cameraPosition.sub(hp.xyz));
+    const right = normalize(cross(vec3(0, 1, 0), toCam));
+    const up = cross(toCam, right);
+    return hp.xyz.add(right.mul(positionLocal.x).mul(hp.w)).add(up.mul(positionLocal.y).mul(hp.w));
+  })();
+  haloMat.colorNode = Fn(() => {
+    const hp = attribute('haloPos', 'vec4');
+    const p = uv().sub(0.5).mul(2.0);
+    const r = length(p);
+    const core = exp(r.mul(r).mul(-26.0));
+    const glow = exp(r.mul(-3.2)).mul(smoothstep(1.0, 0.55, r));
+    const star = exp(abs(p.y).mul(-38.0)).mul(exp(abs(p.x).mul(-2.4))).add(exp(abs(p.x).mul(-38.0)).mul(exp(abs(p.y).mul(-2.4)))).mul(0.22);
+    const dist = length(cameraPosition.sub(hp.xyz));
+    return attribute('haloCol', 'vec3').mul(core.mul(1.6).add(glow.mul(0.5)).add(star)).mul(haloOn).mul(smoothstep(1.5, 5.0, dist));
+  })();
+  const halos = new THREE.InstancedMesh(haloGeo, haloMat, haloCap);
+  halos.name = 'lamp-halos';
+  halos.frustumCulled = false;
+  halos.renderOrder = 6;
+  halos.count = 0;
+  for (let i = 0; i < haloCap; i++) new THREE.Matrix4().toArray(halos.instanceMatrix.array, i * 16);
+  group.add(halos);
+  let haloN = 0;
+  const putHalo = (x, y, z, size, c, gain = 1) => {
+    if (haloN >= haloCap) return;
+    haloGeo.attributes.haloPos.array.set([x, y, z, size], haloN * 4);
+    haloGeo.attributes.haloCol.array.set([c.r * gain, c.g * gain, c.b * gain], haloN * 3);
+    haloN++;
+  };
+  const poolBytes = new Uint8Array(POOL.size * POOL.size * 4);
+  let poolData = null;
+  // lake lights as lamp-like items for the pool raster
+  const lakeLamps = plan.lakeLights.map((l) => ({ x: l.x, z: l.z, y: l.y, lampY: l.y + 1, light: 'led', led: true, cct: 3000, watt: 12, kind: 'lake', color: l.color }));
 
   // real lights near the camera (a fixed pool: the light count must not change, it would recompile every shader)
   const lights = [];
   for (let i = 0; i < MAX_LIGHTS; i++) {
-    const l = new THREE.PointLight(0xffd9a0, 0, 16, 2);
+    const l = new THREE.PointLight(0xffd9a0, 0, 18, 2);
     l.visible = true;
     group.add(l);
     lights.push(l);
@@ -252,28 +290,27 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   };
   const seen = new Set();
   const nearLamps = [];
+  const allLamps = plan.lamps.concat(lakeLamps);
 
   function rebuild(cx, cz) {
     const t0 = performance.now();
     const warm = state.warm > 0;
     for (const s of sets) s.begin();
+    haloN = 0;
     const on = state.on;
 
-    // trees: near cards, mid blobs, far billboards
+    // trees: skeleton + leaf sprays near, leaf clusters mid, painted billboards far
     for (const t of trees.queryRange(cx, cz, TREE_FAR)) {
       const d = Math.hypot(t.x - cx, t.z - cz);
+      const tint = [t.tint, t.tint, t.tint];
       if (d <= TREE_NEAR) {
-        treeNear.get(t.genus).put(t.x, t.y, t.z, t.yaw, t.sxz, t.sy, t.sxz, [t.tint, t.tint, t.tint]);
-        treeShadow.put(t.x, t.y + t.crown.cy, t.z, t.yaw, t.crown.rx * 0.9, t.crown.ry * 0.9, t.crown.rx * 0.9);
+        treeNear.get(t.genus).put(t.x, t.y, t.z, t.yaw, t.sxz, t.sy, t.sxz, tint);
+        if (d <= 90) treeShadow.put(t.x, t.y + t.crown.cy, t.z, t.yaw, t.crown.rx * 0.9, t.crown.ry * 0.9, t.crown.rx * 0.9);
       } else if (d <= TREE_MID) {
-        const c = t.crown;
-        const leaf = leafLinear[t.genus];
-        treeMid.put(t.x, t.y + c.cy, t.z, t.yaw, c.rx * 1.02, c.ry * 1.0, c.rx * 1.02, colorArr(leaf, t.tint));
-        const bark = barkLinear[t.genus];
-        treeMidTrunk.put(t.x, t.y, t.z, 0, Math.max(0.6, t.crownR * 0.28), c.cy, Math.max(0.6, t.crownR * 0.28), colorArr(bark, 1));
+        treeMid.get(t.genus).put(t.x, t.y, t.z, t.yaw, t.sxz, t.sy, t.sxz, tint);
+        if (d <= 90) treeShadow.put(t.x, t.y + t.crown.cy, t.z, t.yaw, t.crown.rx * 0.9, t.crown.ry * 0.9, t.crown.rx * 0.9);
       } else {
-        const leaf = leafLinear[t.genus];
-        treeFar.put(t.x, t.y, t.z, t.yaw, t.crownR * 2.3, t.height * 1.02, t.crownR * 2.3, colorArr(leaf, t.tint * 1.5));
+        treeFar.get(t.genus).put(t.x, t.y, t.z, t.yaw, t.crownR * 2.3, t.height * 1.02, t.crownR * 2.3, tint);
       }
     }
 
@@ -319,8 +356,9 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
         pendantLens.put(l.x, l.y + 6.5, l.z, 0, 1, 1, 1, colorArr(lin(l.color), 1));
       }
       if (on > 0.01 && d < 170) {
-        pools.put(l.x, l.y + 0.05, l.z, 0, l.poolR * 2, 1, l.poolR * 2, colorArr(lin(l.color), 1));
-        nearLamps.push([d, l]);
+        const photo = l.photo || (l.photo = lampPhotometry(l));
+        putHalo(l.x, l.lampY - 0.12, l.z, haloSize(photo, d), lin(l.color), 0.9 + photo.lumens / 20000);
+        nearLamps.push(l);
       }
     }
 
@@ -351,28 +389,37 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     for (const l of small.lakeLights.queryRange(cx, cz, 160)) {
       lakePosts.put(l.x, l.y, l.z, 0);
       pendantLens.put(l.x, l.y + 0.97, l.z, 0, 0.3, 1, 0.3, colorArr(lin(l.color), 1));
-      if (on > 0.01) pools.put(l.x, l.y + 0.05, l.z, 0, l.poolR * 2, 1, l.poolR * 2, colorArr(lin(l.color), 0.8));
+      if (on > 0.01) putHalo(l.x, l.y + 0.97, l.z, 0.35 + Math.hypot(l.x - cx, l.z - cz) * 0.012, lin(l.color), 0.5);
     }
 
     for (const s of sets) s.end(warm);
+    halos.count = haloN;
+    halos.visible = haloN > 0;
+    haloGeo.attributes.haloPos.needsUpdate = true;
+    haloGeo.attributes.haloCol.needsUpdate = true;
+    if (on > 0.01) {
+      // clustered pools: every lantern around the camera splatted into one illuminance raster (js/night-lights-cph.js)
+      poolData = buildPoolWindow(allLamps, cx, cz, { size: POOL.size, cell: POOL.cell, target: poolData?.data });
+      setPoolWindow(poolData, encodePoolWindow(poolData, { maxLux: POOL.maxLux, out: poolBytes }));
+    }
     state.stats.rebuilds++;
     state.stats.rebuildMs = performance.now() - t0;
     assignLights(cx, cz);
   }
 
   function assignLights(cx, cz) {
-    nearLamps.sort((a, b) => a[0] - b[0]);
+    const chosen = state.on < 0.01 ? [] : selectRealLights(nearLamps, cx, cz, MAX_LIGHTS);
     for (let i = 0; i < MAX_LIGHTS; i++) {
-      const entry = nearLamps[i];
+      const l = chosen[i];
       const light = lights[i];
-      if (!entry || state.on < 0.01) {
+      if (!l) {
         light.intensity = 0;
+        light.userData.base = 0;
         continue;
       }
-      const l = entry[1];
       light.position.set(l.x, l.lampY - 0.3, l.z);
       light.color.copy(lin(l.color));
-      light.userData.base = 38 + Math.min(80, l.watt || 60) * 0.5;
+      light.userData.base = realIntensity(l.photo);
       light.intensity = light.userData.base * state.on;
     }
   }
@@ -404,7 +451,8 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
 
   function applyNight() {
     lensMat.color.setScalar(0.42 + state.on * 9);
-    poolMat.opacity = state.on * 0.7;
+    poolUniforms.on.value = state.on;
+    haloOn.value = state.on;
     for (const l of lights) if (l.userData.base) l.intensity = l.userData.base * state.on;
   }
 

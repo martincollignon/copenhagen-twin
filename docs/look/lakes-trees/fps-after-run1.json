@@ -1,0 +1,50 @@
+{
+ "lake-path-day": {
+  "frames": 138,
+  "medianMs": 22,
+  "p95Ms": 26.7,
+  "fps": 46,
+  "drawCalls": 1500,
+  "triangles": 3581405
+ },
+ "norre-sogade-day": {
+  "frames": 114,
+  "medianMs": 26.5,
+  "p95Ms": 30.5,
+  "fps": 38,
+  "drawCalls": 1919,
+  "triangles": 4429036
+ },
+ "tree-avenue-day": {
+  "frames": 111,
+  "medianMs": 27.5,
+  "p95Ms": 29.7,
+  "fps": 37,
+  "drawCalls": 2006,
+  "triangles": 4013977
+ },
+ "lake-path-night": {
+  "frames": 149,
+  "medianMs": 20.7,
+  "p95Ms": 34.4,
+  "fps": 49.7,
+  "drawCalls": 1290,
+  "triangles": 3376655
+ },
+ "norre-sogade-night": {
+  "frames": 121,
+  "medianMs": 23,
+  "p95Ms": 32.8,
+  "fps": 40.3,
+  "drawCalls": 1282,
+  "triangles": 4437223
+ },
+ "tree-avenue-night": {
+  "frames": 96,
+  "medianMs": 30.5,
+  "p95Ms": 51.9,
+  "fps": 32,
+  "drawCalls": 2106,
+  "triangles": 4053194
+ }
+}

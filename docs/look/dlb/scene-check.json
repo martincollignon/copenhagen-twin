@@ -1,0 +1,125 @@
+{
+  "status": "passed",
+  "kind": "Node Three.js scene construction and raycasting; not GPU rendering",
+  "threeRevision": "187dev",
+  "metadata": {
+    "name": "Dronning Louises Bro",
+    "bridgeId": "bridge:0",
+    "source": "https://kk.sites.itera.dk/apps/kk_monuments/pdf/190_db43_1.pdf",
+    "dimensions": {
+      "lengthM": {
+        "value": 128.05,
+        "confidence": "scaled",
+        "source": "projected cph-lakes bridge strip (source strip conf=inferred)"
+      },
+      "widthM": {
+        "value": 26.58,
+        "confidence": "scaled",
+        "source": "median cross-section of cph-lakes bridge strip (source strip conf=inferred)"
+      },
+      "deckY": {
+        "value": 1.62,
+        "confidence": "measured",
+        "source": "cph-terrain bridge deck"
+      },
+      "waterY": {
+        "value": -0.94,
+        "confidence": "measured",
+        "source": "nearby cph-terrain lake levels"
+      },
+      "archCount": {
+        "value": 3,
+        "confidence": "observed",
+        "source": "https://kk.sites.itera.dk/apps/kk_monuments/pdf/190_db43_1.pdf"
+      },
+      "archSpanM": {
+        "value": 7.3071777084679015,
+        "confidence": "inferred from observed lamp stations",
+        "source": "spacing between observed heritage lamps minus 1.3 m pier"
+      },
+      "archRiseM": {
+        "value": 1.52,
+        "confidence": "inferred",
+        "source": "heritage photographs and available deck clearance"
+      },
+      "pierM": {
+        "value": 1.3,
+        "confidence": "inferred",
+        "source": "heritage photographs"
+      },
+      "voussoirThicknessM": {
+        "value": 0.4,
+        "confidence": "inferred",
+        "source": "heritage photographs"
+      },
+      "parapetHeightM": {
+        "value": 1.05,
+        "confidence": "inferred",
+        "source": "heritage photographs"
+      }
+    },
+    "axis": [
+      -0.8551964566816406,
+      -0.5183039846259788
+    ],
+    "sourceRoad": "Dronning Louises Bro",
+    "features": {
+      "arches": 3,
+      "heritageLamps": 8,
+      "benches": 20,
+      "cornerRamps": 4,
+      "flagpoles": 4
+    },
+    "note": "The bridge strip is inferred geometry; its projected dimensions are scaled. Arch proportions are inferred; terrain heights and heritage lamp positions are observed."
+  },
+  "meshCount": 15,
+  "openings": [
+    {
+      "arch": 0,
+      "horizontalHits": 0,
+      "ceilingY": 0.7399998854681634
+    },
+    {
+      "arch": 1,
+      "horizontalHits": 0,
+      "ceilingY": 0.7399999328225403
+    },
+    {
+      "arch": 2,
+      "horizontalHits": 0,
+      "ceilingY": 0.7399999346285714
+    }
+  ],
+  "nightIntensities": [
+    22,
+    22,
+    22,
+    22,
+    22,
+    22,
+    22,
+    22
+  ],
+  "dayIntensities": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "bounds": {
+    "min": [
+      36.22853469848633,
+      -1.5199999809265137,
+      -523.5735473632812
+    ],
+    "max": [
+      176.9029083251953,
+      9.270000457763672,
+      -418.27996826171875
+    ]
+  }
+}
