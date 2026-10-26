@@ -20,6 +20,7 @@ export const WATER = Object.freeze({
   minFreeboard: 0.3, // m: the wall top never lies lower than this over the water
   shoreProbe: 2, // m: land-side probe distance for the quay height
   wallStep: 8, // m: wall / coping segments follow the terrain at this spacing
+  abutmentM: 60, // m: shore within this of a bridge strip is the bridge approach / abutment: a quay there is as tall as the bridge deck
   shoreMax: 16, // distance-field range in metres
   cell: 1 // distance-field cell in metres
 });
@@ -81,6 +82,22 @@ const outsideEdge = (ring, i, bbox) => {
   return mx <= bbox[0] + 0.01 || mx >= bbox[2] - 0.01 || mz <= bbox[1] + 0.01 || mz >= bbox[3] - 0.01;
 };
 
+/** Distance from (x, z) to the outline of a flat ring. */
+function ringDistance(ring, x, z) {
+  let best = Infinity;
+  for (let i = 0, k = ring.length - 2; i < ring.length; k = i, i += 2) {
+    const ax = ring[k];
+    const az = ring[k + 1];
+    const dx = ring[i] - ax;
+    const dz = ring[i + 1] - az;
+    const l2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+    const d = Math.hypot(ax + dx * t - x, az + dz * t - z);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
 class Arrays {
   constructor() { this.position = []; this.normal = []; this.uv = []; this.kind = []; this.index = []; }
   get vertexCount() { return this.position.length / 3; }
@@ -90,14 +107,18 @@ class Arrays {
   }
 }
 
-export const KIND = Object.freeze({ wall: 0, coping: 1, soffit: 2 });
+export const KIND = Object.freeze({ wall: 0, coping: 1, soffit: 2, bank: 3 });
+
+/** Natural lakes (OSM water without a name, e.g. park ponds) have grassed banks, not quay walls: 1 : BANK_BATTER slope. */
+export const BANK_BATTER = 1.6;
+export const isNaturalLake = (lake) => !lake.name || lake.name === 'Lake';
 
 /**
  * Wall strips along one ring. `faceSign` +1 faces the left of the ring direction, -1 the right; (nx, nz) is that
  * horizontal normal. A coping ledge (copingW wide, on the side opposite to the face normal) caps the wall top when
  * `coping` is set. Returns the metres of wall emitted.
  */
-function wallAlong(arrays, ring, { faceSign, yBottom, yTop, coping = false, bbox = null, skip = null, vOf = (y) => y }) {
+function wallAlong(arrays, ring, { faceSign, yBottom, yTop, coping = false, bbox = null, skip = null, vOf = (y) => y, batter = 0, kind = KIND.wall }) {  // vOf(y, x, z)
   const n = ring.length / 2;
   // heights may follow terrain: yBottom / yTop are numbers or functions of the vertex (x, z)
   const yb = typeof yBottom === 'function' ? yBottom : () => yBottom;
@@ -137,10 +158,19 @@ function wallAlong(arrays, ring, { faceSign, yBottom, yTop, coping = false, bbox
     const yBj = yb(ring[2 * j], ring[2 * j + 1]);
     const yTk = yt(ring[2 * k], ring[2 * k + 1]);
     const yTj = yt(ring[2 * j], ring[2 * j + 1]);
-    const a = arrays.vertex(ring[2 * k], yBk, ring[2 * k + 1], fnx, 0, fnz, start, vOf(yBk), KIND.wall);
-    const b = arrays.vertex(ring[2 * j], yBj, ring[2 * j + 1], fnx, 0, fnz, start + len, vOf(yBj), KIND.wall);
-    const c = arrays.vertex(ring[2 * j], yTj, ring[2 * j + 1], fnx, 0, fnz, start + len, vOf(yTj), KIND.wall);
-    const d = arrays.vertex(ring[2 * k], yTk, ring[2 * k + 1], fnx, 0, fnz, start, vOf(yTk), KIND.wall);
+    // a bank leans back from the top edge into the water: the foot is `batter` x the height inward of the outline
+    const fa = batter ? (yTk - yBk) * batter : 0;
+    const fb = batter ? (yTj - yBj) * batter : 0;
+    const ax = ring[2 * k] - (batter ? nrm[k][0] * fa : 0);
+    const az = ring[2 * k + 1] - (batter ? nrm[k][1] * fa : 0);
+    const bx = ring[2 * j] - (batter ? nrm[j][0] * fb : 0);
+    const bz = ring[2 * j + 1] - (batter ? nrm[j][1] * fb : 0);
+    const ny = batter ? 1 / batter : 0;
+    const nl = Math.hypot(fnx, ny, fnz);
+    const a = arrays.vertex(ax, yBk, az, fnx / nl, ny / nl, fnz / nl, start, vOf(yBk, ring[2 * k], ring[2 * k + 1]), kind);
+    const b = arrays.vertex(bx, yBj, bz, fnx / nl, ny / nl, fnz / nl, start + len, vOf(yBj, ring[2 * j], ring[2 * j + 1]), kind);
+    const c = arrays.vertex(ring[2 * j], yTj, ring[2 * j + 1], fnx / nl, ny / nl, fnz / nl, start + len, vOf(yTj, ring[2 * j], ring[2 * j + 1]), kind);
+    const d = arrays.vertex(ring[2 * k], yTk, ring[2 * k + 1], fnx / nl, ny / nl, fnz / nl, start, vOf(yTk, ring[2 * k], ring[2 * k + 1]), kind);
     // (a, b, c) faces the left of the direction of travel; flip for the right-hand face
     if (faceSign > 0) arrays.index.push(a, b, c, a, c, d); else arrays.index.push(a, c, b, a, d, c);
     metres += len;
@@ -215,6 +245,7 @@ export function buildLakeArrays(doc, { bbox = [-750, -750, 750, 750], terrain = 
     const ground = land.length ? land[land.length >> 1] : lvl + 0.8;
     return Math.max(ground + WATER.wallTop, lvl + WATER.minFreeboard);
   };
+  const snapLevel = (v) => (mainLevel != null && Math.abs(v - mainLevel) < WATER.snap ? mainLevel : v);
   const levelOf = (lake) => {
     const v = measured ? measured.lakeLevel(lake.id) : null;
     if (v == null) return null;
@@ -226,28 +257,58 @@ export function buildLakeArrays(doc, { bbox = [-750, -750, 750, 750], terrain = 
   const islands = [];
   let wallMetres = 0;
   const freeboards = []; // wall height above the water at every densified shore vertex (terrain mode)
+  const addSurface = (ringIn, holesIn, y) => {
+    const s = surfaceArrays(ringIn, holesIn, y);
+    const base = surface.position.length / 3;
+    surface.position.push(...s.position);
+    for (const i of s.index) surface.index.push(base + i);
+  };
+  const basinLevels = []; // every water basin of the district with its own measured level
   for (const lake of lakes) {
     const ring = extendBeyondBbox(lake.ring, bbox);
     const holes = (lake.holes || []).map((h) => extendBeyondBbox(h, bbox));
     const lvl = levelOf(lake);
-    const surfY = lvl ?? WATER.surfaceY;
-    const s = surfaceArrays(ring, holes, surfY);
-    const base = surface.position.length / 3;
-    surface.position.push(...s.position);
-    for (const i of s.index) surface.index.push(base + i);
+    const basins = measured ? (doc.basins || []).filter((b) => b.lake === lake.id) : [];
+    // a lake the bridge strips split into basins has one water surface per basin (js/lakes-cph.js header)
+    const pieces = basins.length > 1
+      ? basins.map((b) => ({ id: b.id, ring: extendBeyondBbox(b.ring, bbox), holes: (b.holes || []).map((h) => extendBeyondBbox(h, bbox)), level: snapLevel(b.level), raw: b.ring }))
+      : [{ id: lake.id, ring, holes, level: lvl ?? WATER.surfaceY, raw: null }];
+    for (const pc of pieces) { addSurface(pc.ring, pc.holes, pc.level); basinLevels.push({ id: pc.id, level: pc.level }); }
+    if (basins.length > 1) {
+      const low = Math.min(...pieces.map((pc) => pc.level));
+      for (const b of doc.bridges || []) addSurface(b.ring, [], low); // the water under a bridge deck lies at the lower basin's level
+    }
+    // level at a shore vertex: the nearest basin (distance to its outline)
+    const cache = new Map();
+    const lvlAt = (x, z) => {
+      if (pieces.length === 1) return pieces[0].level;
+      const key = `${Math.round(x * 100)},${Math.round(z * 100)}`;
+      let v = cache.get(key);
+      if (v === undefined) {
+        let best = Infinity;
+        for (const pc of pieces) {
+          const d = ringDistance(pc.raw, x, z);
+          if (d < best) { best = d; v = pc.level; }
+        }
+        cache.set(key, v);
+      }
+      return v;
+    };
     // Rings are counter-clockwise seen from above (negative shoelace in x/z): the water is on the right of travel on the
     // outer ring and on the left of travel round an island (hole rings run the other way).
     const outerSign = Math.sign(shoelace(ring)) > 0 ? 1 : -1; // water side of the exterior ring
     // wall: from the lake bed to the terrain at the shore (never lower than 0.3 m over the water), densified to follow it
     const wallArgs = lvl == null
       ? { yBottom: WATER.bedY, yTop: WATER.wallTop }
-      : { yBottom: lvl + (WATER.bedY - WATER.surfaceY), yTop: (x, z) => shoreTop(x, z, lvl), vOf: (y) => y - lvl + WATER.surfaceY };
+      : { yBottom: (x, z) => lvlAt(x, z) + (WATER.bedY - WATER.surfaceY), yTop: (x, z) => shoreTop(x, z, lvlAt(x, z)), vOf: (y, x, z) => y - lvlAt(x, z) + WATER.surfaceY };
     const dense = (r) => (lvl == null ? r : densifyRing(r, WATER.wallStep));
-    if (lvl != null) { const d = dense(ring); for (let i = 0; i < d.length; i += 2) freeboards.push({ id: lake.id, x: d[i], z: d[i + 1], free: shoreTop(d[i], d[i + 1], lvl) - lvl }); }
-    wallMetres += wallAlong(walls, dense(ring), { faceSign: outerSign, ...wallArgs, coping: true, bbox });
+    if (lvl != null) { const d = dense(ring); for (let i = 0; i < d.length; i += 2) { const l = lvlAt(d[i], d[i + 1]); freeboards.push({ id: lake.id, x: d[i], z: d[i + 1], free: shoreTop(d[i], d[i + 1], l) - l, natural: isNaturalLake(lake), abutment: (doc.bridges || []).some((b) => ringDistance(b.ring, d[i], d[i + 1]) < WATER.abutmentM) }); } }
+    const natural = isNaturalLake(lake) && lvl != null;
+    const kindArgs = natural ? { batter: BANK_BATTER, kind: KIND.bank, coping: false } : { coping: true };
+    wallMetres += wallAlong(walls, dense(ring), { faceSign: outerSign, ...wallArgs, ...kindArgs, bbox });
     cutRings.push({ ring, holes });
     for (const hole of holes) {
-      wallMetres += wallAlong(walls, dense(hole), { faceSign: Math.sign(shoelace(hole)) > 0 ? -1 : 1, ...wallArgs, coping: true, bbox });
+      wallMetres += wallAlong(walls, dense(hole), { faceSign: Math.sign(shoelace(hole)) > 0 ? -1 : 1, ...wallArgs, ...kindArgs, bbox });
       islands.push(hole);
     }
   }
@@ -285,7 +346,7 @@ export function buildLakeArrays(doc, { bbox = [-750, -750, 750, 750], terrain = 
     surface.position.push(...s.position);
     for (const i of s.index) surface.index.push(base + i);
   }
-  return { surface, walls, soffit, cutRings, islands, level: mainLevel ?? WATER.surfaceY, freeboards, stats: { lakes: lakes.length, wallMetres: Math.round(wallMetres), bridges: bridges.length } };
+  return { surface, walls, soffit, cutRings, islands, level: mainLevel ?? WATER.surfaceY, basins: basinLevels, freeboards, stats: { lakes: lakes.length, wallMetres: Math.round(wallMetres), bridges: bridges.length } };
 }
 
 /** Ground plane (size x size, centred on the origin) with the lake outlines cut out and the islands filled back in. */

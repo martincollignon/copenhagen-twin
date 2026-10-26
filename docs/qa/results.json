@@ -377,10 +377,10 @@
   "layer": "traffic direction",
   "title": "Live car-steps against a one-way road (10 simulated minutes, headless browser)",
   "count": 0,
-  "total": 418756,
+  "total": 372839,
   "pct": 0.0,
   "severity": "high",
-  "note": "789599 car-steps in junctions / off any road were not judged",
+  "note": "829257 car-steps in junctions / off any road were not judged",
   "examples": []
  },
  {
@@ -738,78 +738,6 @@
     "x": -355.3,
     "z": 293.7,
     "metric": " centreline dh -0.19"
-   }
-  ]
- },
- {
-  "id": "lake-wall-too-tall",
-  "layer": "water",
-  "title": "Lake wall more than 2.0 m above the water at a shore vertex (8 m spacing)",
-  "count": 62,
-  "total": 1631,
-  "pct": 3.8,
-  "severity": "med",
-  "note": "free-board p5/p50/p95 0.30 / 0.82 / 1.75 m; the water level is the measured DTM level of each lake, the wall top follows the terrain at the shore",
-  "examples": [
-   {
-    "id": "lake:0",
-    "x": 151.4,
-    "z": -428.0,
-    "metric": "wall 3.96 m above the water"
-   },
-   {
-    "id": "lake:0",
-    "x": 46.4,
-    "z": -491.6,
-    "metric": "wall 3.12 m above the water"
-   },
-   {
-    "id": "lake:3",
-    "x": 284.8,
-    "z": 192.6,
-    "metric": "wall 3.11 m above the water"
-   },
-   {
-    "id": "lake:3",
-    "x": 260.9,
-    "z": 199.0,
-    "metric": "wall 2.88 m above the water"
-   },
-   {
-    "id": "lake:3",
-    "x": 260.9,
-    "z": 194.9,
-    "metric": "wall 2.79 m above the water"
-   },
-   {
-    "id": "lake:3",
-    "x": 287.5,
-    "z": 167.4,
-    "metric": "wall 2.72 m above the water"
-   },
-   {
-    "id": "lake:3",
-    "x": 260.4,
-    "z": 193.1,
-    "metric": "wall 2.69 m above the water"
-   },
-   {
-    "id": "lake:0",
-    "x": 60.3,
-    "z": -513.8,
-    "metric": "wall 2.67 m above the water"
-   },
-   {
-    "id": "lake:3",
-    "x": 291.0,
-    "z": 213.5,
-    "metric": "wall 2.57 m above the water"
-   },
-   {
-    "id": "lake:0",
-    "x": 158.0,
-    "z": -438.2,
-    "metric": "wall 2.52 m above the water"
    }
   ]
  },
@@ -1250,6 +1178,17 @@
   "examples": []
  },
  {
+  "id": "lake-wall-too-tall",
+  "layer": "water",
+  "title": "Soerne quay wall more than 1.2 m above its own water at a shore vertex (8 m spacing; bridge approach and park-pond banks excluded)",
+  "count": 0,
+  "total": 1378,
+  "pct": 0.0,
+  "severity": "med",
+  "note": "free-board p5/p50/p95 0.30 / 0.67 / 0.85 m (reference 0.3-0.8 m, visual-refs 8a); each basin has its own measured level [{'id': 'lake:0/0', 'level': -0.94}, {'id': 'lake:0/1', 'level': -0.1}, {'id': 'lake:1', 'level': -0.94}, {'id': 'lake:2', 'level': -0.94}, {'id': 'lake:3', 'level': -4.04}, {'id': 'lake:4', 'level': -5.56}]; before the basin split one level for Sortedams + Peblinge gave 62 shore vertices over 2 m",
+  "examples": []
+ },
+ {
   "id": "lakelights-water",
   "layer": "furniture",
   "title": "Lake-path lights inside the lake or > 6 m from its edge",
@@ -1474,17 +1413,6 @@
     "metric": "100% of footprint"
    }
   ]
- },
- {
-  "id": "tree-generic-genus",
-  "layer": "trees",
-  "title": "Tree genus not resolved ('generic' look)",
-  "count": 3709,
-  "total": 4905,
-  "pct": 75.62,
-  "severity": "low",
-  "note": "genus mix {'maple': 60, 'generic': 3709, 'poplar': 48, 'chestnut': 171, 'robinia': 68, 'hawthorn': 180, 'conifer': 19, 'lime': 271, 'cherry': 148, 'elm': 74, 'birch': 6, 'oak': 40, 'ash': 19, 'plane': 49, 'willow': 43}",
-  "examples": []
  },
  {
   "id": "road-width-cap",
@@ -1858,6 +1786,78 @@
   ]
  },
  {
+  "id": "lake-wall-over-2m",
+  "layer": "water",
+  "title": "Any Soerne wall more than 2.0 m above the water (incl. the bridge approach, which is real masonry)",
+  "count": 12,
+  "total": 1461,
+  "pct": 0.82,
+  "severity": "low",
+  "note": "the abutments of Dronning Louises Bro: deck 1.62 m over a -0.94 m lake",
+  "examples": [
+   {
+    "id": "lake:0",
+    "x": 151.4,
+    "z": -428.0,
+    "metric": "wall 3.96 m (bridge approach)"
+   },
+   {
+    "id": "lake:0",
+    "x": 46.4,
+    "z": -491.6,
+    "metric": "wall 3.12 m (bridge approach)"
+   },
+   {
+    "id": "lake:0",
+    "x": 158.0,
+    "z": -438.2,
+    "metric": "wall 2.52 m (bridge approach)"
+   },
+   {
+    "id": "lake:0",
+    "x": 53.4,
+    "z": -502.7,
+    "metric": "wall 2.48 m (bridge approach)"
+   },
+   {
+    "id": "lake:0",
+    "x": 154.7,
+    "z": -433.1,
+    "metric": "wall 2.48 m (bridge approach)"
+   },
+   {
+    "id": "lake:0",
+    "x": 49.9,
+    "z": -497.1,
+    "metric": "wall 2.47 m (bridge approach)"
+   },
+   {
+    "id": "lake:0",
+    "x": 44.2,
+    "z": -492.9,
+    "metric": "wall 2.46 m (bridge approach)"
+   },
+   {
+    "id": "lake:0",
+    "x": 154.1,
+    "z": -426.4,
+    "metric": "wall 2.44 m (bridge approach)"
+   },
+   {
+    "id": "lake:0",
+    "x": 153.5,
+    "z": -424.7,
+    "metric": "wall 2.42 m (bridge approach)"
+   },
+   {
+    "id": "lake:0",
+    "x": 153.3,
+    "z": -424.8,
+    "metric": "wall 2.42 m (bridge approach)"
+   }
+  ]
+ },
+ {
   "id": "water-paths",
   "layer": "water",
   "title": "Footway/cycleway centreline runs > 3 m through open water",
@@ -1926,6 +1926,17 @@
   "pct": 0.0,
   "severity": "low",
   "note": "mostly hidden inside the wall volume; matters where the building ground is below the pavement 0.2 m",
+  "examples": []
+ },
+ {
+  "id": "lake-wall-too-low",
+  "layer": "water",
+  "title": "Soerne wall less than 0.3 m above the water (the engine keeps a 0.3 m minimum free-board)",
+  "count": 0,
+  "total": 1378,
+  "pct": 0.0,
+  "severity": "low",
+  "note": "",
   "examples": []
  },
  {
@@ -2014,6 +2025,17 @@
   "pct": 0.0,
   "severity": "low",
   "note": "expected for kerbside poles on narrow caps",
+  "examples": []
+ },
+ {
+  "id": "tree-generic-genus",
+  "layer": "trees",
+  "title": "Tree genus not resolved ('generic' look)",
+  "count": 0,
+  "total": 4782,
+  "pct": 0.0,
+  "severity": "low",
+  "note": "genus mix {'maple': 303, 'lime': 1773, 'chestnut': 1840, 'poplar': 48, 'plane': 250, 'robinia': 68, 'hawthorn': 174, 'conifer': 19, 'cherry': 149, 'birch': 10, 'oak': 40, 'ash': 21, 'willow': 43, 'elm': 44}; source {'recorded': 1142, 'lakeside': 3620, 'name': 20}",
   "examples": []
  },
  {

@@ -110,17 +110,20 @@ export function crownOf(height, crownRadius, style) {
   return { base, cy: base + ry, ry, rx: Math.max(0.8, crownRadius) };
 }
 
-export function mapTrees(trees, groundHeight) {
+export function mapTrees(trees, groundHeight, { resolve = null } = {}) {
   const out = [];
   for (const t of trees || []) {
-    const style = treeStyle(t.genus);
+    // `resolve(tree) -> { genus, source }` gives the laser-detected crowns without a species a context default (tree-species-cph.js)
+    const r = resolve ? resolve(t) : null;
+    const genus = r ? r.genus : t.genus;
+    const style = treeStyle(genus);
     const h = Math.max(2.5, Math.min(40, t.height || 8));
     const rx = Math.max(0.9, Math.min(h * 0.75, t.crown_radius || h * 0.35));
     const y = groundHeight ? groundHeight.heightAt(t.x, t.z) : 0;
     const j = hash2(t.x, t.z, 7);
     const crown = crownOf(h, rx, style);
     out.push({
-      cx: t.x, cz: t.z, x: t.x, y, z: t.z, genus: t.genus in TREE_STYLES ? t.genus : 'generic', height: h, crownR: rx, crown,
+      cx: t.x, cz: t.z, x: t.x, y, z: t.z, genus: genus in TREE_STYLES ? genus : 'generic', genusSource: r ? r.source : 'recorded', species: t.species ?? null, height: h, crownR: rx, crown,
       // reference-tree scale: y by height, xz by crown width against the reference crown
       sy: h / REF_H, sxz: rx / (style.width * REF_H),
       yaw: j * Math.PI * 2, tint: 0.88 + hash2(t.x, t.z, 11) * 0.24, age: t.age ?? null
@@ -319,7 +322,7 @@ const place_ = (items, groundHeight) =>
   (items || []).map((i) => ({ ...i, cx: i.x, cz: i.z, y: groundHeight ? groundHeight.heightAt(i.x, i.z) : 0 }));
 
 /** All placed furniture of the document, with ground heights. */
-export function buildFurniturePlan(doc, groundHeight = null, { seed = 1, place = null } = {}) {
+export function buildFurniturePlan(doc, groundHeight = null, { seed = 1, place = null, resolveTree = null } = {}) {
   // `place(doc)` re-places the items against the street layout (js/placement-cph.js placeFurniture); its report rides along
   let report = null;
   if (place) {
@@ -332,7 +335,7 @@ export function buildFurniturePlan(doc, groundHeight = null, { seed = 1, place =
   const benches = place_(doc.benches, groundHeight).concat(stops.benches);
   const bins = place_(doc.bins, groundHeight).concat(stops.bins);
   const plan = {
-    trees: mapTrees(doc.trees, groundHeight),
+    trees: mapTrees(doc.trees, groundHeight, { resolve: resolveTree }),
     lamps: mapLamps(doc.lamps, groundHeight),
     cars: parkedCars(doc.parkingBays, groundHeight, seed),
     meters: place_(doc.parkMeters, groundHeight),

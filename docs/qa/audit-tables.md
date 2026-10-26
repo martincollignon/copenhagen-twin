@@ -19,7 +19,7 @@
 | high | `car-in-moving-lane` | cars | 0 | 1030 | 0.0 |
 | high | `wire-through-building` | lamps | 0 | 502 | 0.0 |
 | high | `dir-car-edge-against-oneway` | traffic direction | 0 | 1615 | 0.0 |
-| high | `dir-car-sim-against-oneway` | traffic direction | 0 | 418756 | 0.0 |
+| high | `dir-car-sim-against-oneway` | traffic direction | 0 | 372839 | 0.0 |
 | high | `dir-bike-lane-illegal` | traffic direction | 0 | 879 | 0.0 |
 | high | `dir-bike-sim-violations` | traffic direction | 0 | 305638 | 0.0 |
 | med | `lod2-eave-mismatch` | lod2 | 1119 | 2097 | 53.36 |
@@ -27,7 +27,6 @@
 | med | `signal-no-junction` | signals | 21 | 164 | 12.8 |
 | med | `bld-height-sanity` | buildings | 288 | 2497 | 11.53 |
 | med | `ground-jump-centreline` | ground height | 245 | 4690 | 5.22 |
-| med | `lake-wall-too-tall` | water | 62 | 1631 | 3.8 |
 | med | `lod2-spire` | lod2 | 63 | 2097 | 3.0 |
 | med | `ground-jump-gt25cm` | ground height | 117 | 4690 | 2.49 |
 | med | `road-road-overlap` | roads | 19 | 916 | 2.07 |
@@ -37,6 +36,7 @@
 | med | `on-cycletrack:benches` | benches | 2 | 860 | 0.23 |
 | med | `bld-cycletrack` | buildings | 0 | 2497 | 0.0 |
 | med | `water-surface` | water | 0 | 309 | 0.0 |
+| med | `lake-wall-too-tall` | water | 0 | 1378 | 0.0 |
 | med | `lakelights-water` | furniture | 0 | 143 | 0.0 |
 | med | `surf-surf-diffclass` | surfaces | 0 | 309 | 0.0 |
 | med | `surf-under-road` | surfaces | 0 | 227 | 0.0 |
@@ -52,16 +52,17 @@
 | med | `busstop-in-building` | bus stops | 0 | 41 | 0.0 |
 | med | `shelter-conflict` | bus stops | 0 | 17 | 0.0 |
 | low | `on-carriageway:cars` | cars | 1030 | 1030 | 100.0 |
-| low | `tree-generic-genus` | trees | 3709 | 4905 | 75.62 |
 | low | `road-width-cap` | roads | 229 | 916 | 25.0 |
 | low | `tree-crown-clamped` | trees | 741 | 4905 | 15.11 |
 | low | `dir-bike-dead-end-lane` | traffic direction | 99 | 879 | 11.26 |
 | low | `pavement-cycletrack` | pavement | 22 | 1026 | 2.14 |
 | low | `mast-height-high` | lamps | 16 | 1188 | 1.35 |
 | low | `dir-car-oneway-dead-end` | traffic direction | 20 | 1615 | 1.24 |
+| low | `lake-wall-over-2m` | water | 12 | 1461 | 0.82 |
 | low | `water-paths` | water | 5 | 987 | 0.51 |
 | low | `overlap:benches+lakeLights` | furniture | 1 | 1003 | 0.1 |
 | low | `pavement-in-bld` | pavement | 0 | 1026 | 0.0 |
+| low | `lake-wall-too-low` | water | 0 | 1378 | 0.0 |
 | low | `surf-surf-sameclass` | surfaces | 0 | 309 | 0.0 |
 | low | `surf-under-bld` | surfaces | 0 | 309 | 0.0 |
 | low | `tree-trunk-facade` | trees | 0 | 4782 | 0.0 |
@@ -70,6 +71,7 @@
 | low | `wire-no-span` | lamps | 0 | 502 | 0.0 |
 | low | `mast-height-low` | lamps | 0 | 1188 | 0.0 |
 | low | `busstop-in-carriageway` | bus stops | 0 | 41 | 0.0 |
+| low | `tree-generic-genus` | trees | 0 | 4782 | 0.0 |
 | info | `dir-found` | traffic direction | 66 | 368 | 17.93 |
 
 #### `road-through-bld` (high): Carriageway has >= 8 m2 inside building footprints
@@ -180,7 +182,7 @@ Count **0** of 1615 (0.0%). static: every lane of every edge
 
 #### `dir-car-sim-against-oneway` (high): Live car-steps against a one-way road (10 simulated minutes, headless browser)
 
-Count **0** of 418756 (0.0%). 789599 car-steps in junctions / off any road were not judged
+Count **0** of 372839 (0.0%). 829257 car-steps in junctions / off any road were not judged
 
 #### `dir-bike-lane-illegal` (high): Cyclist lane that breaks the direction rules (against a track, against a one-way street without contraflow, on a banned road, ...)
 
@@ -270,23 +272,6 @@ Count **245** of 4690 (5.22%). cars/cyclists/pedestrians read this field: a step
 | 8 | osm:way/160726988#2 | 378.2, -31.6 | Israels Plads centreline dh +0.19 |
 | 9 | osm:way/160726988#2 | 377.3, -32.0 | Israels Plads centreline dh +0.19 |
 | 10 | osm:way/150918586 | -355.3, 293.7 |  centreline dh -0.19 |
-
-#### `lake-wall-too-tall` (med): Lake wall more than 2.0 m above the water at a shore vertex (8 m spacing)
-
-Count **62** of 1631 (3.8%). free-board p5/p50/p95 0.30 / 0.82 / 1.75 m; the water level is the measured DTM level of each lake, the wall top follows the terrain at the shore
-
-| # | id | x, z | measure |
-|---:|---|---|---|
-| 1 | lake:0 | 151.4, -428.0 | wall 3.96 m above the water |
-| 2 | lake:0 | 46.4, -491.6 | wall 3.12 m above the water |
-| 3 | lake:3 | 284.8, 192.6 | wall 3.11 m above the water |
-| 4 | lake:3 | 260.9, 199.0 | wall 2.88 m above the water |
-| 5 | lake:3 | 260.9, 194.9 | wall 2.79 m above the water |
-| 6 | lake:3 | 287.5, 167.4 | wall 2.72 m above the water |
-| 7 | lake:3 | 260.4, 193.1 | wall 2.69 m above the water |
-| 8 | lake:0 | 60.3, -513.8 | wall 2.67 m above the water |
-| 9 | lake:3 | 291.0, 213.5 | wall 2.57 m above the water |
-| 10 | lake:0 | 158.0, -438.2 | wall 2.52 m above the water |
 
 #### `lod2-spire` (med): LoD2 roof top > 8 m above geodata eave
 
@@ -400,6 +385,10 @@ Count **0** of 2497 (0.0%). raised cycle track strip inside a footprint
 
 Count **0** of 309 (0.0%). register ground drawn at 0.014 above the sunk water
 
+#### `lake-wall-too-tall` (med): Soerne quay wall more than 1.2 m above its own water at a shore vertex (8 m spacing; bridge approach and park-pond banks excluded)
+
+Count **0** of 1378 (0.0%). free-board p5/p50/p95 0.30 / 0.67 / 0.85 m (reference 0.3-0.8 m, visual-refs 8a); each basin has its own measured level [{'id': 'lake:0/0', 'level': -0.94}, {'id': 'lake:0/1', 'level': -0.1}, {'id': 'lake:1', 'level': -0.94}, {'id': 'lake:2', 'level': -0.94}, {'id': 'lake:3', 'level': -4.04}, {'id': 'lake:4', 'level': -5.56}]; before the basin split one level for Sortedams + Peblinge gave 62 shore vertices over 2 m
+
 #### `lakelights-water` (med): Lake-path lights inside the lake or > 6 m from its edge
 
 Count **0** of 143 (0.0%). 0 are inside open water
@@ -472,10 +461,6 @@ Count **1030** of 1030 (100.0%). standing in the roadway (cars/bollards/flags at
 | 8 | cars[29] | -652.9, -477.0 | 100% of footprint |
 | 9 | cars[33] | -647.9, -323.9 | 100% of footprint |
 | 10 | cars[47] | -588.8, -488.6 | 100% of footprint |
-
-#### `tree-generic-genus` (low): Tree genus not resolved ('generic' look)
-
-Count **3709** of 4905 (75.62%). genus mix {'maple': 60, 'generic': 3709, 'poplar': 48, 'chestnut': 171, 'robinia': 68, 'hawthorn': 180, 'conifer': 19, 'lime': 271, 'cherry': 148, 'elm': 74, 'birch': 6, 'oak': 40, 'ash': 19, 'plane': 49, 'willow': 43}
 
 #### `road-width-cap` (low): Engine carriageway is > 10 m narrower than the data width
 
@@ -566,6 +551,23 @@ Count **20** of 1615 (1.24%). interior {'sink': 10, 'source': 10, 'island': 0}; 
 | 9 | source osm:way/367458129 | 278.0, 438.0 | source |
 | 10 | source Frederiksborggade | 416.0, -277.0 | source |
 
+#### `lake-wall-over-2m` (low): Any Soerne wall more than 2.0 m above the water (incl. the bridge approach, which is real masonry)
+
+Count **12** of 1461 (0.82%). the abutments of Dronning Louises Bro: deck 1.62 m over a -0.94 m lake
+
+| # | id | x, z | measure |
+|---:|---|---|---|
+| 1 | lake:0 | 151.4, -428.0 | wall 3.96 m (bridge approach) |
+| 2 | lake:0 | 46.4, -491.6 | wall 3.12 m (bridge approach) |
+| 3 | lake:0 | 158.0, -438.2 | wall 2.52 m (bridge approach) |
+| 4 | lake:0 | 53.4, -502.7 | wall 2.48 m (bridge approach) |
+| 5 | lake:0 | 154.7, -433.1 | wall 2.48 m (bridge approach) |
+| 6 | lake:0 | 49.9, -497.1 | wall 2.47 m (bridge approach) |
+| 7 | lake:0 | 44.2, -492.9 | wall 2.46 m (bridge approach) |
+| 8 | lake:0 | 154.1, -426.4 | wall 2.44 m (bridge approach) |
+| 9 | lake:0 | 153.5, -424.7 | wall 2.42 m (bridge approach) |
+| 10 | lake:0 | 153.3, -424.8 | wall 2.42 m (bridge approach) |
+
 #### `water-paths` (low): Footway/cycleway centreline runs > 3 m through open water
 
 Count **5** of 987 (0.51%). pedestrian/cyclist routes through the lake (OSM path across a bridge not in the bridge list)
@@ -589,6 +591,10 @@ Count **1** of 1003 (0.1%).
 #### `pavement-in-bld` (low): Pavement polygon overlaps a building footprint (>= 3 m2)
 
 Count **0** of 1026 (0.0%). mostly hidden inside the wall volume; matters where the building ground is below the pavement 0.2 m
+
+#### `lake-wall-too-low` (low): Soerne wall less than 0.3 m above the water (the engine keeps a 0.3 m minimum free-board)
+
+Count **0** of 1378 (0.0%). 
 
 #### `surf-surf-sameclass` (low): Duplicate / overlapping polygons of the same class (>= 2 m2)
 
@@ -621,6 +627,10 @@ Count **0** of 1188 (0.0%).
 #### `busstop-in-carriageway` (low): Stop flag inside the capped carriageway
 
 Count **0** of 41 (0.0%). expected for kerbside poles on narrow caps
+
+#### `tree-generic-genus` (low): Tree genus not resolved ('generic' look)
+
+Count **0** of 4782 (0.0%). genus mix {'maple': 303, 'lime': 1773, 'chestnut': 1840, 'poplar': 48, 'plane': 250, 'robinia': 68, 'hawthorn': 174, 'conifer': 19, 'cherry': 149, 'birch': 10, 'oak': 40, 'ash': 21, 'willow': 43, 'elm': 44}; source {'recorded': 1142, 'lakeside': 3620, 'name': 20}
 
 #### `dir-found` (info): Direction data found
 
