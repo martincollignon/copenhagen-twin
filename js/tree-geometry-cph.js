@@ -302,10 +302,11 @@ class Builder {
   /** A leaf-spray card centred on p, facing roughly n (blended with the outward direction), `size` metres. */
   card(p, face, outward, size, cell, color, swayAmp, rng) {
     const n = new THREE.Vector3(...face).multiplyScalar(0.55).add(new THREE.Vector3(...outward).multiplyScalar(0.45)).normalize();
-    const ref = Math.abs(n.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
-    const u = new THREE.Vector3().crossVectors(n, ref).normalize();
+    // the spray's stem end (bottom of the cell) points down-ish: the card's up axis is the world up projected onto its plane
+    const ref = Math.abs(n.y) > 0.92 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+    const u = new THREE.Vector3().crossVectors(ref, n).normalize();
     const v = new THREE.Vector3().crossVectors(n, u).normalize();
-    const roll = rng() * Math.PI * 2;
+    const roll = (rng() - 0.5) * 1.9;
     const cr = Math.cos(roll);
     const sr = Math.sin(roll);
     const ru = u.clone().multiplyScalar(cr).add(v.clone().multiplyScalar(sr));
@@ -425,7 +426,8 @@ export function buildNearTree(genus) {
   const bark = rgbLin(look.bark);
   const sway = (p) => 0.012 * Math.pow(Math.max(0, p[1]) / sk.H, 2.2) * (1 + Math.hypot(p[0], p[2]) * 0.5);
   for (const l of sk.limbs) b.wood(l.path, bark, sway, l.kind === 'trunk' ? 8 : 5);
-  for (const t of sk.twigs) b.wood(t.path, bark, sway, 3);
+  const twigColour = bark.map((x, i) => x * 0.55 + rgbLin(look.leaf)[i] * 0.45 * 0.6); // twigs read as leafy shade, not as black wires
+  for (const t of sk.twigs) b.wood(t.path, twigColour, sway, 3);
   const centre = [0, baseY + (topY - baseY) / 2, 0];
   const leafLit = look.leaf;
   const cardColour = (frac, h) => {

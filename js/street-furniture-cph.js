@@ -6,6 +6,7 @@ import {
 import * as G from './street-furniture-geometry.js';
 import * as T from './tree-geometry-cph.js';
 import { resolveGenus } from './tree-species-cph.js';
+import { alignLakeFurniture } from './lake-furniture-cph.js';
 import { buildPoolWindow, encodePoolWindow, haloSize, lampPhotometry, realIntensity, selectRealLights } from './night-lights-cph.js';
 import { POOL, poolUniforms, setPoolWindow } from './pool-light-cph.js';
 import { Fn, attribute, cameraPosition, cross, float, length, normalize, positionLocal, smoothstep, uniform, uv, vec3, vec4, exp, abs } from 'three/tsl';
@@ -124,6 +125,7 @@ function textSprite(text) {
 export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 1, place = null, lakeDistance = null } = {}) {
   // untyped laser-detected crowns get a context genus (Soerne avenues: lime / horse chestnut), js/tree-species-cph.js
   const plan = buildFurniturePlan(doc, groundHeight, { seed, place, resolveTree: (t) => resolveGenus(t, { lakeDistance }) });
+  alignLakeFurniture(plan, lakeDistance); // benches / rescue posts face the water, lake lights project over the path
   const group = new THREE.Group();
   group.name = 'CopenhagenStreetFurniture';
   scene.add(group);

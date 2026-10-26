@@ -65,6 +65,9 @@ uv run --with playwright python tools/shoot-m2.py --oneway      # traffic direct
 node tools/audit/oneway.mjs                                     # cars and cyclists against the one-way / bicycle-direction data (10 simulated minutes)
 ```
 
+Look shots for lakes, trees and night lighting: `uv run --with playwright python tools/shoot-look.py --tag after` (docs/look/lakes-trees).
+`uv run tools/cph-geodata/basins.py` adds the per-basin water levels to `data/cph-lakes.json` (after `lakes.py`).
+
 ## Licence and attributions
 
 The project code is available under the [MIT License](LICENSE).
