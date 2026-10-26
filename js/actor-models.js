@@ -890,9 +890,14 @@ function buildBumpers(spec) {
   });
 }
 
+function taxiSignLayout(spec) {
+  const L = carLayout(spec), z = L.rail.roofMid;
+  return { width: 0.45, height: 0.15, depth: 0.12, z, y: L.cabinTop(L.cabin(z), 0) + 0.08 };
+}
+
 function buildTaxiSign(spec) {
-  const roof = Math.max(...spec.cabin.roofY.map((p) => p[1]));
-  return part(new THREE.BoxGeometry(0.45, 0.15, 0.12).translate(0, roof + 0.09, -0.35), CAR_PARTS.SIGN);
+  const s = taxiSignLayout(spec);
+  return part(new THREE.BoxGeometry(s.width, s.height, s.depth).translate(0, s.y, s.z), CAR_PARTS.SIGN);
 }
 
 function buildCarGeometry(spec, includeWheels = true) {
@@ -1031,7 +1036,7 @@ function taxiSignTexture() {
  * more than once into temporaries), so the fragment shader evaluates each SDF a single time.
  */
 function createLoftedCarMaterial(spec, fixedColorHex = null) {
-  const cacheKey = `${spec.name}_${fixedColorHex ?? 'instanced'}`;
+  const cacheKey = `${spec.name}_${fixedColorHex ?? 'instanced'}_${spec.taxiSign ? 'taxi' : 'private'}`;
   if (_carMaterialCache.has(cacheKey)) {
     return _carMaterialCache.get(cacheKey);
   }
@@ -1275,9 +1280,9 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   col = mix(col, color(0x1b1e21), isTrim);
   col = mix(col, alloyCol, isAlloy);
   col = mix(col, tyreCol, isTyre);
-  const roof = Math.max(...spec.cabin.roofY.map((p) => p[1]));
+  const sign = spec.taxiSign ? taxiSignLayout(spec) : null;
   const signFace = isSign.mul(step(0.5, n.z)).mul(state.w);
-  const signColor = spec.taxiSign ? texture(taxiSignTexture(), vec2(p.x.div(0.45).add(0.5), p.y.sub(roof + 0.015).div(0.15))).rgb : color(0x161b19);
+  const signColor = sign ? texture(taxiSignTexture(), vec2(p.x.div(sign.width).add(0.5), p.y.sub(sign.y).div(sign.height).add(0.5))).rgb : color(0x161b19);
   col = mix(col, mix(color(0x161b19), signColor, signFace), isSign);
 
   // ---- Roughness & metalness ---------------------------------------------------------------------------------------

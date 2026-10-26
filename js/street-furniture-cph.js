@@ -238,7 +238,7 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
   // ------------------------------------------------------------------------------------------- cars
   const carSets = {};
   for (const body of CAR_BODY_TYPES) {
-    const spec = BODY_SPECS[body];
+    const spec = { ...BODY_SPECS[body], taxiSign: false };
     const mat = createLoftedCarMaterial(spec);
     const n = plan.cars.filter((c) => c.body === body).length;
     carSets[body] = {

@@ -74,6 +74,26 @@ test('modern bodies have separate silhouettes, body dimensions and lamp position
   assert.ok(specs.estate.cabin.roofRear < specs.hatch.cabin.roofRear);
 });
 
+test('taxi signs stay 0.45 x 0.15 x 0.12 m at each body roof centre in both LODs', () => {
+  for (const name of ['crossoverEV', 'estate']) {
+    const spec = models.BODY_SPECS[name], layout = models.carLayout(spec);
+    const roofZ = (spec.cabin.roofFront + spec.cabin.roofRear) / 2;
+    const roofY = layout.cabinTop(layout.cabin(roofZ), 0);
+    for (const geo of [models.buildCarGeometry(spec, false), models.buildCarProxyGeometry(spec)]) {
+      const p = geo.attributes.position, ids = geo.attributes.partId;
+      const points = [];
+      for (let i = 0; i < p.count; i++) if (ids.getX(i) === 6) points.push([p.getX(i), p.getY(i), p.getZ(i)]);
+      assert.ok(points.length >= 8);
+      const lo = [0, 1, 2].map((a) => Math.min(...points.map((p) => p[a])));
+      const hi = [0, 1, 2].map((a) => Math.max(...points.map((p) => p[a])));
+      for (const [a, size] of [0.45, 0.15, 0.12].entries()) assert.ok(Math.abs(hi[a] - lo[a] - size) < 1e-6, `${name} sign size on axis ${a}`);
+      assert.ok(Math.abs(lo[0] + hi[0]) < 1e-6, 'centred across the roof');
+      assert.ok(Math.abs((lo[2] + hi[2]) / 2 - roofZ) < 1e-6, `${name} sign centred along the roof`);
+      assert.ok(lo[1] >= roofY - 1e-6 && lo[1] - roofY <= 0.01, 'base touches the roof with at most a 1 cm mounting gap');
+    }
+  }
+});
+
 test('plate atlases keep every row at the physical aspect and provide white and yellow fields', () => {
   const { CAR_PLATE } = fleet;
   for (const commercial of [false, true]) {
