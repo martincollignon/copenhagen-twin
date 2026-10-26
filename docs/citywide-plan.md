@@ -68,3 +68,21 @@ Tiles load and unload with hysteresis, and the build is done in a worker. Existi
 | C5 | Whole kommune (± Frederiksberg), far-LOD block meshes, more teleports | the coverage report shows ≥ 98% of GeoDanmark buildings; the road graph is connected; there is a perf sweep |
 
 Effort: C0–C2 is the engine core, about 1.5–2 weeks. C3–C5 is mostly compute and QA, about 1–2 weeks. Implementation goes to Codex Astra milestone by milestone; review and screenshots stay in the lead session.
+
+## C5 engine status (2026-10-26)
+
+What the engine does with the citywide index (`data/tiles` + `data/city`), and the two post-process tools that feed it. Post-process layers are
+registered in `data/city/post.json` (`cph-post/1`), which the tile store reads at open; the tile compiler's own files are never edited.
+
+| Piece | Tool / module | Output |
+|---|---|---|
+| Far ring | `tools/cph-geodata/far_lod.py` -> `js/far-lod.js`, `js/far-lod-geometry.js` | `data/city/far.bin` + `far.json`: per tile a 16 x 16 ground grid, park bits and the buildings as prisms (footprint simplified to ~1.2 m Douglas-Peucker, flat top at the eave, wall + roof tone); water polygons with levels. 3.5 MB for the whole city (91 k of 178 k buildings: footprints under 22 m2 are dropped). The engine builds one ground mesh and one building mesh per tile within 9 km that is not resident, hides it while the streamer has the tile built, and draws the harbour, the lakes and a sea plane out to the horizon |
+| Street layout per tile | `tools/cph-geodata/tile_streets.py` | `data/tiles/<id>/streets.json` (roads, extra road pieces, pavements, cycle tracks, footprint drops / clips, surface cuts of that tile) + `data/city/streets-graph.json` (the layout's fixes to the road graph, renumbered for the citywide graph when the whole-city document numbers another one). The `roads` and `streets` layers stream with the tile (near and mid rings); nothing is held for the whole index |
+| Agents | `js/agent-region.js` | traffic, cyclists and pedestrians route on the citywide `roadgraph.json` cut to a 560 m region around the camera and place on the near ring's detailed roads, cycle tracks and signals; the region is rebuilt (one stage per frame) when the camera is 190 m from its centre, agents spawn and despawn inside it |
+| Workers | `js/tile-pool.js`, `js/tile-worker.js` | the CPU halves of the buildings (`building-compute.js`), road surfaces (`road-compute.js`) and furniture placement (`furniture-compute.js`) run in Web Workers and return typed arrays; `?debug=noworker` runs them inline in slices |
+| Mid ring | `building-geometry.js` `lite` | tone-only walls (one colour per building, plain vertex-colour material), flat deck roofs (LoD2 roofs stay), one wall and one roof mesh per tile; carriageways, kerbs and cycle tracks only |
+| Teleports | `tools/cph-geodata/city_teleports.py` -> `js/city-teleports.js` | eight citywide presets on vehicular links of the citywide graph, offered where the index has a tile |
+
+Water: only lakes with a level in the terrain header get the district's treatment (walls, coping, shore field, reflections, DLB bridge); every other lake, pond and the harbour is the far layer's flat water. The citywide terrain header carries no lake levels yet, so for now that is all of them (C4).
+
+Re-run after the compiler has changed the tiles: `uv run tools/cph-geodata/far_lod.py`, `uv run tools/cph-geodata/tile_streets.py`.
