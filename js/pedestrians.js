@@ -1335,8 +1335,8 @@ class PersonRig {
     return out.setFromRotationMatrix(_m);
   }
 
-  // Two-bone leg IK from the hip to the ankle target, knee towards the foot's heading
-  solveLeg(i, hip, ankleTarget, footYaw) {
+  // Two-bone leg IK; kneeLift raises the knee pole for a low, recumbent pedal-boat seat.
+  solveLeg(i, hip, ankleTarget, footYaw, kneeLift = 0) {
     const s = this.s;
     const l1 = THIGH * s;
     const l2 = SHIN * s;
@@ -1344,7 +1344,7 @@ class PersonRig {
     let dist = _v.length();
     const dn = _v.divideScalar(dist || 1);
     dist = Math.max(Math.abs(l1 - l2) + 1e-3, Math.min((l1 + l2) * 0.9999, dist));
-    _pole.set(Math.sin(footYaw) + Math.sin(this.yaw), 0, Math.cos(footYaw) + Math.cos(this.yaw));
+    _pole.set(Math.sin(footYaw) + Math.sin(this.yaw), kneeLift, Math.cos(footYaw) + Math.cos(this.yaw));
     _pole.addScaledVector(dn, -_pole.dot(dn));
     if (_pole.lengthSq() < 1e-8) _pole.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
     _pole.normalize();
@@ -1424,8 +1424,9 @@ class PersonRig {
   /**
    * Riding a bicycle: `root` (Object3D) is the bike frame (pose in its parent's space, e.g. the scene), `crank` the
    * pedal crank angle. Seat, bars and bottom bracket in the frame's space (metres, +Z forward).
+   * Optional pelvis/chest pitch and knee lift also support relaxed, low seated pedalling; bicycle defaults stay unchanged.
    */
-  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17, steerAngle = 0, steerPivot = null, upright = 0, torsoLean = 0 }) {
+  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17, steerAngle = 0, steerPivot = null, upright = 0, torsoLean = 0, pelvisPitch = 0.42, chestPitch = 0.2, kneeLift = 0 }) {
     const s = this.s;
     const j = this.bind;
     this.gait = 0;
@@ -1436,11 +1437,11 @@ class PersonRig {
 
     // Riders lift off the saddle and straighten under power; zero upright preserves the seated pose.
     upright = Math.max(0, Math.min(1, upright));
-    qX(_qPelvis, 0.42 - upright * 0.25 - torsoLean).premultiply(_qRoot);
+    qX(_qPelvis, pelvisPitch - upright * 0.25 - torsoLean).premultiply(_qRoot);
     _pelvis.set(0, seat.y + 0.055 * s + 0.14 * upright * s, seat.z + 0.03 + 0.09 * upright);
     toWorld(_pelvis);
     this.writeBone(BONE.PELVIS, _qPelvis, _pelvis);
-    _qChest.copy(_qPelvis).multiply(qX(_q, 0.2));
+    _qChest.copy(_qPelvis).multiply(qX(_q, chestPitch));
     _chest.copy(j[BONE.CHEST]).sub(j[BONE.PELVIS]).multiplyScalar(s).applyQuaternion(_qPelvis).add(_pelvis);
     this.writeBone(BONE.CHEST, _qChest, _chest);
     _qa.copy(_qRoot).multiply(qX(_q, -0.12));
@@ -1488,7 +1489,7 @@ class PersonRig {
       const ankleTarget = _target.copy(pedal).sub(_v2);
       toWorld(ankleTarget);
       _hip.copy(j[LIMB.thigh[i]]).sub(j[BONE.PELVIS]).multiplyScalar(s).applyQuaternion(_qPelvis).add(_pelvis);
-      const ankle = this.solveLeg(i, _hip, ankleTarget, this.yaw);
+      const ankle = this.solveLeg(i, _hip, ankleTarget, this.yaw, kneeLift);
       _qa.copy(_qRoot).multiply(_q2);
       this.writeBone(LIMB.foot[i], _qa, ankle);
       _v.copy(j[LIMB.toe[i]]).sub(j[LIMB.foot[i]]).multiplyScalar(s).applyQuaternion(_qa).add(ankle);

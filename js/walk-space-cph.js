@@ -1,15 +1,28 @@
 // js/walk-space-cph.js
 // Where pedestrians may walk in the Copenhagen twin: anywhere in the district that is not inside a building
-// footprint. (Sidewalk polygons and the cycle tracks beside the carriageway are laid out by road-surfaces-cph.js; the
-// pedestrian routes follow the road network at a fixed distance from its edges, and this keeps them out of the houses.)
+// footprint or on the open water of the lakes (data/cph-lakes.json; a bridge deck over the water is walkable).
+// (Sidewalk polygons and the cycle tracks beside the carriageway are laid out by road-surfaces-cph.js; the pedestrian
+// routes follow the road network at a fixed distance from its edges, and this keeps them out of the houses and the
+// lakes beside the lakeside streets.)
 
 const CELL = 32;
 
-export function createWalkSpace(geo) {
+function inside(ring, x, z) {
+  let c = false;
+  for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+    const xi = ring[i];
+    const zi = ring[i + 1];
+    const xj = ring[j];
+    const zj = ring[j + 1];
+    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
+  }
+  return c;
+}
+
+/** Point-in-any-ring test over flat rings [x0, z0, x1, z1, ...], bucketed on a CELL grid. */
+function ringIndex(rings) {
   const hash = new Map();
-  const polys = [];
-  for (const b of geo.buildings || []) {
-    const ring = b.ring;
+  for (const ring of rings) {
     if (!ring || ring.length < 6) continue;
     let minX = Infinity;
     let maxX = -Infinity;
@@ -22,7 +35,6 @@ export function createWalkSpace(geo) {
       maxZ = Math.max(maxZ, ring[i + 1]);
     }
     const poly = { ring, minX, maxX, minZ, maxZ };
-    polys.push(poly);
     for (let ix = Math.floor(minX / CELL); ix <= Math.floor(maxX / CELL); ix++) {
       for (let iz = Math.floor(minZ / CELL); iz <= Math.floor(maxZ / CELL); iz++) {
         const k = ix * 100000 + iz;
@@ -31,31 +43,27 @@ export function createWalkSpace(geo) {
       }
     }
   }
-
-  function inside(ring, x, z) {
-    let c = false;
-    for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
-      const xi = ring[i];
-      const zi = ring[i + 1];
-      const xj = ring[j];
-      const zj = ring[j + 1];
-      if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
-    }
-    return c;
-  }
-
-  const inBuilding = (x, z) => {
+  return (x, z) => {
     for (const p of hash.get(Math.floor(x / CELL) * 100000 + Math.floor(z / CELL)) || []) {
       if (x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ && inside(p.ring, x, z)) return true;
     }
     return false;
   };
+}
+
+export function createWalkSpace(geo, lakes = null) {
+  const inBuilding = ringIndex((geo.buildings || []).map((b) => b.ring));
+  const inLake = ringIndex([...(lakes?.lakes || []), ...(lakes?.ponds || [])].map((l) => l.ring));
+  const onBridge = ringIndex((lakes?.bridges || []).map((b) => b.ring));
+  const inWater = (x, z) => inLake(x, z) && !onBridge(x, z);
+  const blocked = (x, z) => inBuilding(x, z) || inWater(x, z);
 
   const block = { id: 'copenhagen', poly: [] };
   return {
     inBuilding,
-    walkable: (minX, maxX, minZ, maxZ) => !inBuilding(minX, minZ) && !inBuilding(maxX, maxZ) && !inBuilding(minX, maxZ)
-      && !inBuilding(maxX, minZ) && !inBuilding((minX + maxX) / 2, (minZ + maxZ) / 2),
+    inWater,
+    walkable: (minX, maxX, minZ, maxZ) => !blocked(minX, minZ) && !blocked(maxX, maxZ) && !blocked(minX, maxZ)
+      && !blocked(maxX, minZ) && !blocked((minX + maxX) / 2, (minZ + maxZ) / 2),
     onSidewalk: () => true,
     blockAt: () => block
   };

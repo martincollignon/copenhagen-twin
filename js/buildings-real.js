@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { createIrmaNeon } from './irma-neon.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Quadtree } from './quadtree.js';
@@ -491,6 +492,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     }
   }));
 
+  const neon = createIrmaNeon(root, byId, lod2Records);
   const texManager = tex ? createTexManager(root, texCandidates) : null;
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
@@ -499,7 +501,8 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
   let camera = null;
 
   /** Hides cells beyond STREAM_RADIUS (cheap: a few dozen cells). Called every frame with the camera position. */
-  function update(x, z) {
+  function update(x, z, nightFactor = 0) {
+    neon.update(nightFactor);
     if (texManager) texManager.update(camera ? camera.position.x : x, camera ? camera.position.z : z);
     for (const g of leaves) {
       const dx = g.userData.centre[0] - x;
@@ -562,11 +565,11 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
 
   const stats = {
     tex: texManager ? { candidates: texCandidates.length } : null,
-    buildings: buildings.length - heroIds.size, heroes: heroStatus, cells: leaves.length, triangles, doors: doorCount, lod2: lod2Records.size,
+    buildings: buildings.length - heroIds.size, heroes: heroStatus, cells: leaves.length, triangles, doors: doorCount, lod2: lod2Records.size, neon: neon.stats,
     meshes: pickables.length + heroGroups.reduce((n, g) => n + g.children[0].children.length, 0)
   };
 
-  return { group: root, leaves, update, pick, attach, showBuilding, stats, byId, heroGroups, heroStatus, texManager };
+  return { group: root, leaves, update, pick, attach, showBuilding, stats, byId, heroGroups, heroStatus, texManager, neon };
 }
 
 export { buildRealBuildings, loadHero, describeBuilding, rangeAt, mergeByMaterial };

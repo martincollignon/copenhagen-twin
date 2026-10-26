@@ -94,7 +94,7 @@ class TouchControls {
   }
 
   setMode(mode) {
-    if (!['person', 'car', 'cyclist', 'cargobike', 'helicopter'].includes(mode)) return;
+    if (!['person', 'car', 'cyclist', 'cargobike', 'helicopter', 'swanboat'].includes(mode)) return;
     this.reset();
     if (!this.root) return;
     this.mode = mode;
@@ -102,7 +102,8 @@ class TouchControls {
     const labels = { boost: mode === 'person' || bicycle ? 'Sprint' : 'Boost', up: mode === 'helicopter' ? 'Ascend' : 'Jump', down: 'Descend' };
     for (const button of this.buttons) {
       const action = button.getAttribute('data-touch-action');
-      button.hidden = (action === 'up' && mode !== 'person' && mode !== 'helicopter') || (action === 'down' && mode !== 'helicopter');
+      button.hidden = (action === 'up' && mode !== 'person' && mode !== 'helicopter')
+        || (action === 'down' && mode !== 'helicopter') || (action === 'boost' && mode === 'swanboat');
       button.setAttribute('aria-label', labels[action]);
       const label = this.root.querySelector(`[data-touch-label="${action}"]`);
       if (label) label.textContent = labels[action];

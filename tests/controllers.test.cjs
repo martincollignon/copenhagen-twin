@@ -5,6 +5,13 @@ const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
 
 const source = readFileSync(join(__dirname, '../js/controllers.js'), 'utf8');
+let swanNavigationModule;
+let cphLakes;
+
+test.before(async () => {
+  swanNavigationModule = await import('../js/swan-navigation.js');
+  cphLakes = JSON.parse(readFileSync(join(__dirname, '../data/cph-lakes.json'), 'utf8'));
+});
 
 function eventTarget() {
   const listeners = new Map();
@@ -19,7 +26,7 @@ function eventTarget() {
   };
 }
 
-function keyboardHarness(overrides = {}) {
+function keyboardHarness(overrides = {}, moduleImports = {}) {
   const window = eventTarget();
   const document = { ...eventTarget(), hidden: false };
   const config = {
@@ -34,8 +41,12 @@ function keyboardHarness(overrides = {}) {
       './city-config.js': config,
       './tsl-materials.js': {},
       './actor-models.js': {},
+      './swan-boat.js': { createSwanBoat: () => ({ group: {}, pedals: {}, paddleWheel: {} }) },
+      './swan-navigation.js': swanNavigationModule,
+      './lakes-cph.js': { WATER: { surfaceY: -0.8 } },
       './pedestrians.js': {},
-      './vehicle-lights.js': {}
+      './vehicle-lights.js': {},
+      ...moduleImports
     }
   });
   // Exercise the production event handlers without constructing the scene's 3D models.
@@ -194,6 +205,60 @@ for (const mode of ['Person', 'Car', 'Cyclist', 'Cargobike', 'Helicopter']) {
   });
 }
 
+test('pedal speed has inertia, coasts down, and stays within 6 km/h in both directions', () => {
+  const { advanceSwanSpeed, SWAN_MAX_SPEED } = swanNavigationModule;
+  let speed = 0;
+  for (let i = 0; i < 1200; i++) speed = advanceSwanSpeed(speed, 1, 0.1);
+  assert.ok(Math.abs(speed - SWAN_MAX_SPEED) < 1e-12);
+  const coastStart = speed;
+  for (let i = 0; i < 60; i++) speed = advanceSwanSpeed(speed, 0, 0.1);
+  assert.ok(speed > 0 && speed < coastStart, 'releasing the pedals preserves momentum while slowing');
+  for (let i = 0; i < 1200; i++) speed = advanceSwanSpeed(speed, -1, 0.1);
+  assert.ok(speed < 0 && Math.abs(speed) <= SWAN_MAX_SPEED, 'reverse pedal input can never exceed the cap');
+});
+
+test('the swan controller substeps motion and remains on Peblinge water at the bridge boundary', () => {
+  const nav = swanNavigationModule.createSwanNavigation(cphLakes);
+  const { controller } = keyboardHarness();
+  const boat = {
+    position: { x: swanNavigationModule.SWAN_START.x, y: -0.72, z: swanNavigationModule.SWAN_START.z },
+    heading: swanNavigationModule.SWAN_HEADING,
+    speed: 0, vx: 0, vz: 0, pedalPhase: 0,
+    pedals: { rotation: { x: 0 } }, paddleWheel: { rotation: { x: 0 } },
+    mesh: { rotation: { x: 0, y: 0, z: 0 } }
+  };
+  controller.entities = { swanboat: boat };
+  controller.swanNavigation = nav;
+  controller.swanWaterLevel = -0.72;
+  controller.keys.forward = true;
+
+  for (let i = 0; i < 500; i++) controller.updateSwanBoat(0.1, i * 0.1);
+
+  assert.ok(nav.isPositionLegal(boat.position.x, boat.position.z), 'the boat center retains its full hull clearance');
+  assert.ok(Math.abs(boat.speed) <= swanNavigationModule.SWAN_MAX_SPEED);
+  assert.equal(boat.position.y, -0.72, 'the measured lake surface is the boat origin height');
+  assert.ok(boat.pedalPhase > 0 && boat.paddleWheel.rotation.x > 0, 'pedals and stern wheel animate with travel');
+
+  const bridgeCrossing = swanNavigationModule.confineSwanMotion(nav, swanNavigationModule.SWAN_START, { x: 120, z: -220 });
+  assert.ok(nav.isPositionLegal(bridgeCrossing.x, bridgeCrossing.z), 'a long frame cannot tunnel through Dronning Louises Bro');
+});
+
+test('confinement slides along an outer wall and stops at a hole with hull clearance', () => {
+  const nav = swanNavigationModule.createSwanNavigation({
+    lakes: [{ id: 'lake:0', ring: [0, 0, 100, 0, 100, 100, 0, 100], holes: [[40, 40, 60, 40, 60, 60, 40, 60]] }],
+    bridges: []
+  }, { pierRing: [], clearance: 2 });
+
+  const wallSlide = swanNavigationModule.confineSwanMotion(nav, { x: 94, z: 20 }, { x: 20, z: 40 });
+  assert.ok(nav.isPositionLegal(wallSlide.x, wallSlide.z));
+  assert.ok(wallSlide.x < 98 && wallSlide.x > 97.8, 'the hull stays two metres off the east wall');
+  assert.ok(wallSlide.z > 59, 'the blocked eastward part is removed while the tangent motion continues');
+
+  const holeApproach = swanNavigationModule.confineSwanMotion(nav, { x: 30, z: 50 }, { x: 50, z: 0 });
+  assert.ok(nav.isPositionLegal(holeApproach.x, holeApproach.z));
+  assert.ok(holeApproach.x < 38 && holeApproach.x > 36, 'the boat stops before the hole with its full clearance');
+});
+
 function teleportHarness(mode, colliders = [], shore = () => ({ westX: -500, eastX: 500 })) {
   const harness = keyboardHarness({
     ISLAND_BOUNDS: { minX: -500, maxX: 500, minZ: -500, maxZ: 500, sidewalkHeight: 0.22 },
@@ -204,7 +269,7 @@ function teleportHarness(mode, colliders = [], shore = () => ({ westX: -500, eas
   const { controller } = harness;
   const position = (x = 0, y = 0, z = 0) => ({ x, y, z, copy(p) { this.x = p.x; this.y = p.y; this.z = p.z; } });
   const pivot = () => ({ position: position(), rotation: { x: 0.1, y: 0, z: -0.2 } });
-  const chase = { person: [4.3, 1.95], car: [6.9, 2.12], cyclist: [4.8, 2.05], cargobike: [6.2, 2.35], helicopter: [11.4, 3.3] };
+  const chase = { person: [4.3, 1.95], car: [6.9, 2.12], cyclist: [4.8, 2.05], cargobike: [6.2, 2.35], helicopter: [11.4, 3.3], swanboat: [5.8, 2.15] };
   const ent = {
     type: mode, chaseDistance: chase[mode][0], chaseHeight: chase[mode][1],
     position: position(400, mode === 'helicopter' ? 120 : 0, 400), heading: 1, speed: 20,
@@ -215,11 +280,13 @@ function teleportHarness(mode, colliders = [], shore = () => ({ westX: -500, eas
     wheels: [{ isFront: true, steerPivot: { rotation: { y: 0.4 } }, tire: { rotation: { x: 0 } } }],
     leanAngle: 0.3, leanPivot: pivot(), pedalPhase: 0.7, standAmount: 0, bikeFrame: {},
     frontWheel: { rotation: { x: 0 } }, rearWheel: { rotation: { x: 0 } },
-    crankPivot: { rotation: { x: 0 } }, pedals: [],
+    crankPivot: { rotation: { x: 0 } },
     verticalSpeed: -8, pitchAngle: 0.2, rollAngle: -0.2, tiltPivot: pivot(),
+    pedals: [], paddleWheel: { rotation: { x: 0 } },
     rig: { reset(...args) { this.resetArgs = args; } },
     crowd: { begin() {}, add() {}, end() {} }
   };
+  if (mode === 'swanboat') Object.assign(ent, { vx: 0, vz: 0, pedalPhase: 0, pedals: { rotation: { x: 0 } } });
   controller.activeMode = mode;
   controller.entities = { [mode]: ent };
   controller.colliders = colliders;
@@ -227,6 +294,56 @@ function teleportHarness(mode, colliders = [], shore = () => ({ westX: -500, eas
   controller.getGroundHeight = (x, z, mode) => mode === 'person' ? (x < 0 ? 1.24 : 0.22) : 0;
   return { ...harness, ent };
 }
+
+test('entering swanboat starts at the pier, while saved arrivals are confined to the lake', () => {
+  const nav = swanNavigationModule.createSwanNavigation(cphLakes);
+  const { controller, ent } = teleportHarness('car');
+  const boat = teleportHarness('swanboat').ent;
+  controller.entities.swanboat = boat;
+  controller.swanNavigation = nav;
+  controller.swanWaterLevel = -0.72;
+  controller.getGroundHeight = (_x, _z, mode) => mode === 'swanboat' ? -0.72 : 0;
+
+  controller.setMode('swanboat');
+  assert.deepEqual([boat.position.x, boat.position.z], [swanNavigationModule.SWAN_START.x, swanNavigationModule.SWAN_START.z]);
+  assert.equal(boat.position.y, -0.72);
+  assert.equal(boat.speed, 0);
+  assert.ok(nav.isPositionLegal(boat.position.x, boat.position.z));
+
+  boat.position.x += 5;
+  const arrival = controller.teleportActiveTo(swanNavigationModule.SWAN_START.x, swanNavigationModule.SWAN_START.z, swanNavigationModule.SWAN_HEADING);
+  assert.deepEqual({ ...arrival }, { x: swanNavigationModule.SWAN_START.x, z: swanNavigationModule.SWAN_START.z });
+  assert.ok(nav.isPositionLegal(arrival.x, arrival.z), 'restored swanboat positions must be on the lake');
+
+  for (const [x, z] of [[-23.5, -464.4], [100, -520]]) {
+    const recovered = controller.teleportActiveTo(x, z, swanNavigationModule.SWAN_HEADING);
+    assert.ok(nav.isPositionLegal(recovered.x, recovered.z), `invalid water destination ${x}, ${z} resolves to a legal boat position`);
+  }
+
+  const savedArrival = [boat.position.x, boat.position.z];
+  controller.setMode('car');
+  controller.setMode('swanboat', { preserveSwanPosition: true });
+  assert.deepEqual([boat.position.x, boat.position.z], savedArrival, 'restoring a saved boat does not move it back to the pier');
+
+  const person = teleportHarness('person').ent;
+  person.position.x = 0;
+  person.position.y = 0.22;
+  person.position.z = 0;
+  controller.entities.person = person;
+  controller.setMode('person');
+  assert.equal(person.position.y, 0.22);
+  assert.notDeepEqual([person.position.x, person.position.z], [boat.position.x, boat.position.z], 'the walking mode retains its dry position');
+  controller.setMode('swanboat');
+  assert.deepEqual([boat.position.x, boat.position.z], [swanNavigationModule.SWAN_START.x, swanNavigationModule.SWAN_START.z], 'ordinary re-entry returns the boat to its pier');
+});
+
+test('swanboat teleport fails closed until lake navigation data is ready', () => {
+  const { controller, ent } = teleportHarness('swanboat');
+  const before = [ent.position.x, ent.position.y, ent.position.z];
+  const arrival = controller.teleportActiveTo(swanNavigationModule.SWAN_START.x, swanNavigationModule.SWAN_START.z);
+  assert.deepEqual({ ...arrival }, { x: before[0], z: before[2] });
+  assert.deepEqual([ent.position.x, ent.position.y, ent.position.z], before);
+});
 
 for (const mode of ['person', 'car', 'cyclist', 'cargobike', 'helicopter']) {
   test(`${mode} teleport stops carried motion and updates its arrival pose immediately`, () => {
@@ -504,3 +621,94 @@ for (const mode of ['cyclist', 'cargobike']) {
     assert.ok(ent.bikeFrame.upright < 0.01, 'coasting does not stand the rider up');
   });
 }
+
+function swanRiderHarness() {
+  class Vector3 {
+    constructor(x = 0, y = 0, z = 0) { Object.assign(this, { x, y, z }); }
+  }
+  class Group {
+    constructor() { this.children = []; this.position = new Vector3(); this.visible = true; }
+    add(...children) { for (const child of children) { child.parent = this; this.children.push(child); } }
+  }
+  class PersonCrowd {
+    constructor(capacity) { this.capacity = capacity; this.meshes = [{ visible: true, count: 0 }]; this.rigs = []; }
+    begin() { this.rigs = []; }
+    add(rig) { assert.ok(this.rigs.length < this.capacity); this.rigs.push(rig); }
+    end() { this.meshes[0].count = this.rigs.length; }
+  }
+  class PersonRig {
+    constructor(appearance) { this.appearance = appearance; this.calls = []; }
+    ride(anchor, phase, frame) { this.calls.push({ anchor, phase, frame }); }
+  }
+  const { controller } = keyboardHarness({}, {
+    'three/webgpu': { Group, Vector3 },
+    './pedestrians.js': { PersonCrowd, PersonRig },
+    './swan-boat.js': { createSwanBoat: () => ({ group: new Group(), pedals: new Group(), paddleWheel: new Group() }) }
+  });
+  controller.scene = new Group();
+  const boat = controller.createSwanBoatEntity();
+  const walker = { mesh: new Group(), crowd: new PersonCrowd(1), rig: new PersonRig({ seed: 4.2 }) };
+  walker.crowd.add(walker.rig); walker.crowd.end();
+  controller.entities = { swanboat: boat, person: walker, car: {} };
+  controller.activeMode = 'person';
+  controller.teleportActiveTo = () => {};
+  return { controller, boat, walker };
+}
+
+test('swan entity owns two existing person rigs at separate boat-relative seat anchors', () => {
+  const { controller, boat } = swanRiderHarness();
+  assert.equal(boat.riders.length, 2);
+  assert.equal(boat.riderCrowd.capacity, 2);
+  assert.deepEqual(Array.from(boat.riders, rider => rider.anchor.position.x), [-0.29, 0.29]);
+  for (const rider of boat.riders) assert.equal(rider.anchor.parent, boat.mesh);
+  assert.equal(boat.riders[0].rig.appearance.seed, 4.2, 'player keeps the walking avatar appearance');
+  assert.notEqual(boat.riders[1].rig.appearance.seed, boat.riders[0].rig.appearance.seed);
+  for (const mesh of boat.riderCrowd.meshes) {
+    assert.equal(mesh.parent, controller.scene, 'world-space skinned meshes must not inherit the boat transform twice');
+    assert.equal(mesh.visible, false, 'parked playable boat starts empty');
+    assert.equal(mesh.count, 0);
+  }
+});
+
+test('boarding, exiting and reboarding show exactly two swan riders and restore one walker', () => {
+  const { controller, boat, walker } = swanRiderHarness();
+  const originalRigs = Array.from(boat.riders, rider => rider.rig);
+  for (let repeat = 0; repeat < 3; repeat++) {
+    controller.setMode('swanboat');
+    controller.poseSwanRiders();
+    assert.equal(boat.riderCrowd.meshes[0].visible, true);
+    assert.equal(boat.riderCrowd.meshes[0].count, 2);
+    assert.equal(walker.crowd.meshes[0].visible, false);
+    assert.equal(walker.mesh.visible, false, 'walking contact shadow is hidden with the walker');
+    controller.setMode(repeat === 1 ? 'car' : 'person');
+    assert.equal(boat.riderCrowd.meshes[0].visible, false, 'exit hides riders before the next frame');
+    assert.equal(boat.riderCrowd.meshes[0].count, 0, 'exit clears the GPU instance count');
+    controller.poseSwanRiders();
+    assert.equal(boat.riderCrowd.meshes[0].count, 0);
+    assert.equal(walker.crowd.meshes[0].visible, true);
+    assert.equal(walker.mesh.visible, true);
+    assert.equal(walker.crowd.meshes[0].count, 1);
+    assert.deepEqual(Array.from(boat.riders, rider => rider.rig), originalRigs, 'reboarding reuses both rigs');
+  }
+});
+
+test('seated riders follow the signed pedal phase and keep their knees raised above a low seat', () => {
+  const { controller, boat } = swanRiderHarness();
+  controller.setMode('swanboat');
+  for (const phase of [0, 1.3, -0.7]) {
+    boat.pedalPhase = phase;
+    controller.poseSwanRiders();
+    for (const rider of boat.riders) {
+      const call = rider.rig.calls.at(-1);
+      assert.equal(call.anchor, rider.anchor);
+      assert.equal(call.phase, phase);
+      assert.equal(call.frame, boat.riderFrame);
+      assert.ok(call.frame.kneeLift > 0);
+      assert.ok(call.frame.seat.y < 0.3);
+      assert.ok(call.frame.bracket.z > call.frame.seat.z);
+    }
+  }
+  controller.setMode('person');
+  controller.poseSwanRiders();
+  for (const rider of boat.riders) assert.equal(rider.rig.calls.length, 3, 'inactive riders are not posed');
+});

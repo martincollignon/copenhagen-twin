@@ -1129,6 +1129,7 @@ body.touch-enabled .pop-item { min-height: 44px; }
 
 @media (max-width: 360px) {
   body.touch-enabled .toolbar { width: 194px; height: auto; flex-wrap: wrap; justify-content: center; }
+  body.touch-enabled .mode-btn { width: 54px; }
   body.touch-enabled .hud-bottom-right { top: calc(max(var(--edge), env(safe-area-inset-top)) + 114px); }
   .touch-look-hint { top: calc(max(var(--edge), env(safe-area-inset-top)) + 172px); }
 }
