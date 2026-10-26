@@ -22,3 +22,5 @@ jobs:
           node-version: 22
       - name: Replay camera route against atlas metadata
         run: node --test tests/texture-memory-budget.test.mjs
+      - name: Check building picking, culling, and depth-only shadows
+        run: node --test tests/building-batches.test.cjs tests/render-target-memory.test.cjs tests/lighting.test.cjs tests/boot.test.cjs

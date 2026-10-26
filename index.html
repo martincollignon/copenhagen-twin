@@ -7,14 +7,14 @@
   <link rel="icon" href="data:," />
   <meta name="description" content="Copenhagen Twin: a walkable, drivable and bikeable real-time 3D twin of Søerne and inner Nørrebro, built with three.js WebGPURenderer and TSL. Real building footprints and heights, streets, signals, traffic and cyclists." />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
-  <!-- three.js dev branch (builds committed to mrdoob/three.js@dev, served by jsDelivr) -->
+  <!-- Intentional immutable three.js source pin: keep core, TSL, and addons on the same verified commit. -->
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/build/three.webgpu.js",
-        "three/webgpu": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/build/three.webgpu.js",
-        "three/tsl": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/build/three.tsl.js",
-        "three/addons/": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/examples/jsm/"
+        "three": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@6828c9b2559167925fa90c6c84dfc1a657b38d2c/build/three.webgpu.js",
+        "three/webgpu": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@6828c9b2559167925fa90c6c84dfc1a657b38d2c/build/three.webgpu.js",
+        "three/tsl": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@6828c9b2559167925fa90c6c84dfc1a657b38d2c/build/three.tsl.js",
+        "three/addons/": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@6828c9b2559167925fa90c6c84dfc1a657b38d2c/examples/jsm/"
       }
     }
   </script>
@@ -30,6 +30,7 @@
   <link rel="modulepreload" href="./js/audio-synthesis.js" />
   <link rel="modulepreload" href="./js/audio-system.js" />
   <link rel="modulepreload" href="./js/building-details.js" />
+  <link rel="modulepreload" href="./js/building-batches.js" />
   <link rel="modulepreload" href="./js/building-geometry.js" />
   <link rel="modulepreload" href="./js/bridge-dlb-geometry.js" />
   <link rel="modulepreload" href="./js/bridge-dlb.js" />
@@ -51,6 +52,7 @@
   <link rel="modulepreload" href="./js/gamepad-controls.js" />
   <link rel="modulepreload" href="./js/layout-cph.js" />
   <link rel="modulepreload" href="./js/lighting.js" />
+  <link rel="modulepreload" href="./js/sun-shadow.js" />
   <link rel="modulepreload" href="./js/pavement-cph.js" />
   <link rel="modulepreload" href="./js/grass-cph.js" />
   <link rel="modulepreload" href="./js/grass-layout-cph.js" />

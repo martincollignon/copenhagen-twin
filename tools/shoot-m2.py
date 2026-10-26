@@ -18,7 +18,7 @@ ap.add_argument('--furniture', action='store_true', help='M4 street furniture: N
 ap.add_argument('--audit-sweep', action='store_true', help='QA audit: ~30 eye-level and 6 aerial shots at the points in docs/qa/sweep-points.json (tools/audit/audit.py) into docs/qa/sweep + contact sheets')
 ap.add_argument('--oneway', action='store_true', help='traffic direction: 10 simulated minutes of live cars checked against the one-way roads (docs/oneway/sim-cars.json), contraflow / track / overview-with-arrows shots into --out (default docs/oneway)')
 ap.add_argument('--kerbs', default=None, metavar='VIEWS.json', help='kerb check: eye-level and top-down shots of the views in VIEWS.json (node tools/audit/kerbs.mjs --views) into --out')
-ap.add_argument('--perf', action='store_true', help='unthrottled frame timing instead of captures')
+ap.add_argument('--perf', action='store_true', help='unthrottled frame times and texture memory with browser validation')
 args = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -28,6 +28,11 @@ def page_query(base='', include_hooks=False):
         params.setdefault('hooks', '')
     params.update(dict(parse_qsl(args.query.lstrip('?&'), keep_blank_values=True)))
     return urlencode(params)
+
+def perf_browser_errors(entries):
+    return [entry for entry in entries
+            if entry.startswith('pageerror:')
+            or (entry.startswith('error:') and not entry.startswith('error: Failed to load resource:'))]
 
 s = socket.socket(); s.bind(('127.0.0.1', 0)); port = s.getsockname()[1]; s.close()
 server = subprocess.Popen([sys.executable, '-m', 'http.server', str(port), '--bind', '127.0.0.1'], cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -789,31 +794,44 @@ try:
             peak_reserved = 0
             peak_renderer_textures = 0
             memory = {}
+            facade_manager_enabled_samples = []
             for x, z in budget['cameraRoute']:
                 view([x, 5, z], [x + 12, 3, z + 8], 62)
                 page.wait_for_timeout(700)
                 memory = page.evaluate('''() => {
                   const t = globalThis.__twin;
-                  const facade = t.world.buildings.texManager?.memory;
+                  const manager = t.world.buildings.texManager;
+                  const facade = manager?.memory;
                   return {
                     facade,
+                    facadeManagerEnabled: manager ? manager.state.enabled : null,
                     rendererTextureBytes: t.renderer.info.memory.texturesSize ?? null,
                     jsHeapBytes: performance.memory?.usedJSHeapSize ?? null
                   };
                 }''')
                 if not memory['facade']:
                     raise SystemExit('facade texture manager is unavailable; run without ?tex=0 or debug=notex')
+                facade_manager_enabled_samples.append(memory['facadeManagerEnabled'])
                 peak_reserved = max(peak_reserved, memory['facade']['peakReservedBytes'], memory['facade']['reservedBytes'])
                 peak_renderer_textures = max(peak_renderer_textures, memory['rendererTextureBytes'] or 0)
             print('texture-memory', json.dumps({
                 'cameraSamples': len(budget['cameraRoute']),
+                'facadeManagerEnabled': all(enabled is True for enabled in facade_manager_enabled_samples),
                 'peakFacadeReservedBytes': peak_reserved,
                 'facadeBudgetBytes': budget['maxBytes'],
                 'peakRendererTextureBytes': peak_renderer_textures or None,
                 'jsHeapBytes': memory['jsHeapBytes']
             }))
+            failures = []
+            if not all(enabled is True for enabled in facade_manager_enabled_samples):
+                failures.append('facade texture manager was disabled during route measurement; facade assets may not have loaded')
             if peak_reserved > budget['maxBytes']:
-                raise SystemExit(f"facade texture budget exceeded: {peak_reserved} > {budget['maxBytes']}")
+                failures.append(f"facade texture budget exceeded: {peak_reserved} > {budget['maxBytes']}")
+            errors = perf_browser_errors(logs)
+            if errors:
+                failures.append(f"--perf browser validation reported {len(errors)} error(s):\n" + '\n'.join(errors[:8]))
+            if failures:
+                raise SystemExit('\n'.join(failures))
             browser.close(); raise SystemExit
         for name, v in SHOTS.items():
             if v and args.shots in ('all', name):
