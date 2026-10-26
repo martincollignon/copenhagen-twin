@@ -785,6 +785,35 @@ try:
                   requestAnimationFrame(tick); })''')
                 info = page.evaluate('() => ({ ...globalThis.__twin.renderer.info.render })')
                 print(name, json.dumps(t), 'drawCalls', info['drawCalls'], 'triangles', info['triangles'])
+            budget = json.load(open(os.path.join(root, 'tools/perf/texture-memory-budget.json')))
+            peak_reserved = 0
+            peak_renderer_textures = 0
+            memory = {}
+            for x, z in budget['cameraRoute']:
+                view([x, 5, z], [x + 12, 3, z + 8], 62)
+                page.wait_for_timeout(700)
+                memory = page.evaluate('''() => {
+                  const t = globalThis.__twin;
+                  const facade = t.world.buildings.texManager?.memory;
+                  return {
+                    facade,
+                    rendererTextureBytes: t.renderer.info.memory.texturesSize ?? null,
+                    jsHeapBytes: performance.memory?.usedJSHeapSize ?? null
+                  };
+                }''')
+                if not memory['facade']:
+                    raise SystemExit('facade texture manager is unavailable; run without ?tex=0 or debug=notex')
+                peak_reserved = max(peak_reserved, memory['facade']['peakReservedBytes'], memory['facade']['reservedBytes'])
+                peak_renderer_textures = max(peak_renderer_textures, memory['rendererTextureBytes'] or 0)
+            print('texture-memory', json.dumps({
+                'cameraSamples': len(budget['cameraRoute']),
+                'peakFacadeReservedBytes': peak_reserved,
+                'facadeBudgetBytes': budget['maxBytes'],
+                'peakRendererTextureBytes': peak_renderer_textures or None,
+                'jsHeapBytes': memory['jsHeapBytes']
+            }))
+            if peak_reserved > budget['maxBytes']:
+                raise SystemExit(f"facade texture budget exceeded: {peak_reserved} > {budget['maxBytes']}")
             browser.close(); raise SystemExit
         for name, v in SHOTS.items():
             if v and args.shots in ('all', name):
@@ -796,7 +825,7 @@ try:
                 page.mouse.move(720 + dx, 380); page.wait_for_timeout(150)
             page.wait_for_timeout(500)
             page.screenshot(path=f'{args.out}/info-panel.png')
-        stats = page.evaluate('() => { const t = globalThis.__twin; const w = t.world.buildings; return { stats: w && w.stats, render: t.renderer.info.render, memory: t.renderer.info.memory }; }')
+        stats = page.evaluate('() => { const t = globalThis.__twin; const w = t.world.buildings; return { stats: w && w.stats, render: t.renderer.info.render, memory: t.renderer.info.memory, facadeTextureMemory: w?.texManager?.memory ?? null }; }')
         print(json.dumps(stats, indent=1, default=str))
         print('\n'.join(logs[-40:]))
         browser.close()

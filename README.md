@@ -62,6 +62,20 @@ Tests (Node 20+, no dependencies):
 node --test tests/*.cjs tests/*.mjs
 ```
 
+## Performance budget check
+
+Every pull request runs the required `texture-memory-budget` check. It replays the committed camera route against the real facade-atlas dimensions and fails if the selected facade textures exceed 48 MiB or 56 residents:
+
+```sh
+node --test tests/texture-memory-budget.test.mjs
+```
+
+On a WebGPU machine, the local browser harness also samples the live resident and in-flight facade estimate while moving through that route, and prints the renderer's total texture allocation for context:
+
+```sh
+uv run --with playwright python tools/shoot-m2.py --perf
+```
+
 Headless browser check (Playwright; boots the twin, asserts the HUD and console, writes screenshots to `docs/cleanup/`):
 
 ```sh

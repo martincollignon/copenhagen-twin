@@ -2,6 +2,8 @@
 
 *Deep research (ultradeep), 2026-10-26. Branch `mc/codex-astra-features-improve`. Local measurements on an Apple M3 Max, headless Chromium 1248, WebGPU via Metal.*
 
+**Implementation update (26 October 2026):** The facade-texture memory slice is now a required `texture-memory-budget` pull-request check. It replays a fixed camera route against atlas metadata and enforces the 48 MiB / 56-atlas cap; the broader frame-time and GPU-timestamp gate described below remains proposed work.
+
 ## Executive Summary
 
 The twin does not meet its own target today, and nothing would catch it getting worse. `docs/PLAN.md:94` sets one performance goal: "above 60 fps on an M-series laptop for the district". An uncapped headless run on an M3 Max at 1440×900 and pixel ratio 1 gave these numbers [L1]:
