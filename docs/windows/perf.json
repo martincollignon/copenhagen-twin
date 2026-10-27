@@ -1,0 +1,521 @@
+{
+ "main": {
+  "errors": [],
+  "stops": {
+   "frederiksberg-alle-street": {
+    "calls": 1723,
+    "triangles": 6582178,
+    "textures": 377,
+    "fps": null,
+    "wallVertices": 1040526,
+    "wallAttributeMB": 104.1,
+    "allAttributeMB": 715.3,
+    "heapMB": 3594
+   },
+   "frederiksberg-alle-close": {
+    "calls": 1806,
+    "triangles": 6908774,
+    "textures": 422,
+    "fps": null,
+    "wallVertices": 1040526,
+    "wallAttributeMB": 104.1,
+    "allAttributeMB": 715.4,
+    "heapMB": 3658
+   },
+   "istedgade-street": {
+    "calls": 2181,
+    "triangles": 7332318,
+    "textures": 390,
+    "fps": null,
+    "wallVertices": 1155762,
+    "wallAttributeMB": 115.6,
+    "allAttributeMB": 703.1,
+    "heapMB": 2095
+   },
+   "istedgade-close": {
+    "calls": 2327,
+    "triangles": 7365851,
+    "textures": 410,
+    "fps": null,
+    "wallVertices": 1155762,
+    "wallAttributeMB": 115.6,
+    "allAttributeMB": 703.2,
+    "heapMB": 2132
+   },
+   "stroget-street": {
+    "calls": 2420,
+    "triangles": 9317070,
+    "textures": 418,
+    "fps": {
+     "fps": 32.4,
+     "samples": [
+      28.6,
+      32.4,
+      33.2
+     ],
+     "medianMs": 33.3,
+     "p95Ms": 50
+    },
+    "wallVertices": 1338736,
+    "wallAttributeMB": 133.9,
+    "allAttributeMB": 742.5,
+    "heapMB": 3235
+   },
+   "stroget-close": {
+    "calls": 2607,
+    "triangles": 9518018,
+    "textures": 468,
+    "fps": null,
+    "wallVertices": 1338736,
+    "wallAttributeMB": 133.9,
+    "allAttributeMB": 742.5,
+    "heapMB": 3301
+   },
+   "osterbrogade-trianglen-street": {
+    "calls": 1557,
+    "triangles": 5990710,
+    "textures": 401,
+    "fps": null,
+    "wallVertices": 834326,
+    "wallAttributeMB": 83.4,
+    "allAttributeMB": 623.8,
+    "heapMB": 2839
+   },
+   "osterbrogade-trianglen-close": {
+    "calls": 1756,
+    "triangles": 6769086,
+    "textures": 402,
+    "fps": null,
+    "wallVertices": 834326,
+    "wallAttributeMB": 83.4,
+    "allAttributeMB": 623.8,
+    "heapMB": 2887
+   },
+   "norrebrogade-street": {
+    "calls": 1703,
+    "triangles": 6173756,
+    "textures": 342,
+    "fps": null,
+    "wallVertices": 936970,
+    "wallAttributeMB": 93.7,
+    "allAttributeMB": 754.1,
+    "heapMB": 2728
+   },
+   "norrebrogade-close": {
+    "calls": 2123,
+    "triangles": 6763904,
+    "textures": 393,
+    "fps": null,
+    "wallVertices": 936970,
+    "wallAttributeMB": 93.7,
+    "allAttributeMB": 754.2,
+    "heapMB": 2765
+   },
+   "christianshavn-street": {
+    "calls": 1914,
+    "triangles": 7935743,
+    "textures": 269,
+    "fps": null,
+    "wallVertices": 782822,
+    "wallAttributeMB": 78.3,
+    "allAttributeMB": 627.1,
+    "heapMB": 4466
+   },
+   "christianshavn-close": {
+    "calls": 2067,
+    "triangles": 8040687,
+    "textures": 302,
+    "fps": null,
+    "wallVertices": 782822,
+    "wallAttributeMB": 78.3,
+    "allAttributeMB": 627.1,
+    "heapMB": 4539
+   },
+   "nyhavn-north-street": {
+    "calls": 3111,
+    "triangles": 10341989,
+    "textures": 387,
+    "fps": {
+     "fps": 29.4,
+     "samples": [
+      29.2,
+      29.4,
+      30.2
+     ],
+     "medianMs": 33.3,
+     "p95Ms": 50
+    },
+    "wallVertices": 1116632,
+    "wallAttributeMB": 111.7,
+    "allAttributeMB": 683.5,
+    "heapMB": 2426
+   },
+   "nyhavn-north-close": {
+    "calls": 2521,
+    "triangles": 9584551,
+    "textures": 405,
+    "fps": null,
+    "wallVertices": 1116632,
+    "wallAttributeMB": 111.7,
+    "allAttributeMB": 683.5,
+    "heapMB": 2503
+   },
+   "nyhavn-north-fade": {
+    "calls": 1801,
+    "triangles": 7409021,
+    "textures": 390,
+    "fps": null,
+    "wallVertices": 1129541,
+    "wallAttributeMB": 113.0,
+    "allAttributeMB": 692.7,
+    "heapMB": 2602
+   }
+  }
+ },
+ "before": {
+  "errors": [],
+  "stops": {
+   "frederiksberg-alle-street": {
+    "calls": 1710,
+    "triangles": 6531422,
+    "textures": 377,
+    "fps": null,
+    "wallVertices": 1040478,
+    "wallAttributeMB": 124.9,
+    "allAttributeMB": 739.8,
+    "heapMB": 2785
+   },
+   "frederiksberg-alle-close": {
+    "calls": 1812,
+    "triangles": 6945308,
+    "textures": 422,
+    "fps": null,
+    "wallVertices": 1040478,
+    "wallAttributeMB": 124.9,
+    "allAttributeMB": 739.8,
+    "heapMB": 2829
+   },
+   "istedgade-street": {
+    "calls": 2205,
+    "triangles": 7442584,
+    "textures": 390,
+    "fps": null,
+    "wallVertices": 1155762,
+    "wallAttributeMB": 138.7,
+    "allAttributeMB": 729.9,
+    "heapMB": 3651
+   },
+   "istedgade-close": {
+    "calls": 2328,
+    "triangles": 7471303,
+    "textures": 410,
+    "fps": null,
+    "wallVertices": 1155762,
+    "wallAttributeMB": 138.7,
+    "allAttributeMB": 730.0,
+    "heapMB": 3668
+   },
+   "stroget-street": {
+    "calls": 2416,
+    "triangles": 9259638,
+    "textures": 418,
+    "fps": {
+     "fps": 32.6,
+     "samples": [
+      32.4,
+      32.6,
+      33.4
+     ],
+     "medianMs": 33.3,
+     "p95Ms": 33.4
+    },
+    "wallVertices": 1338736,
+    "wallAttributeMB": 160.6,
+    "allAttributeMB": 773.0,
+    "heapMB": 2944
+   },
+   "stroget-close": {
+    "calls": 2613,
+    "triangles": 9512814,
+    "textures": 472,
+    "fps": null,
+    "wallVertices": 1338736,
+    "wallAttributeMB": 160.6,
+    "allAttributeMB": 773.0,
+    "heapMB": 3023
+   },
+   "osterbrogade-trianglen-street": {
+    "calls": 1554,
+    "triangles": 5869070,
+    "textures": 401,
+    "fps": null,
+    "wallVertices": 834326,
+    "wallAttributeMB": 100.1,
+    "allAttributeMB": 644.2,
+    "heapMB": 2222
+   },
+   "osterbrogade-trianglen-close": {
+    "calls": 1754,
+    "triangles": 6570600,
+    "textures": 402,
+    "fps": null,
+    "wallVertices": 834326,
+    "wallAttributeMB": 100.1,
+    "allAttributeMB": 644.2,
+    "heapMB": 2251
+   },
+   "norrebrogade-street": {
+    "calls": 1700,
+    "triangles": 6218592,
+    "textures": 342,
+    "fps": null,
+    "wallVertices": 936922,
+    "wallAttributeMB": 112.4,
+    "allAttributeMB": 776.5,
+    "heapMB": 2577
+   },
+   "norrebrogade-close": {
+    "calls": 2130,
+    "triangles": 6920242,
+    "textures": 393,
+    "fps": null,
+    "wallVertices": 936922,
+    "wallAttributeMB": 112.4,
+    "allAttributeMB": 776.6,
+    "heapMB": 2637
+   },
+   "christianshavn-street": {
+    "calls": 1918,
+    "triangles": 7906195,
+    "textures": 269,
+    "fps": null,
+    "wallVertices": 782822,
+    "wallAttributeMB": 93.9,
+    "allAttributeMB": 646.4,
+    "heapMB": 4361
+   },
+   "christianshavn-close": {
+    "calls": 2071,
+    "triangles": 8142049,
+    "textures": 302,
+    "fps": null,
+    "wallVertices": 782822,
+    "wallAttributeMB": 93.9,
+    "allAttributeMB": 646.5,
+    "heapMB": 4414
+   },
+   "nyhavn-north-street": {
+    "calls": 3116,
+    "triangles": 10403041,
+    "textures": 387,
+    "fps": {
+     "fps": 32.2,
+     "samples": [
+      26.6,
+      32.2,
+      37.6
+     ],
+     "medianMs": 33.3,
+     "p95Ms": 50.1
+    },
+    "wallVertices": 1116632,
+    "wallAttributeMB": 134.0,
+    "allAttributeMB": 709.6,
+    "heapMB": 2402
+   },
+   "nyhavn-north-close": {
+    "calls": 2518,
+    "triangles": 9553281,
+    "textures": 405,
+    "fps": null,
+    "wallVertices": 1116632,
+    "wallAttributeMB": 134.0,
+    "allAttributeMB": 709.6,
+    "heapMB": 2466
+   },
+   "nyhavn-north-fade": {
+    "calls": 1786,
+    "triangles": 7410317,
+    "textures": 390,
+    "fps": null,
+    "wallVertices": 1129541,
+    "wallAttributeMB": 135.5,
+    "allAttributeMB": 719.0,
+    "heapMB": 2586
+   }
+  }
+ },
+ "after": {
+  "errors": [],
+  "stops": {
+   "frederiksberg-alle-street": {
+    "calls": 1710,
+    "triangles": 6569134,
+    "textures": 377,
+    "fps": null,
+    "wallVertices": 1040478,
+    "wallAttributeMB": 124.9,
+    "allAttributeMB": 739.4,
+    "heapMB": 2934
+   },
+   "frederiksberg-alle-close": {
+    "calls": 1809,
+    "triangles": 6955978,
+    "textures": 422,
+    "fps": null,
+    "wallVertices": 1040478,
+    "wallAttributeMB": 124.9,
+    "allAttributeMB": 739.4,
+    "heapMB": 2978
+   },
+   "istedgade-street": {
+    "calls": 2198,
+    "triangles": 7351890,
+    "textures": 390,
+    "fps": null,
+    "wallVertices": 1155762,
+    "wallAttributeMB": 138.7,
+    "allAttributeMB": 729.5,
+    "heapMB": 3808
+   },
+   "istedgade-close": {
+    "calls": 2339,
+    "triangles": 7466113,
+    "textures": 410,
+    "fps": null,
+    "wallVertices": 1155762,
+    "wallAttributeMB": 138.7,
+    "allAttributeMB": 729.6,
+    "heapMB": 3844
+   },
+   "stroget-street": {
+    "calls": 2387,
+    "triangles": 9199366,
+    "textures": 418,
+    "fps": {
+     "fps": 41.6,
+     "samples": [
+      41.2,
+      41.6,
+      44.2
+     ],
+     "medianMs": 16.7,
+     "p95Ms": 33.4
+    },
+    "wallVertices": 1338736,
+    "wallAttributeMB": 160.6,
+    "allAttributeMB": 772.9,
+    "heapMB": 2976
+   },
+   "stroget-close": {
+    "calls": 2616,
+    "triangles": 9484256,
+    "textures": 472,
+    "fps": null,
+    "wallVertices": 1338736,
+    "wallAttributeMB": 160.6,
+    "allAttributeMB": 772.9,
+    "heapMB": 3110
+   },
+   "osterbrogade-trianglen-street": {
+    "calls": 1551,
+    "triangles": 5883002,
+    "textures": 401,
+    "fps": null,
+    "wallVertices": 834326,
+    "wallAttributeMB": 100.1,
+    "allAttributeMB": 643.8,
+    "heapMB": 2440
+   },
+   "osterbrogade-trianglen-close": {
+    "calls": 1755,
+    "triangles": 6654378,
+    "textures": 402,
+    "fps": null,
+    "wallVertices": 834326,
+    "wallAttributeMB": 100.1,
+    "allAttributeMB": 643.9,
+    "heapMB": 2478
+   },
+   "norrebrogade-street": {
+    "calls": 1696,
+    "triangles": 6209456,
+    "textures": 342,
+    "fps": null,
+    "wallVertices": 936922,
+    "wallAttributeMB": 112.4,
+    "allAttributeMB": 776.3,
+    "heapMB": 4213
+   },
+   "norrebrogade-close": {
+    "calls": 2127,
+    "triangles": 6913320,
+    "textures": 393,
+    "fps": null,
+    "wallVertices": 936922,
+    "wallAttributeMB": 112.4,
+    "allAttributeMB": 776.3,
+    "heapMB": 4265
+   },
+   "christianshavn-street": {
+    "calls": 1914,
+    "triangles": 7871809,
+    "textures": 269,
+    "fps": null,
+    "wallVertices": 782822,
+    "wallAttributeMB": 93.9,
+    "allAttributeMB": 646.3,
+    "heapMB": 2763
+   },
+   "christianshavn-close": {
+    "calls": 2071,
+    "triangles": 8107335,
+    "textures": 302,
+    "fps": null,
+    "wallVertices": 782822,
+    "wallAttributeMB": 93.9,
+    "allAttributeMB": 646.3,
+    "heapMB": 2842
+   },
+   "nyhavn-north-street": {
+    "calls": 3115,
+    "triangles": 10304721,
+    "textures": 387,
+    "fps": {
+     "fps": 32.8,
+     "samples": [
+      29.8,
+      32.8,
+      33.6
+     ],
+     "medianMs": 33.3,
+     "p95Ms": 50
+    },
+    "wallVertices": 1116632,
+    "wallAttributeMB": 134.0,
+    "allAttributeMB": 709.5,
+    "heapMB": 3645
+   },
+   "nyhavn-north-close": {
+    "calls": 2515,
+    "triangles": 9521833,
+    "textures": 405,
+    "fps": null,
+    "wallVertices": 1116632,
+    "wallAttributeMB": 134.0,
+    "allAttributeMB": 709.5,
+    "heapMB": 3733
+   },
+   "nyhavn-north-fade": {
+    "calls": 1786,
+    "triangles": 7343543,
+    "textures": 390,
+    "fps": null,
+    "wallVertices": 1129541,
+    "wallAttributeMB": 135.5,
+    "allAttributeMB": 718.9,
+    "heapMB": 2249
+   }
+  }
+ }
+}

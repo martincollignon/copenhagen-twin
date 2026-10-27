@@ -15,7 +15,8 @@ ap = argparse.ArgumentParser()
 ap.add_argument('--data', default='', help='data base (?data=); empty: the repo ./data')
 ap.add_argument('--out', default='docs/windows')
 ap.add_argument('--query', default='')
-ap.add_argument('--runs', default='before,after')
+ap.add_argument('--runs', default='before,after', help='before (?windows=0), after, main (the checkout at --main-root, e.g. a worktree of main: perf and compatibility baseline)')
+ap.add_argument('--main-root', default='')
 ap.add_argument('--settle', type=float, default=150.0)
 ap.add_argument('--size', default='1600x900')
 ap.add_argument('--places', default='')
@@ -33,7 +34,7 @@ PLACES = {  # name: (lat, lon) of a point on the street
     'istedgade': (55.66920, 12.55400),
     'stroget': (55.67830, 12.57520),
     'osterbrogade-trianglen': (55.69960, 12.57720),
-    'norrebrogade': (55.69000, 12.55250),
+    'norrebrogade': (55.68700, 12.55900),
     'christianshavn': (55.67290, 12.59180),
     'nyhavn-north': (55.67985, 12.58960),
 }
@@ -81,7 +82,7 @@ def plan_place(name, lat, lon):
         n = len(r) // 2
         for key, L in walls.items():
             ring, edge = key.split(':')
-            if ring != '0' or L['conf'] < 0.75 or L['rows'] * bin(L['cm']).count('1') < 6:
+            if ring != '0' or L['conf'] < 0.7 or L['rows'] * bin(L['cm']).count('1') < 6:
                 continue
             e = int(edge)
             a = (r[2 * e], r[2 * e + 1])
@@ -95,28 +96,31 @@ def plan_place(name, lat, lon):
             d = math.hypot(mid[0] - x, mid[1] - z)
             if d > 140:
                 continue
-            ok = True
-            for dist in (12.0, 25.0):
+            clear = 0.0  # how far in front of the wall the view is free of other footprints (narrow streets: 10-15 m)
+            for dist in (7.0, 9.0, 12.0, 16.0, 22.0):
                 cam = (mid[0] + nx * dist, mid[1] + nz * dist)
-                for p, q, ob in edges_all:
-                    if seg_cross((mid[0] + nx * 0.3, mid[1] + nz * 0.3), cam, p, q):
-                        ok = False
-                        break
-                if not ok:
+                if any(seg_cross((mid[0] + nx * 0.3, mid[1] + nz * 0.3), cam, p, q) for p, q, ob in edges_all):
                     break
-            if ok and (best is None or d < best[0]):
-                best = (d, bid, key, a, c, (tx, tz), (nx, nz), mid, b, L)
+                clear = dist
+            if clear >= 7 and (best is None or d + (22 - clear) * 5 < best[0]):
+                best = (d + (22 - clear) * 5, bid, key, a, c, (tx, tz), (nx, nz), mid, b, L, clear)
     if not best:
         return None
-    d, bid, key, a, c, (tx, tz), (nx, nz), mid, b, L = best
+    d, bid, key, a, c, (tx, tz), (nx, nz), mid, b, L, clear = best
     g = b['ground']
     eye = g + 1.7
     look_h = g + min(L['g'] + L['f'] * L['rows'] * 0.5, 9.0)
-    street = ([mid[0] + nx * 22 - tx * 12, eye, mid[1] + nz * 22 - tz * 12], [mid[0], look_h, mid[1]], 60)
-    close = ([mid[0] + nx * 12, eye, mid[1] + nz * 12], [mid[0], g + min(L['g'] + L['f'] * 0.8, 7.0), mid[1]], 62)
+    # street: from the clear distance and 15 m along the street (15-27 m to the wall's centre); close-up square on from 9-12 m
+    street = ([mid[0] + nx * clear - tx * 15, eye, mid[1] + nz * clear - tz * 15], [mid[0], look_h, mid[1]], 60)
+    cd = min(clear, 12.0)
+    close = ([mid[0] + nx * cd, eye, mid[1] + nz * cd], [mid[0], g + min(L['g'] + L['f'] * 0.8, 7.0), mid[1]], 66)
     stops = {f'{name}-street': street, f'{name}-close': close}
     if name in FADE_AT:  # the photo half faded in (js/facade-lod.js PHOTO.close0 / close1: 45-80 m): windows must sit on the photo's
-        stops[f'{name}-fade'] = ([mid[0] + nx * 58 - tx * 8, eye + 3, mid[1] + nz * 58 - tz * 8], [mid[0], look_h, mid[1]], 30)
+        for dist, side in ((58, -8), (58, 8), (52, -20), (52, 20), (48, 0)):
+            cam = (mid[0] + nx * dist + tx * side, mid[1] + nz * dist + tz * side)
+            if not any(seg_cross((mid[0] + nx * 0.3, mid[1] + nz * 0.3), cam, p, q) for p, q, ob in edges_all):
+                stops[f'{name}-fade'] = ([cam[0], eye + 3, cam[1]], [mid[0], look_h, mid[1]], 30)
+                break
     return {'place': name, 'building': bid, 'wall': key, 'dist': round(d, 1), 'atlas': apps.get(bid), 'layout': L, 'stops': stops}
 
 
@@ -222,13 +226,23 @@ if args.pairs:
     raise SystemExit
 
 port = int(os.environ.get('SHOOT_PORT', 8000))
-server = subprocess.Popen([sys.executable, os.path.join(root, 'tools/hosting/serve_range.py'), '--port', str(port), '--dir', root], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-for _ in range(50):
-    try:
-        socket.create_connection(('127.0.0.1', port), timeout=0.2).close()
-        break
-    except OSError:
-        time.sleep(0.1)
+server = None
+
+
+def serve(directory):
+    global server
+    if server:
+        server.terminate()
+        server.wait()
+    server = subprocess.Popen([sys.executable, os.path.join(root, 'tools/hosting/serve_range.py'), '--port', str(port), '--dir', directory], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(50):
+        try:
+            socket.create_connection(('127.0.0.1', port), timeout=0.2).close()
+            break
+        except OSError:
+            time.sleep(0.1)
+
+
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 results = {}
@@ -236,6 +250,7 @@ code = 0
 try:
     with sync_playwright() as pw:
         for run in args.runs.split(','):
+            serve(os.path.abspath(args.main_root) if run == 'main' else root)
             browser = pw.chromium.launch(args=['--enable-unsafe-webgpu', '--use-angle=metal', '--ignore-gpu-blocklist', '--enable-precise-memory-info'])
             page = browser.new_context(viewport={'width': W, 'height': H}).new_page()
             logs = []
@@ -296,7 +311,8 @@ try:
             json.dump(res, open(os.path.join(run_dir, 'stats.json'), 'w'), indent=1)
             browser.close()
 finally:
-    server.terminate()
+    if server:
+        server.terminate()
 if 'before' in results and 'after' in results:
     pairs(plans)
 summary = {r: {'errors': v['errors'], 'fps': {k: s.get('fps') for k, s in v['stops'].items() if s.get('fps')},

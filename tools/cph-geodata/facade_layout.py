@@ -359,7 +359,7 @@ def fit_strip(rgba: np.ndarray, len_m: float, h_m: float, eave_m: float | None =
     row_on, on, obs_c = row_on[:nr], on[:nr], obs_c[:nr]
     n_on = int(on.sum())
     win_w = ww + 2 * FRAME_M
-    win_h = wh + 2 * FRAME_M
+    win_h = wh + 2 * FRAME_V
     sill0 = first_r - win_h / 2
     sill_h = float(np.clip(0.28 * f, 0.6, 1.1))
     g = sill0 - sill_h
@@ -420,6 +420,7 @@ def fit_strip(rgba: np.ndarray, len_m: float, h_m: float, eave_m: float | None =
 
 
 FRAME_M = 0.08  # the blob is the glazing; the opening adds the pale frame around it
+FRAME_V = 0.2  # vertically: sill and head below / above the glazing (calibrated on the Nyhavn fronts: the band fit sees the panes, ~25 % short)
 
 
 def layout_openings(lay: dict, len_m: float) -> list[dict]:
@@ -531,6 +532,7 @@ def main(argv=None) -> int:
     ap.add_argument("cmd", choices=["run", "show", "index"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
+    ap.add_argument("--resume", action="store_true", help="skip tiles that already have the layer (an interrupted run)")
     a = ap.parse_args(argv)
     if a.cmd == "index":
         patch_index()
@@ -547,6 +549,8 @@ def main(argv=None) -> int:
                 return 0
         return 1
     tiles = sorted(p.name for p in TILES.iterdir() if (p / "appearance.json").exists()) if a.args in ([], ["all"]) else a.args
+    if a.resume:
+        tiles = [t for t in tiles if not (TILES / t / LAYER_FILE).exists()]
     tot = {"buildings": 0, "walls": 0, "fitted": 0, "kept": 0, "bytes": 0, "reasons": {}}
     t0 = time.time()
     with ProcessPoolExecutor(a.workers) as ex:
