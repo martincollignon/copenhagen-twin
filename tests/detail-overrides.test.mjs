@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
-  OVERRIDE, OVERRIDE_FORMAT, readOverrideLayer, createOverrideBudget, admitOverrides, overrideFootprints, ringEdge, detailGeometry, overridesMode, attributionLines
+  OVERRIDE, OVERRIDE_FORMAT, readOverrideLayer, createOverrideBudget, createOverrideBudgetLease, admitOverrides, overrideFootprints, ringEdge, detailGeometry, overridesMode, attributionLines
 } from '../js/detail-overrides.js';
 import { encodePack, readPack, createAtlasSource, setAtlasSource, gzip } from '../js/data-packs.js';
 import { RING_LAYERS } from '../js/tile-rings.js';
@@ -54,6 +54,34 @@ test('meshes are admitted nearest first within the texture budget and the distan
   assert.equal(budget.bytes, 1000);
   assert.ok(budget.reserve('gdk:far', 1000));
   assert.deepEqual(budget.memory(), { residentBytes: 2000, peakBytes: 2000, budgetBytes: 2500, meshes: 2 });
+});
+
+test('per-build leases count overlapping copies of the same override id and release independently', () => {
+  const budget = createOverrideBudget({ ...OVERRIDE, maxTextureBytes: 12, maxMeshes: 2 });
+  const first = createOverrideBudgetLease(budget);
+  const second = createOverrideBudgetLease(budget);
+  assert.equal(first.reserve('gdk:1', 6), true);
+  assert.equal(first.reserve('gdk:1', 6), true, 'a repeated reservation in one build remains idempotent');
+  assert.equal(second.reserve('gdk:1', 6), true, 'a second real copy gets its own global reservation');
+  assert.deepEqual(budget.memory(), { residentBytes: 12, peakBytes: 12, budgetBytes: 12, meshes: 2 });
+
+  first.release('gdk:1');
+  assert.equal(budget.memory().residentBytes, 6);
+  assert.equal(second.has('gdk:1'), true);
+  second.releaseAll();
+  assert.equal(budget.memory().meshes, 0);
+});
+
+test('overlapping leases are refused when the shared byte cap is full', () => {
+  const budget = createOverrideBudget({ ...OVERRIDE, maxTextureBytes: 10, maxMeshes: 2 });
+  const first = createOverrideBudgetLease(budget);
+  const second = createOverrideBudgetLease(budget);
+  assert.equal(first.reserve('same-id', 7), true);
+  assert.equal(second.reserve('same-id', 7), false);
+  assert.equal(budget.memory().residentBytes, 7);
+  first.releaseAll();
+  assert.equal(second.reserve('same-id', 7), true, 'released capacity can be admitted by the waiting build');
+  assert.equal(budget.memory().residentBytes, 7);
 });
 
 test('colliders and walk space keep the generated footprint unless the override says otherwise', () => {

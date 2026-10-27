@@ -110,7 +110,7 @@ function mesh(name, material, x, seed, ranges = [], detailRanges = []) {
 
 const imports = { 'three/webgpu': { Matrix4, BatchedMesh } };
 const modulePath = path.join(__dirname, '../js/building-batches.js');
-const { batchBuildingCells, updateBuildingCellVisibility } = loadModule(fs.readFileSync(modulePath, 'utf8'), {
+const { batchBuildingCells, batchBuildingCellsAsync, updateBuildingCellVisibility } = loadModule(fs.readFileSync(modulePath, 'utf8'), {
   imports,
   filename: 'building-batches.js'
 });
@@ -258,4 +258,23 @@ test('a batch instance starts hidden when its cell is already hidden', () => {
   assert.deepEqual(batch.visibleCalls, [[0, false]]);
   updateBuildingCellVisibility(cell, false);
   assert.deepEqual(batch.visibleCalls, [[0, false]], 'same-visibility update needs no extra instance write');
+});
+
+test('async batch packing yields between source geometry additions', async () => {
+  const root = new Group('root');
+  const cell = new Group('buildings-cell');
+  const material = { name: 'wall' };
+  const wallA = mesh('walls', material, 1, 1);
+  const wallB = mesh('walls', material, 2, 2);
+  cell.add(wallA);
+  cell.add(wallB);
+  root.add(cell);
+  let slices = 0;
+
+  const batches = await batchBuildingCellsAsync(root, [cell], [wallA, wallB], async () => { slices++; });
+
+  assert.equal(batches.length, 1);
+  assert.ok(slices >= 4, `expected checkpoints around scan, allocation, each source and bounds; got ${slices}`);
+  assert.deepEqual(batches[0].index, [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
+  assert.equal(root.children.includes(batches[0]), true);
 });

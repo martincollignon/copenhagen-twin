@@ -15,6 +15,8 @@ from playwright.sync_api import sync_playwright
 
 ap = argparse.ArgumentParser()
 ap.add_argument('--out', default='.context/c2-stream')
+ap.add_argument('--port', type=int, default=0, help='local server port; use 8000 for the public R2 data CORS policy')
+ap.add_argument('--time', default='', help='time preset clicked after boot (golden, midday, twilight, midnight)')
 ap.add_argument('--stream', default='300', help='near radius in metres (?stream=)')
 ap.add_argument('--mid', default='650', help='mid radius in metres (?streammid=); the district is only 2 km across')
 ap.add_argument('--loops', type=int, default=3)
@@ -31,7 +33,7 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 out = args.out if os.path.isabs(args.out) else os.path.join(root, args.out)
 os.makedirs(out, exist_ok=True)
 
-s = socket.socket(); s.bind(('127.0.0.1', 0)); port = s.getsockname()[1]; s.close()
+s = socket.socket(); s.bind(('127.0.0.1', args.port)); port = s.getsockname()[1]; s.close()
 server = subprocess.Popen([sys.executable, '-m', 'http.server', str(port), '--bind', '127.0.0.1'], cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1)
 
@@ -55,10 +57,12 @@ FLY_JS = '''([path, speed, height]) => {
   };
   let start = null;
   const frames = [];
+  for (const observer of tw.streamPerfObservers || []) observer.disconnect();
+  tw.streamPerfObservers = [];
   tw.longTasks = [];
-  try { new PerformanceObserver((l) => { for (const e of l.getEntries()) tw.longTasks.push({ t: Math.round(e.startTime), ms: Math.round(e.duration) }); }).observe({ type: 'longtask', buffered: false }); } catch (e) {}
+  try { const observer = new PerformanceObserver((l) => { for (const e of l.getEntries()) tw.longTasks.push({ t: Math.round(e.startTime), ms: Math.round(e.duration) }); }); observer.observe({ type: 'longtask', buffered: false }); tw.streamPerfObservers.push(observer); } catch (e) {}
   tw.loaf = [];
-  try { new PerformanceObserver((l) => { for (const e of l.getEntries()) tw.loaf.push({ t: Math.round(e.startTime), ms: Math.round(e.duration), block: Math.round(e.blockingDuration), render: Math.round(e.renderStart ? e.startTime + e.duration - e.renderStart : 0), scripts: (e.scripts || []).map((s) => ({ fn: s.sourceFunctionName, url: (s.sourceURL || '').split('/').pop(), d: Math.round(s.duration), inv: s.invoker })) }); }).observe({ type: 'long-animation-frame', buffered: false }); } catch (e) {}
+  try { const observer = new PerformanceObserver((l) => { for (const e of l.getEntries()) tw.loaf.push({ t: Math.round(e.startTime), ms: Math.round(e.duration), block: Math.round(e.blockingDuration), render: Math.round(e.renderStart ? e.startTime + e.duration - e.renderStart : 0), scripts: (e.scripts || []).map((s) => ({ fn: s.sourceFunctionName, url: (s.sourceURL || '').split('/').pop(), d: Math.round(s.duration), inv: s.invoker })) }); }); observer.observe({ type: 'long-animation-frame', buffered: false }); tw.streamPerfObservers.push(observer); } catch (e) {}
   const tick = (now) => {
     if (start === null) start = now;
     frames.push(now);
@@ -97,7 +101,7 @@ def check(name, ok, detail=''):
     print(('PASS' if ok else 'FAIL'), name, detail)
     if not ok: fails.append(name)
 
-report = {'stream': args.stream, 'mid': args.mid, 'loops': []}
+report = {'stream': args.stream, 'mid': args.mid, 'time': args.time, 'loops': []}
 try:
     with sync_playwright() as p:
         browser = p.chromium.launch(args=['--enable-unsafe-webgpu', '--use-angle=metal', '--ignore-gpu-blocklist'])
@@ -127,9 +131,11 @@ try:
             return page.evaluate(SNAP_JS)
 
         t0 = time.time()
-        page.goto(f'http://127.0.0.1:{port}/index.html?hooks&stream={args.stream}&streammid={args.mid}' + (f'&{args.query}' if args.query else ''))
+        page.goto(f'http://localhost:{port}/index.html?hooks&stream={args.stream}&streammid={args.mid}' + (f'&{args.query}' if args.query else ''))
         page.wait_for_function('globalThis.__twin && globalThis.__twin.stream', timeout=180000)
         print(f'boot {time.time() - t0:.1f} s')
+        if args.time:
+            page.locator(f'[data-time="{args.time}"]').click()
         page.wait_for_timeout(2500)
         sn = settle()
         print('boot resident', sn['resident'], 'loads', sn['loads'], 'bytes MB', sn['bytesMB'])
@@ -181,6 +187,7 @@ try:
         report['final'] = {k: v for k, v in final.items() if k != 'ids'}
         report['heapMB'] = [round(h, 1) for h in heaps]
         errs = [l for l in logs if l.startswith(('error', 'pageerror'))]
+        report['consoleErrors'] = errs
         check('no console errors', not errs, '\n'.join(errs[:10]))
         check('tiles unload while flying', final['unloads'] > 0, f"unloads {final['unloads']}")
         if not args.city: check('the far corners hold fewer tiles than the district', smallest_far is not None and smallest_far < 16, f'smallest resident total {smallest_far}')
@@ -218,5 +225,6 @@ try:
         browser.close()
 finally:
     server.terminate()
+report['failedChecks'] = fails
 json.dump(report, open(f'{out}/stream-run.json', 'w'), indent=1, default=str)
 raise SystemExit(1 if fails else 0)

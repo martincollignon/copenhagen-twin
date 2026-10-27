@@ -128,12 +128,28 @@ Stages: `fetch fetch2` (citywide sources, cached in `data/raw/city/`), `building
 
 With tiles the engine **streams** (`js/tile-streamer.js`, milestone C2): it keeps the tiles around the camera resident in rings,
 **near** (750 m: buildings with facades, LoD2 roofs and doors, road surfaces, furniture, trees, grass, ground floor) and **mid**
-(2.5 km: buildings and roads), loads nearest first under a concurrency cap, aborts stale requests, and unloads a tile beyond its
+(1.25 km: buildings and roads), loads nearest first under a concurrency cap, aborts stale requests, and unloads a tile beyond its
 ring + 250 m (disposing its geometries, materials and photo textures). `?stream=<near m>` (and `&streammid=<m>`) shrinks the rings
 so streaming is visible inside the 2 km district; `?tiles=<url>` reads another tile index; `?debug=notiles` is the monolithic
 fallback (whole district built once). With `?hooks`, `__twin.stream.snapshot()` reports resident tiles per ring, loads, unloads,
 aborts and bytes. `uv run --with playwright python tools/shoot-stream.py` flies the district three times at `?stream=300`,
 and checks the console, the unloads and that the JS heap stays flat.
+
+Beyond the mid ring, the existing far layer keeps the city skyline visible out to 9 km. `?stream=750&streammid=2500`
+restores the former detail radius at a higher CPU and memory cost. Road surfaces use camera-frustum culling in both the
+main view and water reflections; rigid parts of the cargo bike and GoBoats share meshes while their animated pivots remain separate.
+Facade-photo tone, brick and floor-layout parameters are uniforms, so newly arriving buildings reuse compiled GPU programs.
+
+Measure the full city against the committed baseline at 1920×1080 (Playwright and WebGPU; localhost:8000 must be free):
+
+```sh
+uv run --with playwright python tools/perf/frame-budget.py --baseline-ref a58e9d3 --out .context/fps/before
+uv run --with playwright python tools/perf/frame-budget.py --out .context/fps/after
+```
+
+The check waits for tiles and facade photos to settle, samples street, cargo-bike, lake and aerial views, saves screenshots
+and JSON under `.context/`, and fails below 30 FPS or on rendering/streaming errors. `--scenes drive` also exercises driving.
+It requires the streamed city and fails if it falls back to the smaller district; use `--data` for another packed city host.
 
 `data/cph-surfaces.json` (ground-material polygons and road markings, M4) is a separate generated file:
 

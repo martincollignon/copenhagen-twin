@@ -30,6 +30,7 @@ import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
 import { collisionBody, buildingContact } from './collision-shapes.js';
 import { createStaticIndex } from './static-colliders.js';
+import { mergeRigidMeshes } from './rigid-meshes.js';
 
 // js/controllers.js
 // Sculpted, non-blocky GTA 6-style 3D models, animations, and physics controllers
@@ -1453,6 +1454,9 @@ class ThirdPersonControllerManager {
     bikeShadow.renderOrder = 998;
     root.add(bikeShadow);
     this.scene.add(root);
+
+    mergeRigidMeshes(root, new Set([steeringLinkage, ...pedals]));
+    mergeRigidMeshes(helmet);
 
     return {
       type: 'cargobike', label: 'Cargo bike', mesh: root, leanPivot, frontSteerPivot, handlebarPivot, steeringLinkage,

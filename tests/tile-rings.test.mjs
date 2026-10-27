@@ -12,8 +12,23 @@ for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) ids.push(`${ie + a}_
 const tiles = ids.map((id) => ({ id, bounds: tileBoundsLocal(id) }));
 const exists = (id) => ids.includes(id);
 
+test('default city residency fits the render budget while retaining every near tile', () => {
+  const city = [];
+  for (let x = -7; x <= 7; x++) for (let z = -7; z <= 7; z++) {
+    const id = `${ie + x}_${in_ + z}`;
+    city.push({ id, bounds: tileBoundsLocal(id) });
+  }
+  const camera = { x: 0, z: 0 };
+  const current = wantedTiles(camera, city, new Map(), cfg);
+  const previous = wantedTiles(camera, city, new Map(), streamConfig({ mid: 2500 }));
+  const nearIds = (wanted) => [...wanted].filter(([, t]) => t.ring === 'near').map(([id]) => id);
+  assert.deepEqual(nearIds(current), nearIds(previous), 'traffic, collision and facade tiles keep their full reach');
+  assert.ok(current.size <= 40, `default draws detail from ${current.size} tiles; budget is 40`);
+  assert.ok(current.size < previous.size / 2, 'distant geometry belongs to the far layer');
+});
+
 test('stream config defaults and ?stream=<near>', () => {
-  assert.deepEqual({ ...cfg }, { near: 750, mid: 2500, hysteresis: 250, maxConcurrent: 4, maxBuilds: 1 });
+  assert.deepEqual({ ...cfg }, { near: 750, mid: 1250, hysteresis: 250, maxConcurrent: 4, maxBuilds: 1 });
   assert.equal(streamConfig({ maxBuilds: 2 }).maxBuilds, 2);
   const c = streamConfig({ near: 300 });
   assert.equal(c.near, 300);
@@ -35,11 +50,11 @@ test('ringFor: enter at the radius, leave at radius + hysteresis', () => {
   assert.equal(ringFor(751, null, cfg), 'mid');
   assert.equal(ringFor(900, 'near', cfg), 'near'); // inside near + 250: stays
   assert.equal(ringFor(1001, 'near', cfg), 'mid'); // beyond: drops to mid
-  assert.equal(ringFor(2400, null, cfg), 'mid');
-  assert.equal(ringFor(2600, null, cfg), null); // not yet loaded: not loaded
-  assert.equal(ringFor(2600, 'mid', cfg), 'mid'); // loaded: stays until mid + hysteresis
-  assert.equal(ringFor(2751, 'mid', cfg), null);
-  assert.equal(ringFor(2751, 'near', cfg), null);
+  assert.equal(ringFor(cfg.mid - 100, null, cfg), 'mid');
+  assert.equal(ringFor(cfg.mid + 100, null, cfg), null); // not yet loaded: not loaded
+  assert.equal(ringFor(cfg.mid + 100, 'mid', cfg), 'mid'); // loaded: stays until mid + hysteresis
+  assert.equal(ringFor(cfg.mid + cfg.hysteresis + 1, 'mid', cfg), null);
+  assert.equal(ringFor(cfg.mid + cfg.hysteresis + 1, 'near', cfg), null);
   assert.equal(ringFor(740, 'mid', cfg), 'near'); // a mid tile that gets close is promoted
 });
 
@@ -48,7 +63,7 @@ test('a camera jittering on the ring edge does not load and unload', () => {
   let flips = 0;
   let prev = null;
   for (let i = 0; i < 200; i++) {
-    const d = 2500 + Math.sin(i) * 120; // wobbles across the mid radius
+    const d = cfg.mid + Math.sin(i) * 120; // wobbles across the mid radius
     const ring = ringFor(d, current.get('t') ?? null, cfg);
     if (ring) current.set('t', ring); else current.delete('t');
     if (ring !== prev) flips++;
@@ -125,6 +140,6 @@ test('extentOfTiles unites the tile rectangles', () => {
   assert.equal(extentOfTiles([]), null);
 });
 
-test('defaults are the plan: near 750 m, mid 2.5 km, hysteresis 250 m', () => {
-  assert.deepEqual({ ...DEFAULT_STREAM }, { near: 750, mid: 2500, hysteresis: 250 });
+test('defaults keep full detail at 750 m and hand off to the skyline beyond 1.25 km', () => {
+  assert.deepEqual({ ...DEFAULT_STREAM }, { near: 750, mid: 1250, hysteresis: 250 });
 });

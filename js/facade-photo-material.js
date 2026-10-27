@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, float, vec2, vec3, texture, uv, attribute, positionWorld, cameraPosition, length, dot, mix, step, smoothstep,
-  max, exp, floor, mod, dFdx, dFdy, normalize, normalWorldGeometry, clamp, sin, fract
+  max, exp, floor, mod, dFdx, dFdy, normalize, normalWorldGeometry, clamp, sin, fract, uniform
 } from 'three/tsl';
 import { cityUniforms, apartmentOccupancy, apartmentLight, bumpNormal, canyonSkyAONode, gridLine, noise2D, BRICK_L, BRICK_H } from './tsl-materials.js';
 import { PHOTO } from './facade-lod.js';
@@ -31,8 +31,10 @@ function createPhotoMaterial(map, { hasMask = true, tone = [0.4, 0.38, 0.34], br
   mat.polygonOffsetFactor = -2;
   mat.polygonOffsetUnits = -2;
   mat.aoNode = canyonSkyAONode();
-  const wallLum = float(Math.max(0.02, 0.2126 * tone[0] + 0.7152 * tone[1] + 0.0722 * tone[2]));
-  const brickOn = float(brick ? 1 : 0);
+  // Per-building values must stay out of WGSL: constants compile a new GPU pipeline for every arriving photo wall.
+  const wallLum = uniform(Math.max(0.02, 0.2126 * tone[0] + 0.7152 * tone[1] + 0.0722 * tone[2]));
+  const brickOn = uniform(brick ? 1 : 0);
+  const facadeLayout = uniform(new THREE.Vector3(layout.floorH, layout.groundH, layout.seed));
   const wuv = attribute('wallUV', 'vec2'); // metres along the wall, metres above the ground
   const camDist = length(positionWorld.sub(cameraPosition));
 
@@ -63,8 +65,8 @@ function createPhotoMaterial(map, { hasMask = true, tone = [0.4, 0.38, 0.34], br
   const reveal = mix(float(1), float(0.5).add(sunOpen.mul(0.5)), pane);
   const glass = pane.mul(throughReveal);
   // The alpha atlas has no window IDs. Occupancy is coherent per storey, avoiding invented divisions across photo panes.
-  const storey = max(float(0), floor(wuv.y.sub(layout.groundH).div(layout.floorH)).add(1));
-  const roomPick = fract(sin(storey.mul(73.7).add(layout.seed)).mul(43758.5453));
+  const storey = max(float(0), floor(wuv.y.sub(facadeLayout.y).div(facadeLayout.x)).add(1));
+  const roomPick = fract(sin(storey.mul(73.7).add(facadeLayout.z)).mul(43758.5453));
   const occupied = step(float(1).sub(apartmentOccupancy()), roomPick);
 
   const gain = (c) => {
