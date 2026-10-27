@@ -76,7 +76,7 @@ Add `--perf` for paired CPU timings with the collision stage enabled and disable
 
 ## Performance budget check
 
-Every pull request runs the required `texture-memory-budget` check. It replays the committed camera route against the real facade-atlas dimensions and fails if the selected facade textures exceed 48 MiB or 56 residents:
+Every pull request runs the required `texture-memory-budget` check. It replays the committed camera route against the real facade-atlas dimensions and fails if the selected facade textures exceed 48 MiB or 224 residents, if any building in the photo band (a photo wall nearer than 150 m and one beyond 45 m) is left without its atlas, or if atlases stay resident from the air. The atlas resolution follows the on-screen texel density where each photo is seen (`js/facade-lod.js`): every plan picks the highest density at which the whole band fits the 48 MiB:
 
 ```sh
 node --test tests/texture-memory-budget.test.mjs

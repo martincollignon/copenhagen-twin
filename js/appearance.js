@@ -208,6 +208,9 @@ function texturedWalls(b, quads, mapping) {
   const uv = [];
   const wallUV = [];
   const index = [];
+  const segs = []; // the foot of every photo wall [x0, z0, x1, z1, ...] with y0 / y1 its vertical extent: the photo plan's distances
+  let y0 = Infinity;
+  let y1 = -Infinity;
   let count = 0;
   for (const q of quads) {
     const m = mapping.edges[q.edgeNo];
@@ -242,6 +245,9 @@ function texturedWalls(b, quads, mapping) {
     // in (t along the cleaned edge, h)
     const base = position.length / 3;
     for (const [t, h] of [[ta, 0], [tb, 0], [tb, hTop], [ta, hTop]]) vertex(t, h);
+    segs.push(q.p0[0] + dx * ta, q.p0[1] + dz * ta, q.p0[0] + dx * tb, q.p0[1] + dz * tb);
+    y0 = Math.min(y0, q.ground);
+    y1 = Math.max(y1, top);
     if (tb > ta) index.push(base, base + 1, base + 2, base, base + 2, base + 3);
     else index.push(base, base + 2, base + 1, base, base + 3, base + 2);
     // gables and steps above the eave, on the raw edge's span of this wall and below the strip's top
@@ -265,7 +271,8 @@ function texturedWalls(b, quads, mapping) {
     }
     count++;
   }
-  return count ? { position, normal, uv, wallUV, index, count, file: b.observed.atlas.file, size: b.observed.atlas.size } : null;
+  const texelM = b.observed.atlas.walls.find((w) => w.texel_m > 0)?.texel_m;
+  return count ? { position, normal, uv, wallUV, index, count, file: b.observed.atlas.file, size: b.observed.atlas.size, segs, y0, y1, ...(texelM ? { texelM } : {}) } : null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -107,19 +107,20 @@ const fakeManager = (ids, size = [100, 100]) => {
 };
 
 test('photo budget: the budget is shared by the tiles, nearest first', () => {
-  const A = fakeManager(Array.from({ length: 40 }, (_, i) => `a:${i}`)); // 0..39 m
-  const B = fakeManager(Array.from({ length: 40 }, (_, i) => `b:${i + 40}`)); // 40..79 m
-  const budget = createPhotoBudget({ interval: 0 });
+  const A = fakeManager(Array.from({ length: 40 }, (_, i) => `a:${i + 40}`)); // 40..79 m (in the photo band)
+  const B = fakeManager(Array.from({ length: 40 }, (_, i) => `b:${i + 80}`)); // 80..119 m
+  const p = { ...PHOTO, budget: 56 };
+  const budget = createPhotoBudget({ interval: 0, p });
   budget.add(A); budget.add(B);
   assert.equal(budget.update(0, 0, 1), true);
   const wantA = A.wants[0].length;
   const wantB = B.wants[0].length;
-  assert.equal(wantA + wantB, PHOTO.budget, 'one budget for both tiles, not one each');
+  assert.equal(wantA + wantB, p.budget, 'one budget for both tiles, not one each');
   assert.equal(wantA, 40);
-  assert.equal(wantB, PHOTO.budget - 40);
-  assert.deepEqual(B.wants[0].slice(0, 2), ['b:40', 'b:41'], 'the nearest of B first');
+  assert.equal(wantB, p.budget - 40);
+  assert.deepEqual(B.wants[0].slice(0, 2), ['b:80', 'b:81'], 'the nearest of B first');
   // the concurrency cap is shared too: the two nearest loads start, both in A
-  assert.deepEqual(A.started, ['a:0', 'a:1']);
+  assert.deepEqual(A.started, ['a:40', 'a:41']);
   assert.deepEqual(B.started, []);
   assert.equal(budget.loading(), PHOTO.concurrency);
   budget.update(0, 0, 2);
@@ -138,6 +139,21 @@ test('photo budget: the budget is shared by the tiles, nearest first', () => {
   assert.equal(memory.budgetBytes, PHOTO.maxResidentBytes);
 });
 
+test('photo budget: between plans a settled load hands its slot to the next atlas of the plan', () => {
+  const A = fakeManager(Array.from({ length: 6 }, (_, i) => `a:${i + 50}`));
+  const budget = createPhotoBudget({ interval: 1000 });
+  budget.add(A);
+  budget.update(0, 0, 0);
+  assert.deepEqual(A.started, ['a:50', 'a:51']);
+  budget.update(0, 0, 10);
+  assert.equal(A.started.length, 2, 'nothing more while both slots are busy');
+  const job = A.state.loading.get('a:50');
+  A.state.loading.delete('a:50');
+  A.state.resident.set('a:50', job);
+  budget.update(0, 0, 20); // well before the next plan
+  assert.deepEqual(A.started, ['a:50', 'a:51', 'a:52']);
+});
+
 test('photo budget: the byte budget holds over all tiles, the farthest resident goes first whichever tile holds it', () => {
   const A = fakeManager(['a:0', 'a:100']);
   const B = fakeManager(['b:50']);
@@ -153,8 +169,8 @@ test('photo budget: the byte budget holds over all tiles, the farthest resident 
   assert.deepEqual(B.evicted, []);
   // a shared budget plan stays inside the byte budget over both tiles
   const big = [4096, 4096];
-  const C = fakeManager(Array.from({ length: 30 }, (_, i) => `c:${i}`), big);
-  const D = fakeManager(Array.from({ length: 30 }, (_, i) => `d:${i + 30}`), big);
+  const C = fakeManager(Array.from({ length: 30 }, (_, i) => `c:${i + 40}`), big);
+  const D = fakeManager(Array.from({ length: 30 }, (_, i) => `d:${i + 70}`), big);
   const budget = createPhotoBudget({ interval: 0 });
   budget.add(C); budget.add(D);
   budget.update(0, 0, 1);

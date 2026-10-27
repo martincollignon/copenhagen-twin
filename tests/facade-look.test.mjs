@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PHOTO, photoFade, texRequested, selectPhotoSet, lookFile } from '../js/facade-lod.js';
+import { PHOTO, photoFade, texRequested, selectPhotoSet, wallDistance, lookFile } from '../js/facade-lod.js';
 import { createContext, classifyWalls, KIND } from '../js/groundfloor.js';
 import { facadeStyle, MAT, ERA, wallMaterial, wallEra } from '../js/facade-style.js';
 import { texturedWalls } from '../js/appearance.js';
@@ -24,17 +24,33 @@ test('photoFade: procedural very close and far, photographic in between, monoton
   assert.ok(PHOTO.residency >= PHOTO.far, 'atlases are resident before the fade starts to show them');
 });
 
-test('selectPhotoSet: nearest first, budget and radius respected', () => {
+test('selectPhotoSet: nearest first, radius respected, nothing that is all nearer than the fade-in', () => {
   const cands = [];
   for (let i = 0; i < 100; i++) cands.push({ id: `b${i}`, cx: i * 2, cz: 0 }); // along x, 0 .. 198 m
   const { want, inRange } = selectPhotoSet(cands, 0, 0);
-  assert.equal(want.length, PHOTO.budget);
-  assert.deepEqual(want.slice(0, 3), ['b0', 'b1', 'b2']);
-  assert.ok(inRange.has('b82') && !inRange.has('b83'), 'residency radius 165 m');
+  const closeLimit = PHOTO.close0 - PHOTO.closeMargin; // 35 m: b18 is the first whose photo can show
+  assert.deepEqual(want.slice(0, 3), ['b18', 'b19', 'b20']);
+  assert.ok(want.length === 65 && want.at(-1) === 'b82', 'every building from close0 - closeMargin to the 165 m residency radius');
+  assert.ok(inRange.has('b82') && !inRange.has('b83') && !inRange.has('b17'), `inRange is the residency band from ${closeLimit} m`);
+  const capped = selectPhotoSet(cands, 0, 0, { ...PHOTO, budget: 10 });
+  assert.deepEqual(capped.want, cands.slice(18, 28).map((c) => c.id), 'the count cap keeps the nearest');
   const few = selectPhotoSet(cands.slice(0, 10), 400, 0, PHOTO);
   assert.equal(few.want.length, 0);
   const mid = selectPhotoSet(cands, 100, 0);
-  assert.equal(mid.want[0], 'b50');
+  assert.deepEqual(mid.want.slice(0, 2).sort(), ['b32', 'b68'], 'b32 / b68 are 36 m away');
+  assert.ok(!mid.want.includes('b33') && !mid.want.includes('b50'), 'b33 .. b67 are within 35 m: no photo shows on them');
+});
+
+test('selectPhotoSet: distances are to the photo walls in 3D, not to the centre in plan', () => {
+  // a 100 m long block: its centre is 80 m away, its near end 30 m
+  const long = { id: 'long', cx: 80, cz: 0, walls: { size: [1000, 200], segs: [30, 0, 130, 0], y0: 0, y1: 20 } };
+  assert.ok(Math.abs(wallDistance(long, 0, undefined, 0).near - 30) < 1e-9);
+  assert.ok(Math.abs(wallDistance(long, 0, undefined, 0).far - 130) < 1e-9);
+  assert.equal(selectPhotoSet([long], 0, 0).want.length, 1, 'kept: its far walls are in the photo band');
+  // from 400 m up, a building below is outside the photo band (the shader fades it out by 150 m): no atlas
+  const below = { id: 'below', cx: 0, cz: 0, walls: { size: [400, 200], segs: [-10, 0, 10, 0], y0: 0, y1: 20 } };
+  assert.equal(selectPhotoSet([below], 0, 0, PHOTO, new Map(), 400).want.length, 0);
+  assert.equal(selectPhotoSet([below], 60, 0, PHOTO, new Map(), 12).want.length, 1);
 });
 
 test('texRequested: photo walls are on by default, ?tex=0 / debug=notex turn them off', () => {
