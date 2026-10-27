@@ -32,7 +32,15 @@ time.sleep(1)
 SNAP = '''() => { const t = globalThis.__twin; const s = t.stream && t.stream.snapshot(); const r = t.renderer.info;
   return { stream: s ? { near: s.resident.near, mid: s.resident.mid, fetching: s.fetching, building: s.building, held: s.held, errors: s.errors, loads: s.loads } : null,
     far: t.world.far ? t.world.far.stats : null, pool: t.world.pool ? t.world.pool.stats : null, photos: t.world.buildings && t.world.buildings.texManager ? { resident: t.world.buildings.texManager.state.resident.size, budget: t.world.buildings.photoBudget ? t.world.buildings.photoBudget.held() : null } : null, region: t.world.agents ? t.world.agents.stats : null,
-    agents: (() => { const ts = t.trafficSystem; return ts && ts.cars ? { cars: ts.cars.filter((c) => c.edge).length, buses: ts.buses.filter((c) => c.edge).length, peds: ts.peds.filter((p) => p.placed).length, cyclists: (ts.cyclists || []).filter((c) => c.placed).length } : null; })(), geometries: r.memory.geometries, textures: r.memory.textures, calls: r.render.drawCalls, triangles: r.render.triangles }; }'''
+    agents: (() => { const ts = t.trafficSystem; return ts && ts.cars ? { cars: ts.cars.filter((c) => c.edge).length, buses: ts.buses.filter((c) => c.edge).length, peds: ts.peds.filter((p) => p.placed).length, cyclists: (ts.cyclists || []).filter((c) => c.placed).length } : null; })(), facadeMemory: t.world.buildings && t.world.buildings.texManager ? t.world.buildings.texManager.memory || null : null,
+    colliders: t.world.staticIndex ? { parts: t.world.staticIndex.parts, size: t.world.staticIndex.size } : null,
+    collisions: t.world.collisions ? { ...t.world.collisions.stats } : null,
+    geometries: r.memory.geometries, textures: r.memory.textures, calls: r.render.drawCalls, triangles: r.render.triangles }; }'''
+
+# frame times over ~2 s of animation frames (headless: relative numbers only)
+FPS = '''() => new Promise((done) => { const ts = []; const tick = (t) => { ts.push(t); if (ts.length < 121) requestAnimationFrame(tick); else {
+  const d = ts.slice(1).map((v, i) => v - ts[i]).sort((a, b) => a - b); done({ fps: +(1000 / (d.reduce((a, b) => a + b, 0) / d.length)).toFixed(1), p50: +d[d.length >> 1].toFixed(1), p95: +d[Math.floor(d.length * 0.95)].toFixed(1) }); } };
+  requestAnimationFrame(tick); })'''
 
 def parse(shot, presets):
     name, rest = shot.split(':', 1)
@@ -82,6 +90,7 @@ try:
                 if quiet >= 4: break
             page.wait_for_timeout(1200)
             sn = page.evaluate(SNAP)
+            sn['frames'] = page.evaluate(FPS)
             page.screenshot(path=f'{out}/{name}.png')
             print(f'{name}: settled in {time.time() - t1:.1f} s', json.dumps(sn))
         errs = [l for l in logs if l.startswith(('error', 'pageerror'))]

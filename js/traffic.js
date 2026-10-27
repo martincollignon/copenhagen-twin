@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { CAR_BODY_TYPES, fleetRandom, fleetVehicle } from './vehicle-fleet.js';
 import { buildRoadNetwork } from './road-network.js';
 import { createPedestrianSystem } from './pedestrian-system.js';
+import { createCityCollisions } from './city-collisions.js';
 import { signalOffset, vehiclePhase, walkPhase } from './signal-plan.js';
 import { cityUniforms, createContactShadowMaterial, createCarFlareMaterial } from './tsl-materials.js';
 import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
@@ -45,6 +46,8 @@ const LOOKAHEAD = 70; // metres a driver looks ahead for vehicles, stop lines an
 const VEHICLE_RADIUS = 380;
 const NEAR_RADIUS = 350;
 const VEHICLE_SPAWN_DISTANCE = 250;
+const GROUNDED_PLAYER_MODES = new Set(['person', 'car', 'cyclist', 'cargobike']);
+const COLLIDING_PLAYER_MODES = new Set([...GROUNDED_PLAYER_MODES, 'helicopter']);
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
@@ -260,13 +263,227 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
   // 3. PEDESTRIAN SYSTEM
   // =========================================================================
   const player = { active: false, entity: null, x: 0, z: 0, vx: 0, vz: 0, fx: 0, fz: 1,
-    halfW: 0.86, halfL: 2.18, push: 0.5 };
+    halfW: 0.86, halfL: 2.18 };
   const nearEdges = [];
   const nearSignals = [];
   const pedestrianSystem = createPedestrianSystem(network, {
     player, nearEdges, nearSignals, mayCross, walkOn, visible, nearView, blockAt: options.blockAt, groundHeight: options.groundHeight
   });
   group.add(...pedestrianSystem.meshes);
+
+  const localCollisionStage = createCityCollisions();
+  const vehicleCollisionActors = vehicles.map((v, collisionIndex) => {
+    const spec = v.bus ? v.spec : BODY_SPECS[v.bodyType];
+    const actor = {
+      entity: v,
+      kind: v.bus ? 'bus' : 'car',
+      collisionIndex,
+      mode: 'car',
+      spec,
+      bodyTop: spec.height || (v.bus ? 3.0 : 1.8),
+      radius: Math.max(v.halfWidth, v.half),
+      mass: v.bus ? 6500 : Math.max(950, 1400 / Math.max(spec.massRatio || 0.5, 0.2)),
+      x: 0, y: 0, z: 0, prevX: 0, prevY: 0, prevZ: 0, _wasPlaced: false,
+      getVelocity(out) {
+        out.x = v.tx * v.speed + v.vx;
+        out.z = v.tz * v.speed + v.vz;
+        return out;
+      },
+      applyVelocity(dx, dz) {
+        const nextX = v.tx * v.speed + v.vx + dx;
+        const nextZ = v.tz * v.speed + v.vz + dz;
+        const pathSpeed = Math.max(0, nextX * v.tx + nextZ * v.tz);
+        v.speed = pathSpeed;
+        v.vx = nextX - v.tx * pathSpeed;
+        v.vz = nextZ - v.tz * pathSpeed;
+      },
+      move(dx, dz) {
+        shove(v, dx, dz);
+        this.heading = Math.atan2(v.tx, v.tz) - v.nose + v.yawOffset;
+        return v;
+      },
+      onContact(other, nx, nz, speed) {
+        applyVehicleImpact(v, actor, other, nx, nz, speed);
+        if (speed > 2.2) reportCollision(v, other.entity || other, (v.x + other.x) * 0.5,
+          groundAt(v.x, v.z) + 0.56, (v.z + other.z) * 0.5, nx, nz, speed);
+        if (speed > 2.2 && shouldEmitImpactSparks(actor, other)) {
+          const x = (actor.x + other.x) * 0.5, z = (actor.z + other.z) * 0.5;
+          spawnCollisionSparks(x, groundAt(x, z) + 0.56, z, nx, nz, speed);
+        }
+      }
+    };
+    return actor;
+  });
+  const pedestrianCollisionActors = pedestrianSystem.peds.map((p) => ({
+    entity: p,
+    kind: 'pedestrian',
+    mode: 'person',
+    radius: 0.31,
+    bodyTop: 1.85,
+    mass: 72,
+    x: 0, y: 0, z: 0, prevX: 0, prevY: 0, prevZ: 0, _wasPlaced: false,
+    heading: 0,
+    placed: false,
+    getVelocity(out) {
+      const speed = p.v * p.dir;
+      out.x = p.ux * speed;
+      out.z = p.uz * speed;
+      return out;
+    },
+    applyVelocity(dx, dz) {
+      const speed = p.v * p.dir + dx * p.ux + dz * p.uz;
+      p.v = Math.max(0, speed * p.dir);
+    },
+    move(dx, dz) {
+      p.contactX += dx;
+      p.contactZ += dz;
+      p.x += dx;
+      p.z += dz;
+      return p;
+    }
+  }));
+  const frameCollisionActors = [];
+  let collisionPhase = null;
+  function setCollisionPhase(phase) { collisionPhase = typeof phase === 'function' ? phase : null; }
+  function applyVehicleImpact(v, actor, other, nx, nz, impactSpeed) {
+    if (!(impactSpeed > 0.5)) return 0;
+    const ownMass = Math.max(1, Number.isFinite(actor.mass) ? actor.mass : 1250);
+    const otherMass = Math.max(1, Number.isFinite(other.mass) ? other.mass : 72);
+    const receivedDv = impactSpeed * otherMass / (ownMass + otherMass);
+    const heading = actor.heading || 0;
+    const sin = Math.sin(heading), cos = Math.cos(heading);
+    const localNx = nx * cos - nz * sin;
+    const localNz = nx * sin + nz * cos;
+
+    if (v) {
+      const dx = other.x - actor.x, dz = other.z - actor.z;
+      const localX = dx * cos - dz * sin;
+      const localZ = dx * sin + dz * cos;
+      const torque = localZ * localNx - localX * localNz;
+      const scale = v.bus ? 0.35 : 1;
+      if (!v.bus) {
+        v.yawVel -= torque * Math.min(4.2, receivedDv * 0.26) * scale;
+      }
+      v.pitchVel -= localNz * Math.min(12, receivedDv) * 0.18 * scale;
+      v.rollVel += localNx * Math.min(12, receivedDv) * 0.24 * scale;
+    } else if (actor.mode === 'car' && actor.entity?.type === 'car') {
+      const entity = actor.entity;
+      const forwardDot = nx * sin + nz * cos;
+      const sideDot = nx * cos - nz * sin;
+      if (Math.abs(forwardDot) <= 0.72) {
+        entity.angularVel = (entity.angularVel || 0)
+          + sideDot * (forwardDot >= 0 ? -1 : 1) * Math.min(3.2, receivedDv * 0.22);
+      }
+      entity.pitchVel = (entity.pitchVel || 0) + forwardDot * Math.min(14, receivedDv) * 0.16;
+      entity.rollVel = (entity.rollVel || 0) - sideDot * Math.min(14, receivedDv) * 0.22;
+      entity.heaveVel = (entity.heaveVel || 0) + Math.min(1.4, receivedDv * 0.11);
+    }
+    return receivedDv;
+  }
+
+  function shouldEmitImpactSparks(actor, other) {
+    if (actor.mode === 'person' || other.mode === 'person' || actor.kind === 'pedestrian' || other.kind === 'pedestrian') return false;
+    const actorVehicle = actor.kind === 'car' || actor.kind === 'bus';
+    const otherVehicle = other.kind === 'car' || other.kind === 'bus';
+    if (actorVehicle && otherVehicle && Number.isFinite(actor.collisionIndex) && Number.isFinite(other.collisionIndex)) {
+      return actor.collisionIndex < other.collisionIndex;
+    }
+    if (actor.kind === 'player' && otherVehicle) return false;
+    return actorVehicle || (actor.kind === 'player' && actor.mode === 'car'
+      && (other.mode === 'cyclist' || other.mode === 'cargobike'));
+  }
+
+  function bindPlayerCollisionActor(actor, entity, mode) {
+    const bodyMode = mode === 'car' ? 'car' : mode;
+    if (actor.entity !== entity || actor.mode !== bodyMode) {
+      actor._wasPlaced = false;
+      actor.prevX = entity.position.x;
+      actor.prevY = entity.position.y;
+      actor.prevZ = entity.position.z;
+      actor.prevHeading = entity.heading || 0;
+    }
+    actor.entity = entity;
+    actor.mode = bodyMode;
+  }
+  function syncCollisionActors(playerEntity, activeMode) {
+    frameCollisionActors.length = 0;
+    for (let i = 0; i < vehicleCollisionActors.length; i++) {
+      const actor = vehicleCollisionActors[i], v = vehicles[i];
+      actor.x = v.x; actor.y = groundAt(v.x, v.z); actor.z = v.z;
+      actor.heading = Math.atan2(v.tx, v.tz) - v.nose + v.yawOffset;
+      actor.prevX = v.prevX; actor.prevZ = v.prevZ;
+      actor.placed = Boolean(v.edge);
+      frameCollisionActors.push(actor);
+    }
+    for (let i = 0; i < pedestrianCollisionActors.length; i++) {
+      const actor = pedestrianCollisionActors[i], p = pedestrianSystem.peds[i];
+      actor.x = p.x; actor.z = p.z;
+      actor.y = options.groundHeight ? options.groundHeight.heightAt(p.x, p.z) : 0.22;
+      actor.prevX = p.prevX; actor.prevZ = p.prevZ;
+      actor.heading = Math.atan2(p.ux * p.dir, p.uz * p.dir);
+      actor.sweep = true;
+      actor.placed = p.placed;
+      frameCollisionActors.push(actor);
+    }
+    if (playerEntity && COLLIDING_PLAYER_MODES.has(activeMode)) {
+      const actor = activePlayerCollisionActor;
+      bindPlayerCollisionActor(actor, playerEntity, activeMode);
+      actor.spec = playerEntity.bodySpec || null;
+      actor.bodyTop = activeMode === 'helicopter' ? 3.2 : activeMode === 'car' ? playerEntity.bodySpec?.height || 1.8 : 1.9;
+      actor.bodyBottom = activeMode === 'helicopter' ? -0.25 : 0;
+      actor.radius = activeMode === 'car' ? (playerEntity.bodySpec?.width || 1.72) / 2
+        : activeMode === 'cargobike' ? 0.4 : activeMode === 'helicopter' ? 4.5 : activeMode === 'cyclist' ? 0.38 : 0.32;
+      if (activeMode === 'person') actor.radius = 0.48;
+      actor.mass = activeMode === 'helicopter' ? 2200 : activeMode === 'car' ? 1250 : activeMode === 'cargobike' ? 125 : activeMode === 'cyclist' ? 95 : 72;
+      actor.x = playerEntity.position.x; actor.y = playerEntity.position.y; actor.z = playerEntity.position.z;
+      actor.heading = playerEntity.heading || 0;
+      actor.placed = true;
+      frameCollisionActors.push(actor);
+    } else {
+      // A hidden/naval mode may reuse this adapter later; its old trajectory is not current motion.
+      activePlayerCollisionActor._wasPlaced = false;
+    }
+    return frameCollisionActors;
+  }
+  const activePlayerCollisionActor = {
+    kind: 'player', mode: 'person', radius: 0.32, mass: 72,
+    _wasPlaced: false,
+    getVelocity(out) {
+      const e = this.entity, heading = e.heading || 0, speed = e.speed || 0;
+      out.x = Math.sin(heading) * speed + (e.vx || 0);
+      out.z = Math.cos(heading) * speed + (e.vz || 0);
+      return out;
+    },
+    applyVelocity(dx, dz) {
+      const e = this.entity, heading = e.heading || 0;
+      const vx = Math.sin(heading) * (e.speed || 0) + (e.vx || 0) + dx;
+      const vz = Math.cos(heading) * (e.speed || 0) + (e.vz || 0) + dz;
+      const speed = vx * Math.sin(heading) + vz * Math.cos(heading);
+      e.speed = speed;
+      if (e.type === 'car') {
+        e.vx = vx - Math.sin(heading) * speed;
+        e.vz = vz - Math.cos(heading) * speed;
+      }
+    },
+    onContact(other, nx, nz, speed) {
+      if (this.mode !== 'car') return;
+      applyVehicleImpact(null, this, other, nx, nz, speed);
+      if (speed > 2.2 && shouldEmitImpactSparks(this, other)) {
+        const x = (this.x + other.x) * 0.5, z = (this.z + other.z) * 0.5;
+        spawnCollisionSparks(x, groundAt(x, z) + 0.56, z, nx, nz, speed);
+      }
+      if (speed > 2.2 && other.kind !== 'car' && other.kind !== 'bus') {
+        reportCollision(this.entity, other.entity || other, (this.x + other.x) * 0.5,
+          groundAt(this.x, this.z) + 0.56, (this.z + other.z) * 0.5, nx, nz, speed);
+      }
+    },
+    move(dx, dz) {
+      const e = this.entity;
+      e.position.x += dx; e.position.z += dz;
+      e.mesh?.position?.copy(e.position);
+      return { x: e.position.x, z: e.position.z };
+    }
+  };
 
   // Add vehicle contact shadows last + pre-allocated Clustered SpotLight / PointLight pools
   group.add(carShadowInst, busShadowInst);
@@ -1081,7 +1298,8 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     let dYaw = yaw - v.yaw;
     dYaw -= Math.round(dYaw / (Math.PI * 2)) * Math.PI * 2;
     v.yaw = yaw;
-    v.yawRate += (dYaw / dt - v.yawRate) * Math.min(1, dt * 8);
+    const safeDt = Math.max(dt, 1e-3);
+    v.yawRate += (dYaw / safeDt - v.yawRate) * Math.min(1, dt * 8);
     const wheelbase = 2 * v.axle;
     const steer = clamp(Math.atan((wheelbase * v.yawRate) / Math.max(v.speed, 0.5)), -0.6, 0.6);
     v.steer += (steer - v.steer) * Math.min(1, dt * 10);
@@ -1108,170 +1326,6 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     v.vx *= damp;
     v.vz *= damp;
     if (v.vx * v.vx + v.vz * v.vz < 1e-4) v.vx = v.vz = 0;
-  }
-
-  // A knocked vehicle shunts the vehicles it runs into
-  function knockOn(v) {
-    for (const o of vehicles) {
-      if (o === v || !o.edge) continue;
-      const dx = o.x - v.x;
-      const dz = o.z - v.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > v.half + o.half || dist < 0.001) continue;
-      if (Math.abs(dz * v.tx - dx * v.tz) > v.halfWidth + o.halfWidth) continue; // side by side
-      const nx = dx / dist;
-      const nz = dz / dist;
-      const relVn = (v.vx - o.vx) * nx + (v.vz - o.vz) * nz;
-      if (relVn <= 0.5) continue;
-      const approachSpeed = (v.tx * v.speed + v.vx - o.tx * o.speed - o.vx) * nx
-        + (v.tz * v.speed + v.vz - o.tz * o.speed - o.vz) * nz;
-      reportCollision(o, v, (v.x + o.x) * 0.5, 0.56, (v.z + o.z) * 0.5, nx, nz, approachSpeed);
-      const transfer = relVn * 0.68;
-      o.vx += nx * transfer;
-      o.vz += nz * transfer;
-      v.vx -= nx * transfer * 0.45;
-      v.vz -= nz * transfer * 0.45;
-      const across = nz * o.tx - nx * o.tz; // hit from the side spins it
-      const along = nx * o.tx + nz * o.tz;
-      o.yawVel += across * Math.min(2.8, relVn * 0.22);
-      o.rollVel += across * Math.min(8.0, relVn) * 0.18;
-      o.pitchVel -= along * Math.min(8.0, relVn) * 0.14;
-      if (relVn > 2.2) spawnCollisionSparks((v.x + o.x) * 0.5, 0.56, (v.z + o.z) * 0.5, nx, nz, relVn);
-    }
-  }
-
-  // Physical 4-axis 2D SAT OBB test between a vehicle (half extents halfW x halfL, heading rotY) and the player.
-  // Returns the minimum translation axis (pointing from the vehicle towards the player), or null if they don't overlap.
-  const satHit = { nx: 0, nz: 0, pen: 0, localX: 0, localZ: 0, pSin: 0, pCos: 1 };
-  function overlapWithPlayer(relX, relZ, rotY, halfW, halfL, pH, pHalfW, pHalfL) {
-    const sinY = Math.sin(rotY);
-    const cosY = Math.cos(rotY);
-    const localX = relX * cosY - relZ * sinY;
-    const localZ = relX * sinY + relZ * cosY;
-    const pSin = Math.sin(pH);
-    const pCos = Math.cos(pH);
-    const pLocalX = relX * pCos - relZ * pSin;
-    const pLocalZ = relX * pSin + relZ * pCos;
-    const alignCos = Math.abs(Math.cos(pH - rotY));
-    const alignSin = Math.abs(Math.sin(pH - rotY));
-
-    const extX = halfW + pHalfW * alignCos + pHalfL * alignSin;
-    const extZ = halfL + pHalfW * alignSin + pHalfL * alignCos;
-    const pExtX = pHalfW + halfW * alignCos + halfL * alignSin;
-    const pExtZ = pHalfL + halfW * alignSin + halfL * alignCos;
-
-    const penX = extX - Math.abs(localX);
-    const penZ = extZ - Math.abs(localZ);
-    const pPenX = pExtX - Math.abs(pLocalX);
-    const pPenZ = pExtZ - Math.abs(pLocalZ);
-    if (!(penX > 0 && penZ > 0 && pPenX > 0 && pPenZ > 0)) return null;
-
-    let nx, nz, pen;
-    if (penX < penZ) {
-      const signX = localX >= 0 ? 1 : -1;
-      nx = cosY * signX;
-      nz = -sinY * signX;
-      pen = penX;
-    } else {
-      const signZ = localZ >= 0 ? 1 : -1;
-      nx = sinY * signZ;
-      nz = cosY * signZ;
-      pen = penZ;
-    }
-    if (pPenX < pen) {
-      const signPX = pLocalX >= 0 ? 1 : -1;
-      nx = pCos * signPX;
-      nz = -pSin * signPX;
-      pen = pPenX;
-    }
-    if (pPenZ < pen) {
-      const signPZ = pLocalZ >= 0 ? 1 : -1;
-      nx = pSin * signPZ;
-      nz = pCos * signPZ;
-      pen = pPenZ;
-    }
-
-    satHit.nx = nx;
-    satHit.nz = nz;
-    satHit.pen = pen;
-    satHit.localX = localX;
-    satHit.localZ = localZ;
-    satHit.pSin = pSin;
-    satHit.pCos = pCos;
-    return satHit;
-  }
-
-  // Player contact: push the player and the vehicle apart (a bus hardly moves) and trade momentum, with spin,
-  // suspension kicks and sparks
-  function collideWithPlayer(v, rotY, halfW, halfL) {
-    const pe = player.entity;
-    const relX = pe.position.x - v.x;
-    const relZ = pe.position.z - v.z;
-    if (Math.abs(relX) > halfL + 3 || Math.abs(relZ) > halfL + 3) return;
-    const hit = overlapWithPlayer(relX, relZ, rotY, halfW, halfL, pe.heading || 0, player.halfW, player.halfL);
-    if (!hit) return;
-    const { nx, nz, pen, localX, localZ, pSin, pCos } = hit;
-    const massRatio = v.massRatio * (1.0 - player.push) / 0.5;
-    const pPush = 1.0 - massRatio;
-    pe.position.x += nx * pen * pPush;
-    pe.position.z += nz * pen * pPush;
-    if (pe.mesh) pe.mesh.position.copy(pe.position);
-    shove(v, -nx * pen * massRatio, -nz * pen * massRatio);
-
-    const sinY = Math.sin(rotY);
-    const cosY = Math.cos(rotY);
-    const pSpeed = pe.speed || 0;
-    const pvx = pSin * pSpeed + (pe.vx || 0);
-    const pvz = pCos * pSpeed + (pe.vz || 0);
-    const cvx = v.tx * v.speed + v.vx;
-    const cvz = v.tz * v.speed + v.vz;
-    const approachSpeed = (pvx - cvx) * (-nx) + (pvz - cvz) * (-nz);
-    if (approachSpeed <= 0) return;
-
-    const jImpulse = (1.0 + 0.28) * approachSpeed;
-    const cImpulse = v.bus ? approachSpeed * 0.22 : jImpulse * massRatio * 0.92;
-    v.vx -= nx * cImpulse;
-    v.vz -= nz * cImpulse;
-    v.speed *= v.bus ? 0.55 : 0.35;
-
-    const localNx = nx * cosY - nz * sinY;
-    const localNz = nx * sinY + nz * cosY;
-    if (!v.bus) {
-      const torque = localZ * localNx - localX * localNz;
-      v.yawVel -= torque * Math.min(4.2, approachSpeed * 0.26);
-      v.yawOffset = clamp(v.yawOffset - torque * Math.min(0.35, approachSpeed * 0.025), -0.65, 0.65);
-      v.pitchVel -= localNz * Math.min(12.0, approachSpeed) * 0.18;
-      v.rollVel += localNx * Math.min(12.0, approachSpeed) * 0.24;
-    }
-
-    const contactLocalX = clamp(localX, -halfW, halfW);
-    const contactLocalZ = clamp(localZ, -halfL, halfL);
-    const contactX = v.x + contactLocalX * cosY + contactLocalZ * sinY;
-    const contactZ = v.z - contactLocalX * sinY + contactLocalZ * cosY;
-    if (pe.type !== 'person') reportCollision(pe, v, contactX, v.bus ? 0.65 : 0.58, contactZ, nx, nz, approachSpeed);
-
-    if (typeof pe.speed === 'number') {
-      const headOnDot = Math.abs(pSin * nx + pCos * nz);
-      pe.speed *= 1.0 - (v.bus ? 0.68 : 0.50) * headOnDot;
-      if (pe.type === 'car') {
-        const pImpulse = v.bus ? approachSpeed * 0.65 : jImpulse * pPush * 0.48;
-        pe.vx = (pe.vx || 0) + nx * pImpulse;
-        pe.vz = (pe.vz || 0) + nz * pImpulse;
-        const pLocalNx = nx * pCos - nz * pSin;
-        const pLocalNz = nx * pSin + nz * pCos;
-        if (!v.bus) {
-          const pRelX = (contactX - pe.position.x) * pCos - (contactZ - pe.position.z) * pSin;
-          const pRelZ = (contactX - pe.position.x) * pSin + (contactZ - pe.position.z) * pCos;
-          const pTorque = pRelZ * pLocalNx - pRelX * pLocalNz;
-          pe.angularVel = (pe.angularVel || 0) + pTorque * Math.min(3.0, approachSpeed * 0.18) * pPush;
-        }
-        const kick = Math.min(v.bus ? 16.0 : 14.0, approachSpeed);
-        pe.pitchVel = (pe.pitchVel || 0) + pLocalNz * kick * (v.bus ? 0.22 : 0.18);
-        pe.rollVel = (pe.rollVel || 0) - pLocalNx * kick * (v.bus ? 0.28 : 0.24);
-        pe.heaveVel = (pe.heaveVel || 0) + Math.min(v.bus ? 1.6 : 1.4, approachSpeed * (v.bus ? 0.14 : 0.11));
-      }
-    }
-    if (approachSpeed > 1.8) spawnCollisionSparks(contactX, v.bus ? 0.65 : 0.58, contactZ, nx, nz, approachSpeed);
   }
 
   // =========================================================================
@@ -1613,7 +1667,12 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     refreshNear();
     updateView(camera);
 
-    player.active = Boolean(playerEntity && activeMode !== 'helicopter' && playerEntity.position.y < 2.6);
+    const playerGround = playerEntity && options.groundHeight
+      ? (options.groundHeight.heightAt?.(playerEntity.position.x, playerEntity.position.z)
+        ?? options.groundHeight.terrainAt?.(playerEntity.position.x, playerEntity.position.z) ?? 0)
+      : 0;
+    player.active = Boolean(playerEntity && GROUNDED_PLAYER_MODES.has(activeMode)
+      && Math.abs(playerEntity.position.y - playerGround) < 2.6);
     if (playerEntity) {
       const heading = playerEntity.heading || 0;
       const speed = playerEntity.speed || 0;
@@ -1625,10 +1684,8 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
       player.vx = player.fx * speed + (playerEntity.vx || 0);
       player.vz = player.fz * speed + (playerEntity.vz || 0);
     }
-    const bicycle = activeMode === 'cyclist' || activeMode === 'cargobike';
-    player.halfW = activeMode === 'cargobike' ? 0.4 : activeMode === 'cyclist' ? 0.35 : activeMode === 'person' ? 0.32 : (playerEntity?.bodySpec?.width || 1.72) / 2;
-    player.halfL = activeMode === 'cargobike' ? 1.34 : activeMode === 'cyclist' ? 0.85 : activeMode === 'person' ? 0.32 : (playerEntity?.bodySpec?.length || 4.36) / 2;
-    player.push = bicycle ? 0.82 : activeMode === 'person' ? 0.88 : 0.50;
+    player.halfW = activeMode === 'cargobike' ? 0.4 : activeMode === 'cyclist' ? 0.35 : activeMode === 'person' ? 0.48 : (playerEntity?.bodySpec?.width || 1.72) / 2;
+    player.halfL = activeMode === 'cargobike' ? 1.34 : activeMode === 'cyclist' ? 0.85 : activeMode === 'person' ? 0.48 : (playerEntity?.bodySpec?.length || 4.36) / 2;
 
     // 1. Cars & buses
     // Limit attempted placements, not just successes, and rotate through the pool so an awkward location
@@ -1657,14 +1714,25 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
       v.prevX = v.x;
       v.prevZ = v.z;
       relateToPlayer(v);
-      drive(v, dt);
+      if (dt > 0) drive(v, dt);
+      else v.acc = 0;
       if (!v.edge) continue;
       locate(v);
       knock(v, dt);
       pose(v, dt);
-      if (player.active) collideWithPlayer(v, v.yaw + v.yawOffset, v.halfWidth, v.half);
-      if (v.vx * v.vx + v.vz * v.vz > 0.36) knockOn(v);
+    }
 
+    // Pedestrians and road vehicles complete their movement before any actor batches are populated.
+    pedestrianSystem.simulate(dt, elapsed, focusX, focusZ, jump, hasView, activeMode);
+    const collisionActors = syncCollisionActors(playerEntity, activeMode);
+    if (collisionPhase) collisionPhase(collisionActors, { dt, elapsed, focusPos, playerEntity, activeMode });
+    else localCollisionStage.resolve(collisionActors, { dt });
+
+    // Corrections from the contact pass now feed the body, wheel, light, pedestrian and shadow batches.
+    for (const v of vehicles) {
+      if (!v.edge) continue;
+      // Route corrections can change the tangent; pack the same yaw used by the collision adapter.
+      v.yaw = Math.atan2(v.tx, v.tz) - v.nose;
       if (v.bus) renderBus(v);
       else renderCar(v);
     }
@@ -1714,7 +1782,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     updateTrafficLights();
 
     // 2. Pedestrians
-    pedestrianSystem.update(dt, elapsed, focusX, focusZ, jump, hasView, activeMode);
+    pedestrianSystem.render(dt);
 
     // 3. Collision sparks, including the player's own impacts against buildings
     if (playerEntity && playerEntity.lastCollisionSpark) {
@@ -1730,11 +1798,15 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     group,
     update,
     setCollisionListener,
+    setCollisionPhase,
     cars,
     buses,
     peds: pedestrianSystem.peds,
     get network() { return network; },
     setNetwork,
+    collisionActors: frameCollisionActors,
+    syncCollisionActors,
+    collisionStats: localCollisionStage.stats,
     get jamRetired() { return jamRetired; }
   };
 }

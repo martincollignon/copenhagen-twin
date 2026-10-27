@@ -42,6 +42,10 @@ function createPedestrianSystem(initialNetwork, { player, nearEdges, nearSignals
       crossesStreets: i % 6 === 0, // some start near crossings; everyone can use them along their route
       x: 0,
       z: 0,
+      prevX: 0,
+      prevZ: 0,
+      contactX: 0,
+      contactZ: 0,
       ax: 0, // track: start, direction, length; position along it and walking direction
       az: 0,
       ux: 0,
@@ -144,6 +148,10 @@ function createPedestrianSystem(initialNetwork, { player, nearEdges, nearSignals
       p.dir = t < track.len * 0.5 ? 1 : -1;
       p.x = x;
       p.z = z;
+      p.prevX = x;
+      p.prevZ = z;
+      p.contactX = 0;
+      p.contactZ = 0;
       p.v = crosswalk ? 0 : p.speed;
       p.pause = 0;
       p.avoidUntil = 0;
@@ -391,8 +399,8 @@ function createPedestrianSystem(initialNetwork, { player, nearEdges, nearSignals
       }
     }
     p.t = t;
-    p.x = p.ax + p.ux * t;
-    p.z = p.az + p.uz * t;
+    p.x = p.ax + p.ux * t + p.contactX;
+    p.z = p.az + p.uz * t + p.contactZ;
     if (p.node && ((t > KERB && t < p.len - KERB) || (p.waiting && walkOn(p.side, p.node)))) {
       p.coord = p.clx !== undefined ? p.x * p.clx + p.z * p.clz : p.side >= 2 ? p.x : p.z;
       if (!p.node.walkers.length) walkedNodes.push(p.node);
@@ -467,7 +475,7 @@ function createPedestrianSystem(initialNetwork, { player, nearEdges, nearSignals
     pedCrowd.add(p.rig, Math.hypot(p.x - focusX, p.z - focusZ));
   }
 
-  function update(dt, elapsed, x, z, jump, view, activeMode) {
+  function simulate(dt, elapsed, x, z, jump, view, activeMode) {
     clock = elapsed;
     focusX = x;
     focusZ = z;
@@ -489,14 +497,24 @@ function createPedestrianSystem(initialNetwork, { player, nearEdges, nearSignals
     for (const p of peds) if (p.placed) avoidPlayer(p);
     meet(dt);
     gatherCurbs();
-    pedCrowd.begin();
     for (let i = 0; i < NUM_PEDS; i++) {
       const p = peds[i];
       if (!p.placed) continue;
+      p.prevX = p.x;
+      p.prevZ = p.z;
       walk(p, dt);
-      renderPed(p, dt);
     }
+  }
+
+  function render(dt) {
+    pedCrowd.begin();
+    for (const p of peds) if (p.placed) renderPed(p, dt);
     pedCrowd.end();
+  }
+
+  function update(dt, elapsed, x, z, jump, view, activeMode) {
+    simulate(dt, elapsed, x, z, jump, view, activeMode);
+    render(dt);
   }
 
   /** Swaps the road network the pedestrians walk along (streamed city): everyone is placed afresh by the next updates. */
@@ -516,7 +534,7 @@ function createPedestrianSystem(initialNetwork, { player, nearEdges, nearSignals
     }
   }
 
-  return { peds, meshes: pedCrowd.meshes, update, setNetwork };
+  return { peds, meshes: pedCrowd.meshes, simulate, render, update, setNetwork };
 }
 
 export { createPedestrianSystem };

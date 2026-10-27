@@ -94,11 +94,12 @@ async function initApp() {
     start
   });
   const { trafficSystem } = world;
-  const allColliders = world.colliders;
+  const allColliders = world.staticIndex ? [] : world.colliders; // a streamed city's colliders come and go: the controllers query world.staticIndex
 
   // 4. Initialize Third-Person Controllers (Person, Car, both Bikes, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
   controllerManager.groundField = world.groundHeight || null;
+  if (world.staticIndex) controllerManager.staticIndex = world.staticIndex; // streamed city: per-tile colliders
   controllerManager.setSwanWorldData(world.lakeData, world.lakes?.level);
   // Reuse teleport placement so saved players return at rest, close to their last positions.
   try {
@@ -124,7 +125,7 @@ async function initApp() {
   }
 
   const cameraSystem = new CameraSystem(renderer.domElement, controllerManager);
-  world.attach?.({ camera: cameraSystem.camera, domElement: renderer.domElement });
+  world.attach?.({ camera: cameraSystem.camera, domElement: renderer.domElement, controllerManager });
   const touchControls = new TouchControls(controllerManager);
   const soundButton = document.getElementById('btn-sound');
   const audioSystem = new CityAudioSystem({ controllerManager, trafficSystem, audioSignals: world.audioSignals }, {

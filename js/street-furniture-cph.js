@@ -647,6 +647,8 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     addTile,
     removeTile,
     get tileCount() { return tilePlans.size; },
+    /** The placed plan of one streamed tile (js/static-colliders.js builds its colliders from it), or null. */
+    tilePlan: (id) => tilePlans.get(id)?.plan || null,
     get counts() { return planCounts(plan); },
     sets,
     get stats() {

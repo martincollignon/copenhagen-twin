@@ -36,9 +36,9 @@ jobs:
           mkdir -p _site/data
           cp index.html _site/
           cp -R css js _site/
-          # The engine still reads a few small district files from ./data outside js/data-config.js (ground-floor venues,
-          # entrances, and the monolithic district boot when the tile index is unreachable or ?debug=notiles): publish
-          # the tracked JSON documents and the district LoD2 roofs. The facade atlases (data/tex-look) come from R2.
+          # The citywide boot reads everything through js/data-config.js (R2). The monolithic district files under ./data
+          # are what the engine falls back to when the tile index is unreachable (or ?debug=notiles): keep publishing the
+          # tracked JSON documents and the district LoD2 roofs (small). The facade atlases (data/tex-look) come from R2.
           cp data/*.json _site/data/
           cp -R data/lod2 _site/data/
           # point the engine's data base (js/data-config.js BUILD_DATA_BASE) at R2

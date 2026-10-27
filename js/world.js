@@ -40,6 +40,9 @@ import { buildRoadNetwork } from './road-network.js';
 import { buildCyclistNetworkFor } from './cyclists.js';
 import { loadFarLayer } from './far-lod.js';
 import { applyPlainGround } from './ground-shader-cph.js';
+import { BODY_SPECS } from './actor-models.js';
+import { createCityCollisions } from './city-collisions.js';
+import { buildStaticColliders, createStaticIndex, createTiledStaticIndex } from './static-colliders.js';
 
 // js/world.js
 // The Copenhagen world: a ground plane in the Copenhagen frame (docs/cph-geodata-schema.md) plus data/cph-geodata.json,
@@ -51,6 +54,7 @@ const CPH_GEODATA_URL = './data/cph-geodata.json';
 const CPH_SURFACES_URL = './data/cph-surfaces.json';
 const CPH_LAKES_URL = './data/cph-lakes.json';
 const CPH_VEGETATION_URL = './data/cph-vegetation.json';
+const COLLIDING_PLAYER_MODES = new Set(['person', 'car', 'cyclist', 'cargobike', 'helicopter']);
 
 /** Optional ground-surface register and road markings (tools/cph-geodata/surfaces.py); null when absent. */
 async function loadCphSurfaces(url = CPH_SURFACES_URL, fetchImpl = globalThis.fetch) {
@@ -264,6 +268,92 @@ const nullTraffic = () => ({
   update() {}
 });
 
+/**
+ * The shared collision phase of a traffic system (js/traffic.js setCollisionPhase): the cyclists step and join the cars, buses,
+ * pedestrians and the active player, the player's parked vehicles and idle characters (controllerManager.entities) join as well, and
+ * one js/city-collisions.js stage resolves them against each other and the static colliders. Used by the district and the streamed city.
+ */
+function attachCollisionPhase(traffic, cyclists, { stage = null } = {}) {
+  let collisionStage = stage;
+  let controllerManager = null;
+  const inactivePlayerActors = [];
+  const playerActorByEntity = new WeakMap();
+
+  const playerActor = (entity, mode) => {
+    let actor = playerActorByEntity.get(entity);
+    if (!actor) {
+      actor = {
+        entity, kind: 'player', mode, radius: 0.32, mass: 72,
+        x: 0, y: 0, z: 0, prevX: 0, prevY: 0, prevZ: 0, _wasPlaced: false,
+        getVelocity(out) {
+          const heading = entity.heading || 0, speed = entity.speed || 0;
+          out.x = Math.sin(heading) * speed + (entity.vx || 0);
+          out.z = Math.cos(heading) * speed + (entity.vz || 0);
+          return out;
+        },
+        applyVelocity(dx, dz) {
+          const heading = entity.heading || 0;
+          const vx = Math.sin(heading) * (entity.speed || 0) + (entity.vx || 0) + dx;
+          const vz = Math.cos(heading) * (entity.speed || 0) + (entity.vz || 0) + dz;
+          const speed = vx * Math.sin(heading) + vz * Math.cos(heading);
+          entity.speed = speed;
+          if (entity.type === 'car') {
+            entity.vx = vx - Math.sin(heading) * speed;
+            entity.vz = vz - Math.cos(heading) * speed;
+          }
+        },
+        move(dx, dz) {
+          entity.position.x += dx;
+          entity.position.z += dz;
+          entity.mesh?.position?.copy(entity.position);
+          return { x: entity.position.x, z: entity.position.z };
+        }
+      };
+      playerActorByEntity.set(entity, actor);
+    }
+    actor.entity = entity;
+    actor.kind = 'player';
+    actor.mode = mode;
+    actor.spec = entity.bodySpec || null;
+    actor.bodyTop = mode === 'helicopter' ? 3.2 : mode === 'car' ? entity.bodySpec?.height || 1.8 : 1.9;
+    actor.bodyBottom = mode === 'helicopter' ? -0.25 : 0;
+    actor.radius = mode === 'helicopter' ? 4.5 : mode === 'cargobike' ? 0.4 : mode === 'cyclist' ? 0.38 : mode === 'car' ? (entity.bodySpec?.width || 1.72) / 2 : mode === 'person' ? 0.48 : 0.32;
+    actor.mass = mode === 'helicopter' ? 2200 : mode === 'car' ? 1250 : mode === 'cargobike' ? 135 : mode === 'cyclist' ? 95 : 72;
+    actor.x = entity.position.x; actor.y = entity.position.y; actor.z = entity.position.z;
+    actor.heading = entity.heading || 0;
+    actor.placed = true;
+    return actor;
+  };
+
+  traffic.setCollisionPhase((actors, frame) => {
+    cyclists.simulate(frame.dt, frame.elapsed, frame.focusPos || { x: 0, z: 0 }, null);
+    cyclists.syncCollisionActors();
+    for (const actor of cyclists.collisionActors) actors.push(actor);
+    inactivePlayerActors.length = 0;
+    if (controllerManager) {
+      for (const [mode, entity] of Object.entries(controllerManager.entities || {})) {
+        if (!COLLIDING_PLAYER_MODES.has(mode) || (controllerManager.activeMode === 'swanboat' && mode === 'person')) continue;
+        if (entity === frame.playerEntity || entity.mesh?.visible === false) continue;
+        inactivePlayerActors.push(playerActor(entity, mode));
+      }
+      for (const actor of inactivePlayerActors) actors.push(actor);
+    }
+    const result = collisionStage?.resolve(actors, { dt: frame.dt });
+    if (result?.movedActors.some((actor) => actor.kind === 'player')) {
+      for (const actor of result.movedActors) {
+        if (actor.kind !== 'player') continue;
+        actor.entity.mesh?.position?.copy(actor.entity.position);
+      }
+      controllerManager?.poseCharacters?.(0);
+    }
+  });
+
+  return {
+    setStage(next) { collisionStage = next; },
+    attachControllerManager(manager) { controllerManager = manager || null; }
+  };
+}
+
 // Road surfaces, the drivable network, traffic, pedestrians, cyclists and signal heads from the geodata
 async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null, lakesDoc = null, terrain = null, debug = '', roadSurfaces = null, walk = null }) {
   // streamed city: the road-surface layer (per tile) and the walk space (footprints per tile) are made by the caller
@@ -294,13 +384,21 @@ async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null, lakes
   if (debug.split(',').includes('oneway')) markInit(`directions(${JSON.stringify(buildDirectionOverlay(scene, geo, cyclists.network, surfaces.groundHeight).counts)})`);
   const heads = buildSignalHeads(scene, signalNodes, { groundHeight: surfaces.groundHeight });
   markInit('signalHeads');
+  const collide = attachCollisionPhase(traffic, cyclists);
+
   const trafficUpdate = traffic.update;
   traffic.update = (dt, elapsed, focusPos, playerEntity, activeMode, camera) => {
     trafficUpdate(dt, elapsed, focusPos, playerEntity, activeMode, camera);
-    cyclists.update(dt, elapsed, focusPos || { x: 0, z: 0 }, null);
+    cyclists.render();
     heads.update(elapsed, focusPos);
   };
-  Object.assign(traffic, { cyclists: cyclists.riders, cyclistSystem: cyclists, signalNodes });
+  Object.assign(traffic, {
+    cyclists: cyclists.riders,
+    cyclistSystem: cyclists,
+    signalNodes,
+    setCollisionStage: collide.setStage,
+    attachControllerManager: collide.attachControllerManager
+  });
   return { surfaces, traffic, heads, walk };
 }
 
@@ -445,8 +543,19 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     }
   }
 
+  const noBuildings = debug.split(',').includes('nobuildings');
+  const collisionGeo = noBuildings && geo ? { ...geo, buildings: [] } : geo;
+  const groundHeight = traffic?.surfaces?.groundHeight || null;
+  const colliders = buildStaticColliders(collisionGeo, {
+    furniturePlan: furniture?.plan || null,
+    carSpecs: BODY_SPECS,
+    groundHeight: groundHeight || (terrain.flat ? null : terrain)
+  });
+  const collisionStage = createCityCollisions({ staticIndex: createStaticIndex(colliders), groundHeight });
+  traffic?.traffic.setCollisionStage(collisionStage);
+
   return {
-    colliders: [],
+    colliders,
     // the player's surroundings: buildings, lakes and street furniture stream in around the camera; `night` is the
     // lighting system's night factor (lamps switch on above ~0.1)
     update: (x, z, night = 0) => {
@@ -468,7 +577,12 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
     ground,
     debugFootprints,
     buildings,
-    attach: (context) => { buildings?.attach(context); lakes?.attach(context); },
+    attach: (context) => {
+      traffic?.traffic.attachControllerManager(context?.controllerManager || null);
+      buildings?.attach(context);
+      lakes?.attach(context);
+    },
+    collisions: collisionStage,
     lakes,
     lakeData: lakesDoc,
     grass,
@@ -661,6 +775,18 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     layers.push({ name: 'walk', rings: ['near', 'mid'], add: (ctx) => walk.addBuildings(ctx.id, ctx.ownBuildings), remove: (id) => walk.removeBuildings(id) });
   }
 
+  // static colliders (js/static-colliders.js) per near tile: its own buildings here, its placed furniture with the furniture layer below. The
+  // agent region (<= 560 m) lies inside the near ring, so every actor and the player meet the solids around them.
+  const staticIndex = createTiledStaticIndex();
+  const colliderGround = terrain.flat ? null : terrain;
+  if (!flags.has('nobuildings')) {
+    layers.push({
+      name: 'colliders', rings: ['near'],
+      add: (ctx) => staticIndex.set(`b:${ctx.id}`, buildStaticColliders({ buildings: ctx.ownBuildings }, { groundHeight: colliderGround })),
+      remove: (id) => staticIndex.remove(`b:${id}`)
+    });
+  }
+
   let buildings = null;
   if (!flags.has('nobuildings')) {
     buildings = createBuildingsLayer(scene, { terrain: terrain.flat ? null : terrain, lod2, observed: !flags.has('noobserved'), pool, lite: !flags.has('nolite') });
@@ -702,8 +828,9 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
           }
         }
         furniture.addTile(ctx.id, doc, { place });
+        staticIndex.set(`f:${ctx.id}`, buildStaticColliders(null, { furniturePlan: furniture.tilePlan(ctx.id), carSpecs: BODY_SPECS, groundHeight: tiledHeight }));
       },
-      remove: (id) => furniture.removeTile(id)
+      remove: (id) => { furniture.removeTile(id); staticIndex.remove(`f:${id}`); }
     });
   }
 
@@ -726,6 +853,10 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     });
     if (far) { far.flush(origin.x, origin.z, 40); markInit(`far(${store.post.far.tiles} tiles, ${(far.stats.bytes / 1e6).toFixed(1)} MB, ${far.stats.builds} built)`); }
   }
+
+  const collisionStage = createCityCollisions({ staticIndex, groundHeight: roads ? tiledHeight : null });
+  let collide = null; // the traffic system's collision phase (made with the traffic, on the first agent region)
+  let controllerManager = null;
 
   // agents: traffic, cyclists, pedestrians and signal heads on the region around the camera
   let agents = null;
@@ -763,10 +894,14 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
             const system = createTrafficSystem(scene, [], { network: ctx.network, groundHeight: tiledHeight, debug: (globalThis.__cphDebug = {}), ...networkOptions });
             cyclists = createCyclistSystem(scene, null, signalNodes, { groundHeight: tiledHeight, network: ctx.cyclists });
             heads = buildSignalHeads(scene, signalNodes, { groundHeight: tiledHeight });
+            // one collision stage for cars, buses, pedestrians, cyclists and the player against the near tiles' solids (as the district)
+            const cyclistsNow = cyclists;
+            collide = attachCollisionPhase(system, cyclistsNow, { stage: collisionStage });
+            collide.attachControllerManager(controllerManager);
             const trafficUpdate = system.update;
             system.update = (dt, elapsed, focusPos, playerEntity, activeMode, camera) => {
               trafficUpdate(dt, elapsed, focusPos, playerEntity, activeMode, camera);
-              cyclists.update(dt, elapsed, focusPos || { x: 0, z: 0 }, null);
+              cyclistsNow.render();
               heads.update(elapsed, focusPos);
             };
             traffic = system;
@@ -775,7 +910,7 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
             cyclists.setNetwork(ctx.cyclists);
             heads.setNodes(signalNodes);
           }
-          Object.assign(traffic, { cyclists: cyclists.riders, cyclistSystem: cyclists, signalNodes });
+          Object.assign(traffic, { cyclists: cyclists.riders, cyclistSystem: cyclists, signalNodes, setCollisionStage: collide.setStage, attachControllerManager: collide.attachControllerManager });
         }
       }
     });
@@ -801,7 +936,9 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
   let lakeDistAt = -Infinity;
   let lakeDist = Infinity;
   return {
-    colliders: [],
+    get colliders() { return staticIndex.all(); }, // the resident tiles' solids right now (checks and tools; js/controllers.js queries staticIndex)
+    staticIndex, // js/controllers.js queries it instead of `colliders` (they come and go with the tiles)
+    collisions: collisionStage,
     update: (x, z, night = 0) => {
       streamer.update(x, z);
       agents?.update(x, z);
@@ -840,7 +977,14 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     groundLayer: ground,
     debugFootprints: null,
     buildings,
-    attach: (context) => { camera = context.camera; buildings?.attach(context); lakes?.attach(context); waterLayer?.attach(context); },
+    attach: (context) => {
+      camera = context.camera;
+      controllerManager = context?.controllerManager || null;
+      collide?.attachControllerManager(controllerManager);
+      buildings?.attach(context);
+      lakes?.attach(context);
+      waterLayer?.attach(context);
+    },
     lakes,
     waterLayer,
     cityWater,

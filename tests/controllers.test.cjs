@@ -7,9 +7,13 @@ const { loadModule } = require('./helpers/module.cjs');
 const source = readFileSync(join(__dirname, '../js/controllers.js'), 'utf8');
 let swanNavigationModule;
 let cphLakes;
+let collisionShapesModule;
+let staticCollidersModule;
 
 test.before(async () => {
-  swanNavigationModule = await import('../js/swan-navigation.js');
+  [swanNavigationModule, collisionShapesModule, staticCollidersModule] = await Promise.all([
+    import('../js/swan-navigation.js'), import('../js/collision-shapes.js'), import('../js/static-colliders.js')
+  ]);
   cphLakes = JSON.parse(readFileSync(join(__dirname, '../data/cph-lakes.json'), 'utf8'));
 });
 
@@ -46,6 +50,8 @@ function keyboardHarness(overrides = {}, moduleImports = {}) {
       './lakes-cph.js': { WATER: { surfaceY: -0.8 } },
       './pedestrians.js': {},
       './vehicle-lights.js': {},
+      './collision-shapes.js': collisionShapesModule,
+      './static-colliders.js': staticCollidersModule,
       ...moduleImports
     }
   });
@@ -444,8 +450,88 @@ test('corner collision normals follow an oriented building footprint', () => {
   ent.position.x = -10.4 * cs;
   ent.position.z = 0;
   controller.resolveHorizontalCollision(ent.position, 0.48);
-  assert.ok(Math.abs(ent.position.x - (-10 * cs - 0.48)) < 1e-6);
+  assert.ok(Math.abs(ent.position.x - (-10 * cs - 0.48)) < 1e-6, `resolved X was ${ent.position.x}, ${ent.position.z}`);
   assert.ok(Math.abs(ent.position.z) < 1e-6, 'the correction must not slide sideways along the corner');
+});
+
+test('swept player, car, bicycle, cargo bike, and helicopter motion cannot tunnel through a thin pole', () => {
+  const pole = {
+    type: 'lamp', shape: 'circle', radius: 0.06,
+    minX: -0.06, maxX: 0.06, minZ: -0.06, maxZ: 0.06, minY: 0, maxY: 4,
+    obb: { cx: 0, cz: 0, hx: 0.06, hz: 0.06, cs: 1, sn: 0 }
+  };
+  const starts = { person: -4, car: -5, cyclist: -4, cargobike: -4, helicopter: -10 };
+  const radii = { person: 0.48, car: 1.35, cyclist: 0.65, cargobike: 1.4, helicopter: 4.5 };
+  for (const mode of Object.keys(starts)) {
+    const { controller, ent } = teleportHarness(mode, [{ ...pole }]);
+    ent.heading = Math.PI / 2;
+    ent.position.x = 8;
+    ent.position.y = mode === 'helicopter' ? 0 : 0;
+    ent.position.z = 0;
+    controller.resolveHorizontalCollision(ent.position, radii[mode], mode === 'car' ? ent : null, ent,
+      { x: starts[mode], z: 0 });
+    assert.ok(ent.position.x < 0, `${mode} stopped on the approach side at ${ent.position.x}`);
+    assert.ok(Math.abs(ent.position.z) < 1e-6);
+    assert.equal(controller._lastHorizontalCollisionResolved, true);
+  }
+});
+
+test('each actual horizontal movement update supplies its previous position to the sweep', () => {
+  const wall = { minX: 0, maxX: 0.08, minZ: -20, maxZ: 20, minY: 0, maxY: 30 };
+  for (const mode of ['person', 'car', 'cyclist', 'cargobike', 'helicopter']) {
+    const { controller, ent } = teleportHarness(mode, [{ ...wall }]);
+    const start = mode === 'helicopter' ? -10 : mode === 'car' ? -4 : -3;
+    Object.assign(ent.position, { x: start, y: mode === 'helicopter' ? 0.25 : 0, z: 0 });
+    ent.heading = Math.PI / 2;
+    ent.speed = 0;
+    if (mode === 'car') ent.vx = ent.vz = 0;
+    if (mode === 'helicopter') ent.verticalSpeed = 0;
+    controller.keys.forward = 1;
+    if (mode === 'person') controller.updatePerson(1);
+    else if (mode === 'car') controller.updateCar(1);
+    else if (mode === 'cyclist' || mode === 'cargobike') controller.updateCyclist(1, ent, mode);
+    else controller.updateHelicopter(1, 0);
+    assert.ok(ent.position.x < 0, `${mode} update stopped before the wall at x=${ent.position.x}`);
+    assert.equal(controller._lastHorizontalCollisionResolved, true);
+  }
+});
+
+test('swept movement keeps tangent motion when glancing along a wall', () => {
+  const { controller, ent } = teleportHarness('person', [{ minX: 0, maxX: 0.2, minZ: -10, maxZ: 10, minY: 0, maxY: 30 }]);
+  Object.assign(ent.position, { x: 1, y: 0, z: 4 });
+  controller.resolveHorizontalCollision(ent.position, 0.48, null, ent, { x: -1, z: -1 });
+  assert.ok(ent.position.x <= -0.48 + 1e-6 && ent.position.x > -0.51, `wall clearance is ${ent.position.x}`);
+  assert.ok(ent.position.z > 3.9, `the blocked inward component was removed while z reached ${ent.position.z}`);
+});
+
+test('deep overlapping boxes resolve to a clear point after repeated bounded corrections', () => {
+  const colliders = [
+    { minX: 0, maxX: 10, minZ: -10, maxZ: 10, minY: 0, maxY: 30 },
+    { minX: -10, maxX: 0.1, minZ: -10, maxZ: 10, minY: 0, maxY: 30 }
+  ];
+  const { controller, ent } = teleportHarness('person', colliders);
+  Object.assign(ent.position, { x: 0, y: 0, z: 0 });
+  controller.resolveHorizontalCollision(ent.position, 0.48, null, ent);
+  const body = collisionShapesModule.collisionBody('person', 0.48, 0);
+  assert.ok(colliders.every((c) => !collisionShapesModule.buildingContact(c, ent.position.x, ent.position.y, ent.position.z, body, {})),
+    `unresolved overlap at ${ent.position.x}, ${ent.position.z}`);
+  assert.equal(controller._lastHorizontalCollisionResolved, true);
+});
+
+test('swept car impacts still trigger the existing vehicle response', () => {
+  const pole = {
+    type: 'bollard', shape: 'circle', radius: 0.12,
+    minX: -0.12, maxX: 0.12, minZ: -0.12, maxZ: 0.12, minY: 0, maxY: 1,
+    obb: { cx: 0, cz: 0, hx: 0.12, hz: 0.12, cs: 1, sn: 0 }
+  };
+  const { controller, ent } = teleportHarness('car', [pole]);
+  ent.heading = Math.PI / 2;
+  ent.speed = 12;
+  Object.assign(ent.position, { x: 5, y: 0, z: 0 });
+  controller.resolveHorizontalCollision(ent.position, 1.35, ent, ent, { x: -5, z: 0 });
+  assert.ok(ent.position.x < 0 && ent.position.x > -2.6);
+  assert.ok(ent.speed < 0, 'a head-on impact still rebounds the car');
+  assert.ok(ent.lastCollisionSpark, 'the existing impact spark response remains connected');
 });
 
 test('rotated cars use their own separating axes at building corners', () => {
