@@ -4,8 +4,8 @@
 // constants for its per-fragment crossfade, so CPU residency and the shader fade agree.
 
 const PHOTO = {
-  close0: 14, // m: nearer than this the facade is fully procedural (the photo is 10 cm/px: crisp brick, windows and reveals win)
-  close1: 40, // m: the photo is fully in from here (smoothstep between close0 and close1)
+  close0: 45, // m: nearer than this the facade is fully procedural (Skraafoto is 10-13 cm/px: a window is ~9 px and reads as a smudge up close)
+  close1: 80, // m: the photo is fully in from here (smoothstep between close0 and close1)
   near: 115, // m: fully photographic up to here
   far: 150, // m: fully procedural from here (smoothstep crossfade in between)
   residency: 165, // m: buildings inside this radius may hold an atlas (a little beyond `far` so nothing pops in mid-fade)
