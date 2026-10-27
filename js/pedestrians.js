@@ -1424,9 +1424,9 @@ class PersonRig {
   /**
    * Riding a bicycle: `root` (Object3D) is the bike frame (pose in its parent's space, e.g. the scene), `crank` the
    * pedal crank angle. Seat, bars and bottom bracket in the frame's space (metres, +Z forward).
-   * Optional pelvis/chest pitch and knee lift also support relaxed, low seated pedalling; bicycle defaults stay unchanged.
+   * Optional hand targets support a tiller and resting hand; pelvis/chest pitch and knee lift support seated pedalling; bicycle defaults stay unchanged.
    */
-  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17, steerAngle = 0, steerPivot = null, upright = 0, torsoLean = 0, pelvisPitch = 0.42, chestPitch = 0.2, kneeLift = 0 }) {
+  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17, steerAngle = 0, steerPivot = null, upright = 0, torsoLean = 0, pelvisPitch = 0.42, chestPitch = 0.2, kneeLift = 0, hands = null }) {
     const s = this.s;
     const j = this.bind;
     this.gait = 0;
@@ -1456,7 +1456,8 @@ class PersonRig {
     for (let i = 0; i < 2; i++) {
       const side = SIDES[i];
       _shoulder.copy(j[LIMB.upperArm[i]]).sub(j[BONE.CHEST]).multiplyScalar(s).applyQuaternion(_qChest).add(_chest);
-      _target.set(side * gripHalf, bars.y + 0.02, bars.z - 0.07);
+      if (hands?.[i]) _target.copy(hands[i]);
+      else _target.set(side * gripHalf, bars.y + 0.02, bars.z - 0.07);
       if (steerPivot && steerAngle) _target.sub(steerPivot).applyAxisAngle(_yAxis, steerAngle).add(steerPivot);
       toWorld(_target);
       const l1 = UPPER_ARM * s;

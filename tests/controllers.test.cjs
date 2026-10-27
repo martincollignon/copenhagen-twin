@@ -6,6 +6,7 @@ const { loadModule } = require('./helpers/module.cjs');
 
 const source = readFileSync(join(__dirname, '../js/controllers.js'), 'utf8');
 let swanNavigationModule;
+let goBoatNavigationModule;
 let cphLakes;
 let collisionShapesModule;
 let staticCollidersModule;
@@ -14,6 +15,7 @@ test.before(async () => {
   [swanNavigationModule, collisionShapesModule, staticCollidersModule] = await Promise.all([
     import('../js/swan-navigation.js'), import('../js/collision-shapes.js'), import('../js/static-colliders.js')
   ]);
+  goBoatNavigationModule = await import('../js/goboat-navigation.js');
   cphLakes = JSON.parse(readFileSync(join(__dirname, '../data/cph-lakes.json'), 'utf8'));
 });
 
@@ -47,6 +49,9 @@ function keyboardHarness(overrides = {}, moduleImports = {}) {
       './actor-models.js': {},
       './swan-boat.js': { createSwanBoat: () => ({ group: {}, pedals: {}, paddleWheel: {} }) },
       './swan-navigation.js': swanNavigationModule,
+      './goboat.js': { createGoBoat: () => ({ group: {} }) },
+      './goboat-piers.js': { createGoBoatPiers: () => null, normalizeGoBoatPierRecords: records => records, GOBOAT_PIER_RECORDS: [] },
+      './goboat-navigation.js': goBoatNavigationModule,
       './lakes-cph.js': { WATER: { surfaceY: -0.8 } },
       './pedestrians.js': {},
       './vehicle-lights.js': {},
@@ -797,4 +802,69 @@ test('seated riders follow the signed pedal phase and keep their knees raised ab
   controller.setMode('person');
   controller.poseSwanRiders();
   for (const rider of boat.riders) assert.equal(rider.rig.calls.length, 3, 'inactive riders are not posed');
+});
+
+function goBoatHarness() {
+  const { controller } = keyboardHarness();
+  const vector = (x = 0, y = 0, z = 0) => ({ x, y, z, set(x, y, z) { Object.assign(this, { x, y, z }); return this; }, copy(v) { return this.set(v.x, v.y, v.z); } });
+  const mesh = () => ({ position: vector(), rotation: { x: 0, y: 0, z: 0 }, visible: true });
+  const pier = { departurePoint: { x: 0, z: 0, heading: 0 }, boardingPoint: { x: 0, z: 5, heading: 0 }, deckHeight: -5.96 };
+  const boat = { type: 'goboat', position: vector(0, -6.84, 0), mesh: mesh(), heading: 0, speed: 0, vx: 0, vz: 0 };
+  const person = { type: 'person', position: vector(0, -5.96, 5), mesh: mesh(), crowd: { meshes: [] }, rig: { reset() {} } };
+  controller.entities = { goboat: boat, person };
+  controller.activeMode = 'person';
+  controller.goBoatPiers = { records: [pier] };
+  controller.goBoatNavigation = goBoatNavigationModule.createGoBoatNavigation({ waterOverride: [{ ring: [-30, -30, 30, -30, 30, 30, -30, 30], level: -6.84 }], pierRecords: [pier] });
+  return { controller, boat, person, pier };
+}
+
+test('GoBoat mode is refused when harbour is missing without moving another entity', () => {
+  const { controller, person } = goBoatHarness();
+  controller.goBoatNavigation = null;
+  assert.equal(controller.setMode('goboat'), false);
+  assert.equal(controller.activeMode, 'person');
+  assert.deepEqual([person.position.x, person.position.z], [0, 5]);
+});
+test('GoBoat boards at the pier, returns walker to deck and preserves position on reboarding', () => {
+  const { controller, boat, person, pier } = goBoatHarness();
+  assert.equal(controller.getGoBoatInteraction().action, 'board');
+  assert.equal(controller.interactGoBoat(), true);
+  assert.equal(controller.activeMode, 'goboat');
+  assert.equal(person.mesh.visible, false);
+  boat.position.x = 1;
+  assert.equal(controller.interactGoBoat(), true);
+  assert.equal(controller.activeMode, 'person');
+  assert.equal(person.position.y, pier.deckHeight);
+  assert.equal(person.mesh.visible, true);
+  assert.equal(controller.interactGoBoat(), true);
+  assert.equal(boat.position.x, 1);
+});
+test('GoBoat cannot disembark while moving or away from the pier; Walk mode returns safely', () => {
+  const { controller, boat, person } = goBoatHarness();
+  controller.setMode('goboat');
+  boat.speed = 1;
+  assert.equal(controller.interactGoBoat(), false);
+  boat.speed = 0; boat.vx = 1;
+  assert.equal(controller.interactGoBoat(), false, 'remaining drift also prevents disembarking');
+  boat.vx = 0; boat.position.x = 20;
+  assert.equal(controller.interactGoBoat(), false);
+  controller.setMode('person');
+  assert.deepEqual([person.position.x, person.position.z], [0, 5]);
+});
+test('GoBoat update honours water clearance and clears momentum at collision', () => {
+  const { controller, boat } = goBoatHarness();
+  controller.setMode('goboat'); controller.keys.forward = true;
+  for (let i = 0; i < 1000; i++) controller.updateGoBoat(0.1, i * 0.1);
+  assert(controller.goBoatNavigation.isPositionLegal(boat.position.x, boat.position.z));
+  assert(boat.position.z < 27.2);
+  assert.equal(boat.position.y, -6.84);
+});
+
+
+test('saved-state mode restoration does not overwrite the saved walking position with a pier return', () => {
+  const { controller, person } = goBoatHarness();
+  controller.setMode('goboat');
+  person.position.set(80, 2, 70);
+  controller.setMode('person', { restoreState: true });
+  assert.deepEqual([person.position.x, person.position.y, person.position.z], [80, 2, 70]);
 });

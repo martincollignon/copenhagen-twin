@@ -25,4 +25,4 @@ jobs:
       - name: Check building picking, culling, and depth-only shadows
         run: node --test tests/building-batches.test.cjs tests/render-target-memory.test.cjs tests/lighting.test.cjs tests/boot.test.cjs
       - name: Check collision geometry and actor interactions
-        run: node --test tests/collision-shapes.test.mjs tests/static-colliders.test.mjs tests/city-collisions.test.mjs tests/controllers.test.cjs tests/traffic.test.cjs tests/traffic-performance.test.cjs tests/cph-boot.test.cjs
+        run: node --test tests/collision-shapes.test.mjs tests/static-colliders.test.mjs tests/city-collisions.test.mjs tests/controllers.test.cjs tests/traffic.test.cjs tests/traffic-performance.test.cjs tests/cph-boot.test.cjs tests/goboat-navigation.test.mjs tests/goboat-harbour.test.mjs

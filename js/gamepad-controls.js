@@ -114,6 +114,7 @@ class GamepadControls {
     const toggleMap = edge(9), closeMap = edge(1);
     const cycleMode = Number(Boolean(edge(5))) - Number(Boolean(edge(4)));
     const cycleCamera = edge(3), recenter = edge(11);
+    const interact = edge(0) && this.controller.getGoBoatInteraction?.();
     this.previousButtons = pressed;
 
     const target = document.activeElement;
@@ -136,6 +137,7 @@ class GamepadControls {
       if (closeMap) this.callbacks.onCloseMap?.();
       return;
     }
+    if (interact) { this.callbacks.onInteract?.(); return; }
     if (cycleMode) this.callbacks.onCycleMode?.(cycleMode);
     if (revision !== this.revision) return;
     if (cycleCamera) this.callbacks.onCycleCamera?.(1);
@@ -146,7 +148,7 @@ class GamepadControls {
     const mode = this.controller.activeMode;
     let drive = -movement.y;
     let vertical = 0;
-    if (mode === 'car' || mode === 'cyclist' || mode === 'cargobike' || mode === 'swanboat') {
+    if (mode === 'car' || mode === 'cyclist' || mode === 'cargobike' || mode === 'swanboat' || mode === 'goboat') {
       drive = Math.max(0, drive, buttonValue(pad, 7)) - Math.max(0, -drive, buttonValue(pad, 6));
     } else if (mode === 'helicopter') {
       vertical = buttonValue(pad, 7) - buttonValue(pad, 6);

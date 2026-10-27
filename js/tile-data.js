@@ -88,9 +88,10 @@ function fixesFor(streets, ids) {
 }
 
 /**
- * @param {{ index: object, meta: object, streets?: object|null, lakes?: object|null, geo: object, roadsByTile: Map, terrain: object, lod2?: object|null }} city
+ * @param {{ index: object, meta: object, streets?: object|null, lakes?: object|null, geo: object, roadsByTile: Map, terrain: object, lod2?: object|null,
+ *   dropBuilding?: ((building: object) => boolean)|null }} city  `dropBuilding`: footprints a hand-made model replaces (the GoBoat pavilion)
  */
-export function createTileData({ index, meta, streets = null, lakes = null, geo, roadsByTile = null, terrain, lod2 = null }) {
+export function createTileData({ index, meta, streets = null, lakes = null, geo, roadsByTile = null, terrain, lod2 = null, dropBuilding = null }) {
   const exists = (id) => !!index.tiles[id];
   const entries = new Map(); // id -> { layers: Map(name -> payload), memo: {} }
   const cuts = mergeSurfaceCuts(lakes?.surface_cuts, geo.surfaceCuts, streets?.surfaceCuts);
@@ -196,7 +197,7 @@ export function createTileData({ index, meta, streets = null, lakes = null, geo,
       if (!e?.layers.has('buildings')) return [];
       return (e.memo.buildings ||= (() => {
         const p = e.layers.get('buildings');
-        const list = p?.buildings ? [...p.buildings] : [];
+        const list = p?.buildings ? (dropBuilding ? p.buildings.filter((b) => !dropBuilding(b)) : [...p.buildings]) : [];
         applyAppearance(list, e.layers.get('appearance'));
         const mini = { buildings: list, roads: [] };
         const fixes = e.layers.get('streets')?.buildings || (streets ? fixesFor(streets, new Set(list.map((b) => b.id))) : null);

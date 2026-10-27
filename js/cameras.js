@@ -179,7 +179,9 @@ class CameraSystem {
   update(dt, elapsed) {
     const entity = this.controllerManager.getActiveEntity();
     // bare terrain height (the one ground model): camera floors and scenic viewpoints are relative to it
-    const ground = (x, z) => this.controllerManager.getGroundHeight?.(x, z, 'car') ?? 0;
+    const ground = (x, z) => entity.type === 'goboat' && this.controllerManager.goBoatNavigation?.isWaterPoint(x, z)
+      ? this.controllerManager.goBoatNavigation.level
+      : this.controllerManager.getGroundHeight?.(x, z, 'car') ?? 0;
     const desiredPos = this._desiredPos;
     const desiredLook = this._desiredLook;
 
@@ -212,7 +214,7 @@ class CameraSystem {
         );
 
         const lookUpBias = entity.type === 'helicopter' ? 0.2
-          : entity.type === 'car' || entity.type === 'swanboat' ? 0.52
+          : entity.type === 'car' || entity.type === 'swanboat' || entity.type === 'goboat' ? 0.52
             : entity.type === 'cargobike' ? 1.2 : 1.55;
         desiredLook.set(
           entity.position.x + Math.sin(entity.heading) * 5.2,
