@@ -123,6 +123,7 @@ function createLighting(search = '') {
     'three/addons/objects/SkyMesh.js': { SkyMesh },
     'three/addons/lights/SunLight.js': { SunLight },
     'three/addons/lights/SunLightNode.js': { SunLightNode: class {} },
+    './sun-shadow.js': { DepthOnlySunLightNode: class {} },
     './tsl-materials.js': { cityUniforms }
   };
   const sunPosition = loadModule(sunSource, { filename: 'sun-position.js' });

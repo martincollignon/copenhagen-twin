@@ -1,0 +1,26 @@
+name: Texture memory budget
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  texture-memory-budget:
+    name: texture-memory-budget
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Replay camera route against atlas metadata
+        run: node --test tests/texture-memory-budget.test.mjs
+      - name: Check building picking, culling, and depth-only shadows
+        run: node --test tests/building-batches.test.cjs tests/render-target-memory.test.cjs tests/lighting.test.cjs tests/boot.test.cjs

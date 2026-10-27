@@ -16,7 +16,7 @@ import { createStreamTerrain, createChunkSampler, faceNormals, vertexNormals } f
 import { createZoneMap } from '../js/zones-cph.js';
 import { placeFurniture } from '../js/placement-cph.js';
 import { createHeroCache } from '../js/hero-cache.js';
-import { createPhotoBudget, selectPhotoSet, PHOTO } from '../js/facade-lod.js';
+import { createPhotoBudget, selectPhotoSet, makePhotoRoom, PHOTO } from '../js/facade-lod.js';
 import { ROOT, TILES_URL, isDistrict } from './helpers/district-tiles.mjs';
 
 // ------------------------------------------------------------------------------------------------ the pool
@@ -92,31 +92,75 @@ test('hero cache: one load for any number of clones, a failure is remembered for
   assert.equal(attempts, 2, 'asked again after it');
 });
 
-test('photo budget: the budget is shared by the tiles, nearest first', () => {
-  const mk = (ids) => {
-    const state = { enabled: true, resident: new Map(), loading: new Set() };
-    const calls = [];
-    return { state, loader: true, candidates: ids.map((id) => ({ id, cx: +id.split(':')[1], cz: 0 })), has: (id) => ids.includes(id), applyPlan: (want, inRange) => calls.push({ want, inRange }), calls };
+// A photo manager as js/facade-lod.js applyPhotoPlan drives it (js/buildings-real.js createTexManager): it records the plan and the
+// loads it is asked to start; a started load stays in flight.
+const fakeManager = (ids, size = [100, 100]) => {
+  const state = { enabled: true, probed: true, probing: false, resident: new Map(), loading: new Map(), failed: new Set(), failedTiers: new Map() };
+  const m = {
+    state, loader: true, candidates: ids.map((id) => ({ id, cx: +id.split(':')[1], cz: 0, size })), has: (id) => ids.includes(id),
+    wants: [], started: [], evicted: [],
+    prune(wantSet) { m.wants.push([...wantSet].filter(m.has)); for (const id of [...state.resident.keys()]) if (!wantSet.has(id)) m.evict(id); },
+    evict(id) { if (state.resident.delete(id)) m.evicted.push(id); },
+    start(id, q) { m.started.push(id); state.loading.set(id, { ...q }); }
   };
-  const A = mk(Array.from({ length: 40 }, (_, i) => `a:${i}`)); // 0..39 m
-  const B = mk(Array.from({ length: 40 }, (_, i) => `b:${i + 40}`)); // 40..79 m
+  return m;
+};
+
+test('photo budget: the budget is shared by the tiles, nearest first', () => {
+  const A = fakeManager(Array.from({ length: 40 }, (_, i) => `a:${i}`)); // 0..39 m
+  const B = fakeManager(Array.from({ length: 40 }, (_, i) => `b:${i + 40}`)); // 40..79 m
   const budget = createPhotoBudget({ interval: 0 });
   budget.add(A); budget.add(B);
   assert.equal(budget.update(0, 0, 1), true);
-  const wantA = A.calls[0].want.length;
-  const wantB = B.calls[0].want.length;
+  const wantA = A.wants[0].length;
+  const wantB = B.wants[0].length;
   assert.equal(wantA + wantB, PHOTO.budget, 'one budget for both tiles, not one each');
   assert.equal(wantA, 40);
   assert.equal(wantB, PHOTO.budget - 40);
-  // the nearest of B first
-  assert.deepEqual(B.calls[0].want.slice(0, 2), ['b:40', 'b:41']);
-  budget.remove(B);
+  assert.deepEqual(B.wants[0].slice(0, 2), ['b:40', 'b:41'], 'the nearest of B first');
+  // the concurrency cap is shared too: the two nearest loads start, both in A
+  assert.deepEqual(A.started, ['a:0', 'a:1']);
+  assert.deepEqual(B.started, []);
+  assert.equal(budget.loading(), PHOTO.concurrency);
   budget.update(0, 0, 2);
-  assert.equal(B.calls.length, 1, 'a removed manager is no longer planned');
+  assert.equal(A.started.length + B.started.length, PHOTO.concurrency, 'nothing more while the cap is used');
+  budget.remove(B);
+  budget.update(0, 0, 3);
+  assert.equal(B.wants.length, 2, 'a removed manager is no longer planned');
   // totals the managers check their room against
-  A.state.resident.set('x', 1); A.state.loading.add('y');
-  assert.equal(budget.held(), 2);
-  assert.equal(budget.loading(), 1);
+  A.state.resident.set('x', { bytes: 10 });
+  assert.equal(budget.held(), 3);
+  assert.equal(budget.loading(), 2);
+  const memory = budget.memory();
+  assert.equal(memory.residentBytes, 10);
+  assert.equal(memory.residentCount, 1);
+  assert.equal(memory.pendingCount, 2);
+  assert.equal(memory.budgetBytes, PHOTO.maxResidentBytes);
+});
+
+test('photo budget: the byte budget holds over all tiles, the farthest resident goes first whichever tile holds it', () => {
+  const A = fakeManager(['a:0', 'a:100']);
+  const B = fakeManager(['b:50']);
+  A.state.resident.set('a:100', { bytes: 40 });
+  B.state.resident.set('b:50', { bytes: 40 });
+  // 40 + 40 + 30 > 100: one resident has to go, the farthest in plan order (a:100, in A), not the other tile's
+  assert.equal(makePhotoRoom([A, B], 30, 'a:0', ['a:0', 'b:50', 'a:100'], 100), true);
+  assert.deepEqual(A.evicted, ['a:100']);
+  assert.deepEqual(B.evicted, []);
+  // in-flight loads are not evictable: when they and the new atlas alone cannot fit, nothing is evicted
+  B.state.loading.set('b:60', { bytes: 80 });
+  assert.equal(makePhotoRoom([A, B], 30, 'a:0', ['a:0', 'b:50'], 100), false);
+  assert.deepEqual(B.evicted, []);
+  // a shared budget plan stays inside the byte budget over both tiles
+  const big = [4096, 4096];
+  const C = fakeManager(Array.from({ length: 30 }, (_, i) => `c:${i}`), big);
+  const D = fakeManager(Array.from({ length: 30 }, (_, i) => `d:${i + 30}`), big);
+  const budget = createPhotoBudget({ interval: 0 });
+  budget.add(C); budget.add(D);
+  budget.update(0, 0, 1);
+  const plan = selectPhotoSet([...C.candidates, ...D.candidates], 0, 0);
+  assert.ok(plan.residentBytes <= PHOTO.maxResidentBytes);
+  assert.equal(C.wants[0].length + D.wants[0].length, plan.want.length);
 });
 
 // ------------------------------------------------------------------------------------------ the compute halves

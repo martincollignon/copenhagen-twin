@@ -10,7 +10,7 @@ import { buildingSteps, ringCentre, wallArrays as wallTyped, roofArrays as roofT
 import { describeAppearance, calibrationOn } from './appearance.js';
 import { createPhotoMaterial } from './facade-photo-material.js';
 import { WINDOW, FACADE_CORNER_PIER } from './facade-style.js';
-import { PHOTO, selectPhotoSet, texRequested, lookFile } from './facade-lod.js';
+import { texRequested, lookFile, estimateTextureBytes, createPhotoBudget } from './facade-lod.js';
 import { createContext as createGroundContext } from './groundfloor.js';
 import { createEntranceIndex, createDoorAccumulator, addDoors } from './entrances.js';
 import { CPH_FRAME, toLocal } from './city-config.js';
@@ -18,6 +18,7 @@ import { disposeTree } from './dispose-tree.js';
 import { nextFrame } from './yield-frame.js';
 import { createHeroCache } from './hero-cache.js';
 import { dataUrl } from './data-config.js';
+import { batchBuildingCells, updateBuildingCellVisibility } from './building-batches.js';
 
 // js/buildings-real.js
 // Copenhagen's real buildings (M2): every geodata building is extruded from its measured footprint (rings with holes)
@@ -229,127 +230,194 @@ const uploadSlot = () => (uploadChain = uploadChain.then(nextFrame));
 /**
  * Lazy photo walls (default on, `?tex=0` disables). Per building one small mesh (photo quads of the usable atlas strips on
  * the extruded wall, depth-biased instead of lifted) with its own atlas texture and photo material. Residency is the LOD
- * policy of js/facade-lod.js: the nearest PHOTO.budget buildings within PHOTO.residency metres of the camera; the material
- * fades each photo into the tone + procedural facade between PHOTO.near and PHOTO.far. The processed look atlas
+ * policy of js/facade-lod.js: the nearest buildings within PHOTO.residency metres, bounded by both count and decoded
+ * texture bytes; texture resolution follows camera distance. The material fades each photo into the tone + procedural
+ * facade between PHOTO.near and PHOTO.far. The processed look atlas
  * (data/tex-look, RGBA with window and unobserved masks) is read first, the raw JPEG atlas as fallback. If neither folder
  * is present (both are gitignored) photo mode turns itself off quietly.
  */
 function createTexManager(root, candidates, { fetchImpl = globalThis.fetch, budget = null } = {}) {
-  const state = { enabled: true, probed: false, failures: 0, resident: new Map(), loading: new Set(), failed: new Set(), lastRun: 0, loaded: 0, look: 0, raw: 0 };
+  const state = {
+    enabled: true, disposed: false, probed: false, probing: false, failures: 0, resident: new Map(), loading: new Map(), failed: new Set(),
+    failedTiers: new Map(), desiredQuality: new Map(), loaded: 0, look: 0, raw: 0
+  };
   const loader = typeof createImageBitmap === 'function';
   const byId = new Map(candidates.map((c) => [c.id, c]));
+  // The residency plan and the byte budget: a streamed city shares one over every tile (js/buildings-stream.js), a district has its own.
+  const shared = !!budget;
+  const pool = budget || createPhotoBudget();
+  // some look atlas has loaded (this session or this manager): a 404 is now one building's missing atlas, not a missing folder
+  const looksPresent = () => lookSeen || state.look > 0;
 
-  async function fetchBitmap(file) {
-    const response = await fetchImpl(dataUrl(file)); // data/tex-look/<id>.webp, data/tex/<id>.jpg (js/data-config.js)
+  async function fetchBlob(file, signal) {
+    const url = dataUrl(file); // data/tex-look/<id>.webp, data/tex/<id>.jpg under the data base (js/data-config.js)
+    const response = signal ? await fetchImpl(url, { signal }) : await fetchImpl(url);
     if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
-    const blob = await response.blob();
-    return createImageBitmap(blob, { imageOrientation: 'none', premultiplyAlpha: 'none' });
+    return response.blob();
   }
 
-  async function atlasBitmap(c) {
+  async function atlasBitmap(c, maxDimension, signal) {
+    const [width, height] = c.walls.size || [];
+    const scale = width > 0 && height > 0
+      ? Math.min(1, maxDimension / Math.max(width, height))
+      : 1;
+    const bitmapOptions = { imageOrientation: 'none', premultiplyAlpha: 'none' };
+    if (scale < 1) {
+      bitmapOptions.resizeWidth = Math.max(1, Math.floor(width * scale));
+      bitmapOptions.resizeHeight = Math.max(1, Math.floor(height * scale));
+      bitmapOptions.resizeQuality = 'high';
+    }
     try {
-      return { bitmap: await fetchBitmap(lookFile(c.walls.file)), hasMask: true };
+      const blob = await fetchBlob(lookFile(c.walls.file), signal);
+      return { bitmap: await createImageBitmap(blob, bitmapOptions), hasMask: true };
     } catch (error) {
+      if (signal?.aborted) throw error;
       // once look atlases have loaded, a missing one (the citywide atlases arrive piecemeal) is that building's miss alone: no second request
-      if (state.look > 0 && error?.status === 404) throw error;
-      return { bitmap: await fetchBitmap(c.walls.file), hasMask: false };
+      if (looksPresent() && error?.status === 404) throw error;
+      const blob = await fetchBlob(c.walls.file, signal);
+      return { bitmap: await createImageBitmap(blob, bitmapOptions), hasMask: false };
     }
   }
 
-  async function load(c) {
-    state.loading.add(c.id);
-    try {
-      const { bitmap, hasMask } = await atlasBitmap(c);
-      await uploadSlot(); // one atlas reaches the GPU per frame: its upload and mipmaps are done by the render that first draws it
-      if (state.disposed) { bitmap.close?.(); return; } // the tile went away while the atlas was loading
-      const texture = new THREE.Texture(bitmap);
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.generateMipmaps = true;
-      texture.minFilter = THREE.LinearMipmapLinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.anisotropy = 8;
-      texture.flipY = false;
-      texture.needsUpdate = true;
-      const g = new THREE.BufferGeometry();
+  function makeResident(c, bitmap, hasMask, quality, existingGeometry = null) {
+    const texture = new THREE.Texture(bitmap);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.generateMipmaps = true;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.anisotropy = 8;
+    texture.flipY = false;
+    texture.needsUpdate = true;
+    const g = existingGeometry || new THREE.BufferGeometry();
+    if (!existingGeometry) {
       g.setAttribute('position', new THREE.Float32BufferAttribute(c.walls.position, 3));
       g.setAttribute('normal', new THREE.Float32BufferAttribute(c.walls.normal, 3));
       g.setAttribute('uv', new THREE.Float32BufferAttribute(c.walls.uv, 2));
       g.setAttribute('wallUV', new THREE.Float32BufferAttribute(c.walls.wallUV, 2));
       g.setIndex(c.walls.index);
       g.computeBoundingSphere();
-      const material = createPhotoMaterial(texture, { hasMask, tone: c.tone, brick: c.brick, layout: c.layout });
-      const mesh = new THREE.Mesh(g, material);
-      mesh.name = `wall-photos-${c.id}`;
-      mesh.receiveShadow = true;
-      mesh.renderOrder = 2;
-      mesh.raycast = () => {}; // picking uses the extruded walls underneath
-      root.add(mesh);
-      state.resident.set(c.id, { mesh, texture, material, bitmap, last: performance.now() });
-      state.loaded++;
-      if (hasMask) state.look++; else state.raw++;
-      state.failures = 0;
-    } catch (error) {
-      state.failed.add(c.id);
-      if (state.look > 0 && error?.status === 404) return; // an atlas not produced yet: this building keeps its tone facade
-      if (++state.failures >= PHOTO_MAX_FAILURES) {
-        state.enabled = false;
-        console.info('[cph] wall photos unavailable (data/tex missing or unreadable); keeping tone + procedural facades:', error?.message || error);
-      }
-    } finally {
-      state.loading.delete(c.id);
     }
+    const material = createPhotoMaterial(texture, { hasMask, tone: c.tone, brick: c.brick, layout: c.layout });
+    const mesh = new THREE.Mesh(g, material);
+    mesh.name = `wall-photos-${c.id}`;
+    mesh.receiveShadow = true;
+    mesh.renderOrder = 2;
+    mesh.raycast = () => {}; // picking uses the extruded walls underneath
+    return {
+      mesh, texture, material, bitmap, tier: quality.tier, width: bitmap.width, height: bitmap.height,
+      bytes: estimateTextureBytes(c.walls.size, quality.maxDimension)
+    };
+  }
+
+  function disposeResident(r, { disposeGeometry = true } = {}) {
+    root.remove(r.mesh);
+    if (disposeGeometry) r.mesh.geometry.dispose();
+    r.mesh.dispatchEvent({ type: 'dispose' }); // the WebGPU renderer lets go of the mesh's render objects (js/dispose-tree.js)
+    r.material.dispose();
+    r.texture.dispose();
+    r.bitmap.close?.();
   }
 
   function evict(id) {
     const r = state.resident.get(id);
     if (!r) return;
-    root.remove(r.mesh);
-    disposeTree(r.mesh);
-    r.material.dispose();
-    r.texture.dispose();
-    r.bitmap.close?.();
+    disposeResident(r);
     state.resident.delete(id);
   }
 
-  /**
-   * Applies a residency plan: `want` (ids to hold, nearest first) and `inRange` (ids that may stay). With a shared `budget`
-   * (js/buildings-stream.js createPhotoBudget) the plan is made over the candidates of every tile at once.
-   */
-  function applyPlan(want, inRange) {
-    const wantSet = new Set(want);
-    const total = () => (budget ? budget.held() : state.resident.size + state.loading.size);
-    for (const id of [...state.resident.keys()]) if (!inRange.has(id)) evict(id);
-    // Over budget: drop the residents that lost their slot to a nearer building
-    for (const id of [...state.resident.keys()]) if (!wantSet.has(id) && total() > PHOTO.budget) evict(id);
-    const todo = want.filter((id) => !state.resident.has(id) && !state.loading.has(id) && !state.failed.has(id)).map((id) => byId.get(id)).filter(Boolean);
-    const run = async () => {
-      if (!state.probed && todo.length) {
-        state.probed = true;
-        await load(todo.shift()); // the first atlas doubles as the presence probe
-        if (!state.enabled) return;
-      }
-      const room = Math.max(0, PHOTO.concurrency - (budget ? budget.loading() : state.loading.size));
-      for (const c of todo.slice(0, room)) if (state.enabled) load(c);
+  async function load(c, quality) {
+    const job = {
+      tier: quality.tier, width: quality.width, height: quality.height, bytes: quality.bytes,
+      replacement: state.resident.has(c.id), controller: typeof AbortController === 'function' ? new AbortController() : null
     };
-    run();
+    state.loading.set(c.id, job);
+    pool.notePeak();
+    let bitmap = null;
+    try {
+      const { bitmap: loadedBitmap, hasMask } = await atlasBitmap(c, quality.maxDimension, job.controller?.signal);
+      bitmap = loadedBitmap;
+      if (hasMask) lookSeen = true;
+      await uploadSlot(); // one atlas reaches the GPU per frame: its upload and mipmaps are done by the render that first draws it
+      const currentQuality = state.desiredQuality.get(c.id);
+      if (state.disposed || !state.enabled || state.loading.get(c.id) !== job || !currentQuality
+        || currentQuality.width !== job.width || currentQuality.height !== job.height) {
+        // the tile went away, or camera movement made this request stale: the next plan schedules the selected tier
+        bitmap.close?.();
+        bitmap = null;
+        return;
+      }
+
+      const previous = state.resident.get(c.id);
+      const next = makeResident(c, bitmap, hasMask, quality, previous?.mesh.geometry || null);
+      bitmap = null; // ownership moved into `next`
+      if (previous) disposeResident(previous, { disposeGeometry: false });
+      root.add(next.mesh);
+      state.resident.set(c.id, next);
+      state.failedTiers.delete(c.id);
+      state.loaded++;
+      if (hasMask) state.look++; else state.raw++;
+      state.failures = 0;
+    } catch (error) {
+      bitmap?.close?.();
+      if (job.controller?.signal.aborted || state.disposed) {
+        // Camera movement made this request stale (or the tile went away); the next plan schedules the selected atlas tier.
+      } else if (!job.replacement) {
+        state.failed.add(c.id);
+        if (looksPresent() && error?.status === 404) {
+          // an atlas not produced yet: this building keeps its tone facade, the others keep loading
+        } else if (++state.failures >= PHOTO_MAX_FAILURES) {
+          state.enabled = false;
+          console.info('[cph] wall photos unavailable (data/tex missing or unreadable); keeping tone + procedural facades:', error?.message || error);
+        }
+      } else state.failedTiers.set(c.id, quality.tier);
+    } finally {
+      if (state.loading.get(c.id) === job) state.loading.delete(c.id);
+      state.probing = false; // the presence probe (the first atlas of this manager) has settled either way
+    }
   }
 
-  /** Called every frame with the camera position; does its work at most every 350 ms. (A shared budget drives `applyPlan` itself.) */
+  /** Before a plan is carried out (js/facade-lod.js applyPhotoPlan): abort stale requests, evict what lost its slot, refresh tiers. */
+  function prune(wantSet, qualityById) {
+    state.desiredQuality = qualityById;
+    for (const [id, job] of state.loading) {
+      const quality = qualityById.get(id);
+      if (!quality || quality.width !== job.width || quality.height !== job.height) job.controller?.abort();
+    }
+    for (const id of [...state.resident.keys()]) if (!wantSet.has(id)) evict(id);
+    for (const [id, resident] of state.resident) {
+      const quality = qualityById.get(id);
+      if (quality && resident.width === quality.width && resident.height === quality.height) resident.tier = quality.tier;
+    }
+  }
+
+  function start(id, quality) {
+    const c = byId.get(id);
+    if (c && state.enabled && !state.disposed) void load(c, quality);
+  }
+
+  /** Called every frame with the camera position; plans at most every 350 ms. (A shared budget is driven by its owner instead.) */
   function update(x, z, now = performance.now()) {
-    if (budget || !state.enabled || !loader || now - state.lastRun < 350) return;
-    state.lastRun = now;
-    const { want, inRange } = selectPhotoSet(candidates, x, z);
-    applyPlan(want, inRange);
+    if (shared || !state.enabled || !loader) return;
+    pool.update(x, z, now);
   }
 
-  /** Evicts every resident photo (a tile going away); the manager is dead afterwards. */
+  /** Evicts every resident photo and aborts the requests in flight (a tile going away); the manager is dead afterwards. */
   function dispose() {
     state.enabled = false;
     state.disposed = true;
+    for (const job of state.loading.values()) job.controller?.abort();
     for (const id of [...state.resident.keys()]) evict(id);
+    pool.remove(manager);
   }
 
-  return { state, update, applyPlan, candidates, loader, has: (id) => byId.has(id), evict, dispose, get active() { return state.resident.size; } };
+  const manager = {
+    state, candidates, loader, has: (id) => byId.has(id), prune, start, update, evict, dispose,
+    get active() { return state.resident.size; },
+    /** Texture estimate of the whole budget this manager belongs to (one district, or every streamed tile). */
+    get memory() { return pool.memory(); }
+  };
+  pool.add(manager);
+  return manager;
 }
 
 /** Venues (data/cph-groundfloor.json, tools/cph-geodata/groundfloor.py); the file is optional: without it only BBR trade use gives shops. */
@@ -532,10 +600,12 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHeroCached, wit
     }
   }));
 
+  // one BatchedMesh per material and mesh kind over the quadtree cells (js/building-batches.js); a streamed tile batches its own cells
+  batchBuildingCells(root, leaves, pickables);
+
   // the Irma sign only exists where its buildings are: a tile without them builds no neon materials
   const neon = irmaNeonArtwork().some((art) => byId.has(art.buildingId)) ? createIrmaNeon(root, byId, lod2Records) : { group: null, panels: [], update() {}, stats: { panels: 0 } };
-  const texManager = tex ? createTexManager(root, texCandidates, { budget: photoBudget }) : null;
-  photoBudget?.add(texManager);
+  const texManager = tex ? createTexManager(root, texCandidates, { budget: photoBudget }) : null; // joins the shared budget itself
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   const panel = withInfoPanel && typeof document !== 'undefined' ? createInfoPanel() : null;
@@ -549,7 +619,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHeroCached, wit
     for (const g of leaves) {
       const dx = g.userData.centre[0] - x;
       const dz = g.userData.centre[1] - z;
-      g.visible = Math.hypot(dx, dz) - g.userData.radius < STREAM_RADIUS;
+      updateBuildingCellVisibility(g, Math.hypot(dx, dz) - g.userData.radius < STREAM_RADIUS);
     }
   }
 
@@ -634,10 +704,12 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHeroCached, wit
     });
   }
 
+  let meshCount = 0;
+  root.traverse((object) => { if (object.isMesh) meshCount++; });
   const stats = {
     tex: texManager ? { candidates: texCandidates.length } : null,
     buildings: buildings.length - heroIds.size, heroes: heroStatus, cells: leaves.length, triangles, doors: doorCount, lod2: lod2Records.size, neon: neon.stats,
-    meshes: pickables.length + heroGroups.reduce((n, g) => n + g.children[0].children.length, 0)
+    meshes: meshCount
   };
 
   const setCamera = (cam) => { camera = cam; };

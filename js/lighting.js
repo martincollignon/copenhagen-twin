@@ -21,6 +21,7 @@ import {
 import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 import { SunLight } from 'three/addons/lights/SunLight.js';
 import { SunLightNode } from 'three/addons/lights/SunLightNode.js';
+import { DepthOnlySunLightNode } from './sun-shadow.js';
 import { cityUniforms } from './tsl-materials.js';
 import {
   copenhagenLocalDateTimeToUtc,
@@ -206,10 +207,13 @@ class LightingSystem {
     this.wetnessOverride = overrides.wetness;
 
     // Assign SunLight its node implementation for WebGPURenderer (Light.registerNode since r187; r186 used the library)
+    const sunLightNode = renderer && renderer.backend && renderer.backend.isWebGPUBackend
+      ? DepthOnlySunLightNode
+      : SunLightNode;
     if (SunLight.registerNode) {
-      SunLight.registerNode(SunLightNode);
+      SunLight.registerNode(sunLightNode);
     } else if (renderer && renderer.library) {
-      renderer.library.addLight(SunLightNode, SunLight);
+      renderer.library.addLight(sunLightNode, SunLight);
     }
 
     this.scene.fog = new THREE.FogExp2(0xdcc5ae, 0.00024);
@@ -273,8 +277,8 @@ class LightingSystem {
     this.sunLight = new SunLight(0xffca92, 5.8);
     this.sunLight.position.set(initialSun.x, initialSun.y, initialSun.z);
     this.sunLight.castShadow = true;
-    // 3072x3072 per cascade = 6144x3072 2-cascade shadow atlas (an 8192x4096 one cost ~20% fps and caused hitches),
-    // 2048 where the device allows less. The near cascade spans about 100 m at street level (see update).
+    // Keep 3072px cascades on devices that can hold the 6144px-wide shadow atlas; use 2048 otherwise.
+    // The near cascade spans about 100 m at street level (see update).
     const maxTex = (renderer && renderer.backend && renderer.backend.device && renderer.backend.device.limits.maxTextureDimension2D) || 4096;
     const tile = maxTex >= 6144 ? 3072 : 2048;
     this.sunLight.shadow.mapSize.set(tile, tile);

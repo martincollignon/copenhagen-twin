@@ -767,6 +767,7 @@ def stage_index(a, tiles, cells) -> None:
                   "frame": {"epsg": 25832, "vertical": "DVR90", "origin": list(frame.ORIGIN), "axes": "x=east, z=south, y=up", "bbox": bbox}})
         g["attribution"] = [
             "Indeholder data fra Klimadatastyrelsen / GeoDanmark (Bygning), BBR og Københavns Kommune (kbhkort, CC BY 4.0 / Open Data DK licens).",
+            "Indeholder data fra Styrelsen for Dataforsyning og Infrastruktur, Skråfoto 2023 and 2025 (retrieved October 2026).",
             "© OpenStreetMap contributors (ODbL)",
             "Københavns Kommune open data: trae_basis, cykelsti, cykelstativ, trafiksignal_oversigt, fortovsmatrikel, parkregister",
             "Frederiksberg Kommune: GeoDanmark Bygning, BBR og DHM (SDFI); øvrigt fra OSM",
@@ -778,6 +779,9 @@ def stage_index(a, tiles, cells) -> None:
         if b0:
             m["building_sources"] = {k: v for k, v in b0.items() if k not in ("done", "roof_codes", "wall_codes")}
         g["meta"] = m
+    # heroes are referenced by building id only (the engine reads data/heroes/<id>, tools/link-heroes.sh): no local model paths in public data
+    if g.get("heroes"):
+        g["heroes"] = [{k: v for k, v in h.items() if k not in ("glb", "frame")} for h in g["heroes"]]
     meta["geodata"] = g
     # terrain header from the tile chunks
     terr = [(tid, e) for tid, e in idx_tiles.items() if "terrain" in e["layers"]]

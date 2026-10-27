@@ -16,6 +16,7 @@ import argparse
 import datetime as dt
 import gzip
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -28,7 +29,10 @@ import points as P  # noqa: E402
 import roads as R  # noqa: E402
 
 HERO_GDK = "gdk:1064715171"
-HERO_DIR = Path("/Users/martincollignon/.local/share/building-case-3d/noerre-soegade-37/build")
+HERO_DIR = Path(os.environ.get(
+    "CPH_HERO_DIR",
+    str(Path.home() / ".local/share/building-case-3d/noerre-soegade-37/build"),
+))
 KK_LAYERS = ["bygning", "bygning_kk", "ensrettede_gader", "trafikhastigheder", "cykelsti", "trafiksignal_oversigt",
              "trae_basis", "automatisk_detekterede_traeer_kk_beta", "cykelstativ", "baenke_borde_puma",
              "dp_byinventar_l", "Kommunevej", "park_groent_omr_oversigtskort", "parkregister", "fortovsmatrikel"]
@@ -124,12 +128,11 @@ def main(argv=None):
 
     wp = osm.get("water_parks", {"elements": []})
     hero = []
-    glb, bj = HERO_DIR / "building.glb", HERO_DIR / "building.json"
+    glb = HERO_DIR / "building.glb"
     if any(b["id"] == HERO_GDK for b in blds):
-        hero.append({"building_id": HERO_GDK, "glb": str(glb), "frame": str(bj),
-                     "src": ["building-case-to-3d"], "conf": "measured"})
+        hero.append({"building_id": HERO_GDK, "src": ["building-case-to-3d"], "conf": "measured"})
         if not glb.exists():
-            failed["hero:glb"] = f"{glb} not found"
+            failed["hero:glb"] = "hero GLB not found under CPH_HERO_DIR"
     else:
         failed["hero:building"] = f"{HERO_GDK} not in compiled buildings"
 
@@ -140,6 +143,7 @@ def main(argv=None):
                   "axes": "x=east, z=south, y=up", "bbox": list(frame.area_local())},
         "attribution": [
             "Indeholder data fra Klimadatastyrelsen / GeoDanmark (Bygning), BBR og Københavns Kommune (kbhkort, CC BY 4.0 / Open Data DK licens).",
+            "Indeholder data fra Styrelsen for Dataforsyning og Infrastruktur, Skråfoto 2023 and 2025 (retrieved October 2026).",
             "© OpenStreetMap contributors (ODbL)",
             "Københavns Kommune open data: trae_basis, cykelsti, cykelstativ, trafiksignal_oversigt, fortovsmatrikel, parkregister",
         ],

@@ -151,7 +151,9 @@ export function createBuildingsLayer(scene, { terrain = null, lod2 = null, obser
           enabled: [...tiles.values()].some((t) => t.instance?.texManager?.state.enabled),
           resident: { size: sum((s) => s?.resident.size) },
           loaded: sum((s) => s?.loaded), look: sum((s) => s?.look), raw: sum((s) => s?.raw), failed: { size: sum((s) => s?.failed.size) }
-        }
+        },
+        /** The shared budget's texture estimate over every tile (the same snapshot a district manager reports). */
+        get memory() { return photoBudget.memory(); }
       };
     },
     dispose() {

@@ -18,6 +18,8 @@ bash tools/link-heroes.sh        # optional: links the hero glTFs named in data/
 python3 -m http.server           # then open http://localhost:8000/
 ```
 
+Live demo: https://martincollignon.github.io/copenhagen-twin/
+
 Useful query parameters: `?debug=footprints` draws the geodata's buildings, water and parks as flat polygons, `?debug=nobuildings` and `?debug=noroads` skip those layers, `?hooks` exposes the running scene as `globalThis.__twin` for headless checks.
 
 `?water=simple` drops the planar reflection pass of the lakes (sky reflection only), `?debug=nowater` shows the plain ground, `?debug=nocal` the uncalibrated facade tones.
@@ -60,6 +62,24 @@ Tests (Node 20+, no dependencies):
 
 ```sh
 node --test tests/*.cjs tests/*.mjs
+```
+
+## Performance budget check
+
+Every pull request runs the required `texture-memory-budget` check. It replays the committed camera route against the real facade-atlas dimensions and fails if the selected facade textures exceed 48 MiB or 56 residents:
+
+```sh
+node --test tests/texture-memory-budget.test.mjs
+```
+
+The same required check tests building-batch picking and streaming visibility, preserves the sun shadow depth target, and checks module loading. Static building cells share material batches while retaining their geometry and individual culling. On WebGPU, the sun cascades use their original depth maps without allocating an unused colour attachment; at 3072 pixels per cascade this saves 72 MiB without changing shadow resolution.
+
+The [rendering measurements](docs/research/rendering-optimization.md) record the allocation and frame-time comparisons, verification and remaining limits.
+
+On a WebGPU machine, the local browser harness samples the live resident and in-flight facade estimate while moving through that route, fails on rendering errors, and prints the renderer's texture estimate for context. That estimate excludes some backing allocations, including multisampled colour textures; it is not a physical GPU memory reading:
+
+```sh
+uv run --with playwright python tools/shoot-m2.py --perf
 ```
 
 Headless browser check (Playwright; boots the twin, asserts the HUD and console, writes screenshots to `docs/cleanup/`):
@@ -170,10 +190,11 @@ The data bundle `data/cph-geodata.json` is a derived database and carries the li
 
 - © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), available under the Open Database License (ODbL). The OSM-derived parts of the bundle, and anything derived from them, stay under the ODbL (attribution, share-alike).
 - Indeholder data fra Klimadatastyrelsen / GeoDanmark (Bygning), BBR og Københavns Kommune (kbhkort, CC BY 4.0 / Open Data DK licens).
+- Facade photos use Skråfoto 2023 and 2025 from Styrelsen for Dataforsyning og Infrastruktur (retrieved October 2026); the processed atlases are derived from those photos. [Terms for free geographic data](https://dataforsyningen.dk/asset/PDF/rettigheder_vilkaar/Vilk%C3%A5r%20for%20frie%20geografiske%20data%20og%20CC%20BY%204_0%20licens.pdf).
 - Københavns Kommune open data: trae_basis, cykelsti, cykelstativ, trafiksignal_oversigt, fortovsmatrikel, parkregister, and for `data/cph-surfaces.json` dp_belaegninger, afmaerkning_total, blaa_cykelfelt (plus OSM squares, ODbL).
 
-The same attributions are in the `attribution` field of the data file and in the loading screen. Third-party data and dependencies retain their respective licences.
+The map and facade sources are credited in the loading screen and their data files. Third-party data and dependencies retain their respective licences.
 
 ## Building reconstruction skill
 
-`.claude/skills/building-case-to-3d/` (also `.agents/skills/` for Codex) rebuilds a single building as LoD3 from its Filarkiv/byggesag drawings, reconciled against 2025 Skråfoto. Subagents: `drawing-archivist`, `skraafoto-registrar`, `twin-validator` (`.claude/agents/`, `.codex/agents/`). Output heroes (e.g. Nørre Søgade 37) are referenced from `data/cph-geodata.json` `heroes[]` and linked with `tools/link-heroes.sh`. Drawings and models stay outside git.
+`.claude/skills/building-case-to-3d/` (also `.agents/skills/` for Codex) rebuilds a single building as LoD3 from its Filarkiv/byggesag drawings, reconciled against 2025 Skråfoto. Subagents: `drawing-archivist`, `skraafoto-registrar`, `twin-validator` (`.claude/agents/`, `.codex/agents/`). Output heroes (e.g. Nørre Søgade 37) are referenced by building ID in `data/cph-geodata.json` `heroes[]` and linked with `tools/link-heroes.sh`. The script reads the model build from `CPH_HERO_DIR` (default: `~/.local/share/building-case-3d/noerre-soegade-37/build`). Drawings and models stay outside git.

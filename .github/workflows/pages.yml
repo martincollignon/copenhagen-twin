@@ -33,9 +33,14 @@ jobs:
           CPH_DATA_URL: ${{ vars.CPH_DATA_URL || 'https://pub-74be4ee48611455badf5e844894d286f.r2.dev/v3' }}
         run: |
           set -euo pipefail
-          mkdir -p _site
+          mkdir -p _site/data
           cp index.html _site/
           cp -R css js _site/
+          # The engine still reads a few small district files from ./data outside js/data-config.js (ground-floor venues,
+          # entrances, and the monolithic district boot when the tile index is unreachable or ?debug=notiles): publish
+          # the tracked JSON documents and the district LoD2 roofs. The facade atlases (data/tex-look) come from R2.
+          cp data/*.json _site/data/
+          cp -R data/lod2 _site/data/
           # point the engine's data base (js/data-config.js BUILD_DATA_BASE) at R2
           sed -i "s|^export const BUILD_DATA_BASE = .*|export const BUILD_DATA_BASE = '${CPH_DATA_URL%/}';|" _site/js/data-config.js
           grep -q "BUILD_DATA_BASE = 'https://" _site/js/data-config.js

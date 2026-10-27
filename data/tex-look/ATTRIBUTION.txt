@@ -1,0 +1,4 @@
+Processed facade atlases are derived from Skråfoto 2023 and 2025 from Styrelsen for Dataforsyning og Infrastruktur, retrieved October 2026.
+
+Terms for free geographic data:
+https://dataforsyningen.dk/asset/PDF/rettigheder_vilkaar/Vilk%C3%A5r%20for%20frie%20geografiske%20data%20og%20CC%20BY%204_0%20licens.pdf
