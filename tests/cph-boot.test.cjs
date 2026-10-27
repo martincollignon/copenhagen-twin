@@ -84,6 +84,8 @@ test('geodata is optional: absent data boots the empty plane, present data is ex
   const { loadCphGeodata } = loadModule(read('js/world.js'), {
     imports: {
       'three/webgpu': {}, './city-config.js': { CPH_FRAME }, './traffic.js': {}, './road-surfaces-cph.js': {},
+      './actor-models.js': { BODY_SPECS: {} }, './city-collisions.js': { createCityCollisions: () => ({ resolve: () => ({ movedActors: [], stats: {} }) }) },
+      './static-colliders.js': { buildStaticColliders: () => [], createStaticIndex: () => ({ query: () => [] }) },
       './cyclists.js': {}, './direction-overlay.js': {}, './signal-heads-cph.js': {}, './walk-space-cph.js': {}, './water-cph.js': { buildLakes: () => null }, './lakes-cph.js': { applySurfaceCuts: (d) => d }, './appearance.js': { setCalibration() {} }, './street-furniture-data.js': { loadCphFurniture: async () => null }, './street-furniture-cph.js': {}, './buildings-real.js': { buildRealBuildings: async () => null }, './lod2-geometry.js': { loadLod2: async () => null }, './terrain-cph.js': {}, './layout-cph.js': {}, './zones-cph.js': {}, './placement-cph.js': {}, './grass-cph.js': { createGrass: () => null },
       './bridge-dlb.js': { buildBridgeDLB: () => null, filterDLBFurniture: (d) => d }
     },

@@ -108,7 +108,7 @@ async function initApp() {
   }
 
   const cameraSystem = new CameraSystem(renderer.domElement, controllerManager);
-  world.attach?.({ camera: cameraSystem.camera, domElement: renderer.domElement });
+  world.attach?.({ camera: cameraSystem.camera, domElement: renderer.domElement, controllerManager });
   const touchControls = new TouchControls(controllerManager);
   const soundButton = document.getElementById('btn-sound');
   const audioSystem = new CityAudioSystem({ controllerManager, trafficSystem, audioSignals: world.audioSignals }, {

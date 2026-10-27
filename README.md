@@ -62,6 +62,16 @@ Tests (Node 20+, no dependencies):
 node --test tests/*.cjs tests/*.mjs
 ```
 
+Ground actors share a collision pass before their render batches are written: people, city and cargo bikes, cars and buses separate from one another and from buildings, parked vehicles and solid street furniture. Building footprints preserve courtyards and concave recesses; tree and lamp collisions use trunks and poles. Player movement also sweeps its path to stop fast crossings through thin obstacles. Nearby spatial queries bound the contact work.
+
+The required CI check includes collision geometry and actor regressions. On a WebGPU machine, exercise the real controller, NPC routes and rendered positions with:
+
+```sh
+uv run --with playwright python tools/check-collisions.py --out .context/collisions.json
+```
+
+Add `--perf` for paired CPU timings with the collision stage enabled and disabled. This comparison pauses the animation loop while updating simulations and render batches; it does not measure frame rate.
+
 ## Performance budget check
 
 Every pull request runs the required `texture-memory-budget` check. It replays the committed camera route against the real facade-atlas dimensions and fails if the selected facade textures exceed 48 MiB or 56 residents:

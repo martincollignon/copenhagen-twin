@@ -25,6 +25,8 @@ import {
 import { WATER } from './lakes-cph.js';
 import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
+import { collisionBody, buildingContact } from './collision-shapes.js';
+import { createStaticIndex } from './static-colliders.js';
 
 // js/controllers.js
 // Sculpted, non-blocky GTA 6-style 3D models, animations, and physics controllers
@@ -224,79 +226,13 @@ function addBikeCable(parent, points, material, radius = 0.0032) {
 // Walking surface for the player's pedestrian (its rig samples it around its feet)
 const personGround = (controllers, x, z) => controllers.getGroundHeight(x, z, 'person');
 
-function collisionBody(mode, radius, heading, margin = 0, spec = null) {
-  const car = mode === 'car';
-  const cargoBike = mode === 'cargobike';
-  const oriented = car || cargoBike;
-  const sin = Math.sin(heading), cos = Math.cos(heading);
-  const hx = (car ? (spec?.width || 1.72) / 2 : cargoBike ? 0.38 : radius) + margin;
-  const hz = (car ? (spec?.length || 4.36) / 2 : cargoBike ? 1.34 : radius) + margin;
-  return {
-    car, oriented, sin, cos, hx, hz, radius: radius + margin,
-    extX: oriented ? Math.abs(cos) * hx + Math.abs(sin) * hz : radius + margin,
-    extZ: oriented ? Math.abs(sin) * hx + Math.abs(cos) * hz : radius + margin,
-    bottom: mode === 'helicopter' ? -0.25 : 0,
-    top: mode === 'helicopter' ? 3.2 : car ? 1.8 : 1.9
-  };
-}
-
-// Shared by movement and teleport clearance. World bounds reject distant boxes cheaply; the narrow phase
-// uses a circle for walking/city cycling/flying and separating axes for cars and the long cargo bike.
-function buildingContact(c, x, y, z, body, contact) {
-  if (y + body.bottom >= c.maxY || y + body.top <= (c.minY ?? 0)) return false;
-  if (x + body.extX <= c.minX || x - body.extX >= c.maxX || z + body.extZ <= c.minZ || z - body.extZ >= c.maxZ) return false;
-  const o = c.obb;
-  const cs = o ? o.cs : 1, sn = o ? o.sn : 0;
-  const hx = o ? o.hx : (c.maxX - c.minX) * 0.5;
-  const hz = o ? o.hz : (c.maxZ - c.minZ) * 0.5;
-  const dx = x - (o ? o.cx : (c.minX + c.maxX) * 0.5);
-  const dz = z - (o ? o.cz : (c.minZ + c.maxZ) * 0.5);
-  const lx = dx * cs - dz * sn, lz = dx * sn + dz * cs;
-  let nx = 0, nz = 0, depth = Infinity;
-  if (body.oriented) {
-    const ls = body.sin * cs - body.cos * sn, lc = body.sin * sn + body.cos * cs;
-    for (let axis = 0; axis < 4; axis++) {
-      const ax = axis === 0 ? 1 : axis === 1 ? 0 : axis === 2 ? lc : ls;
-      const az = axis === 0 ? 0 : axis === 1 ? 1 : axis === 2 ? -ls : lc;
-      const distance = lx * ax + lz * az;
-      const overlap = hx * Math.abs(ax) + hz * Math.abs(az)
-        + body.hx * Math.abs(ax * lc - az * ls) + body.hz * Math.abs(ax * ls + az * lc) - Math.abs(distance);
-      if (overlap <= 0) return false;
-      if (overlap < depth) {
-        depth = overlap;
-        const sign = distance <= 0 ? -1 : 1;
-        nx = ax * sign; nz = az * sign;
-      }
-    }
-  } else {
-    const qx = lx - Math.max(-hx, Math.min(hx, lx));
-    const qz = lz - Math.max(-hz, Math.min(hz, lz));
-    const distance = Math.hypot(qx, qz);
-    if (distance >= body.radius) return false;
-    if (distance > 0) {
-      nx = qx / distance; nz = qz / distance;
-      depth = body.radius - distance;
-    } else if (hx - Math.abs(lx) <= hz - Math.abs(lz)) {
-      nx = lx <= 0 ? -1 : 1;
-      depth = hx - Math.abs(lx) + body.radius;
-    } else {
-      nz = lz <= 0 ? -1 : 1;
-      depth = hz - Math.abs(lz) + body.radius;
-    }
-  }
-  if (contact) {
-    contact.nx = nx * cs + nz * sn;
-    contact.nz = -nx * sn + nz * cs;
-    contact.depth = depth;
-  }
-  return true;
-}
-
 class ThirdPersonControllerManager {
   constructor(scene, colliders = []) {
     this.scene = scene;
     this.colliders = colliders;
-    this._colliderCells = null; // built on first use, see nearColliders()
+    this._colliderIndex = null; // built on first use, see nearColliders()
+    this._indexedColliders = null;
+    this._indexedColliderCount = -1;
     this.activeMode = 'car'; // 'person' | 'car' | 'cyclist' | 'cargobike' | 'helicopter' | 'swanboat'
 
     this.keys = {
@@ -1580,45 +1516,97 @@ class ThirdPersonControllerManager {
   }
 
   // The colliders whose bounds come within `r` of (x, z), in their original order. They never move, so they are
-  // bucketed once into 48 m cells (tens of thousands of buildings: testing them all every frame cost ~0.5 ms)
+  // bucketed once into 16 m cells (tens of thousands of buildings: testing them all every frame cost ~0.5 ms)
   nearColliders(x, z, r) {
-    const CELL = 48;
-    const key = (ix, iz) => (ix + 4096) * 8192 + (iz + 4096);
-    if (!this._colliderCells) {
-      this._colliderCells = new Map();
-      this.colliders.forEach((c, i) => {
-        c._order = i;
-        for (let ix = Math.floor(c.minX / CELL); ix <= Math.floor(c.maxX / CELL); ix++) {
-          for (let iz = Math.floor(c.minZ / CELL); iz <= Math.floor(c.maxZ / CELL); iz++) {
-            const k = key(ix, iz);
-            let list = this._colliderCells.get(k);
-            if (!list) this._colliderCells.set(k, (list = []));
-            list.push(c);
-          }
-        }
-      });
+    if (this._indexedColliders !== this.colliders || this._indexedColliderCount !== this.colliders.length) {
+      this._indexedColliders = this.colliders;
+      this._indexedColliderCount = this.colliders.length;
+      this._colliderIndex = createStaticIndex(this.colliders);
       this._nearList = [];
-      this._nearStamp = 0;
     }
-    const out = this._nearList;
-    out.length = 0;
-    const stamp = ++this._nearStamp;
-    for (let ix = Math.floor((x - r) / CELL); ix <= Math.floor((x + r) / CELL); ix++) {
-      for (let iz = Math.floor((z - r) / CELL); iz <= Math.floor((z + r) / CELL); iz++) {
-        const list = this._colliderCells.get(key(ix, iz));
-        if (!list) continue;
-        for (const c of list) {
-          if (c._seen === stamp) continue;
-          c._seen = stamp;
-          out.push(c);
-        }
-      }
-    }
-    if (out.length > 1) out.sort((a, b) => a._order - b._order);
-    return out;
+    return this._colliderIndex.query(x, z, r, this._nearList);
   }
 
-  resolveHorizontalCollision(pos, radius, carEntity = null, entity = carEntity) {
+  horizontalCandidates(x0, z0, x1, z1, reach) {
+    const dx = x1 - x0, dz = z1 - z0;
+    const radius = Math.hypot(dx, dz) * 0.5 + reach + 0.5;
+    return Array.from(this.nearColliders((x0 + x1) * 0.5, (z0 + z1) * 0.5, radius));
+  }
+
+  horizontalContactAt(x, y, z, body, candidates, contact = this._buildingContact ??= { nx: 0, nz: 0, depth: 0 }) {
+    for (const collider of candidates) {
+      if (buildingContact(collider, x, y, z, body, contact)) {
+        return { collider, nx: contact.nx, nz: contact.nz, depth: contact.depth };
+      }
+    }
+    return null;
+  }
+
+  horizontalPositionClear(x, y, z, body, reach) {
+    const candidates = Array.from(this.nearColliders(x, z, reach + 0.5));
+    return !this.horizontalContactAt(x, y, z, body, candidates);
+  }
+
+  applyHorizontalContact(collider, radius, carEntity, entity, body, x, y, z, nx, nz) {
+    const heli = this.activeMode === 'helicopter';
+    const sinH = body.sin, cosH = body.cos;
+    if (this._collisionListener && entity && entity.type !== 'person') {
+      const sin = carEntity ? sinH : Math.sin(entity.heading || 0);
+      const cos = carEntity ? cosH : Math.cos(entity.heading || 0);
+      const approachSpeed = -((sin * entity.speed + (entity.vx || 0)) * nx + (cos * entity.speed + (entity.vz || 0)) * nz);
+      const support = body.oriented
+        ? Math.abs(nx * cos - nz * sin) * body.hx + Math.abs(nx * sin + nz * cos) * body.hz
+        : radius;
+      this.reportCollision(entity, collider, 'building', x - nx * support, y + (heli ? 1.1 : 0.56), z - nz * support,
+        nx, 0, nz, approachSpeed);
+    }
+
+    if (carEntity?.type !== 'car') return;
+    const totalVx = sinH * carEntity.speed + (carEntity.vx || 0);
+    const totalVz = cosH * carEntity.speed + (carEntity.vz || 0);
+    const vn = -(totalVx * nx + totalVz * nz);
+    if (vn <= 0.5) return;
+    const headOn = Math.abs(sinH * nx + cosH * nz);
+    const sideDot = cosH * nx - sinH * nz;
+    carEntity.vx = (carEntity.vx || 0) + nx * vn * 0.42;
+    carEntity.vz = (carEntity.vz || 0) + nz * vn * 0.42;
+    if (headOn > 0.72) {
+      carEntity.speed = -carEntity.speed * 0.25;
+    } else {
+      carEntity.speed *= (1.0 - 0.62 * headOn);
+      carEntity.angularVel = (carEntity.angularVel || 0) + sideDot * (sinH * nx + cosH * nz >= 0 ? -1 : 1) * Math.min(3.2, vn * 0.22);
+    }
+    carEntity.pitchVel = (carEntity.pitchVel || 0) + (sinH * nx + cosH * nz) * Math.min(14.0, vn) * 0.16;
+    carEntity.rollVel = (carEntity.rollVel || 0) - sideDot * Math.min(14.0, vn) * 0.22;
+    carEntity.heaveVel = (carEntity.heaveVel || 0) + Math.min(1.4, vn * 0.11);
+    if (vn > 2.2) {
+      carEntity.lastCollisionSpark = { x: x - nx * body.extX * 0.92, y: 0.56, z: z - nz * body.extZ * 0.92, nx, nz, speed: vn };
+    }
+  }
+
+  boundedHorizontalEscape(x, z, y, body, reach) {
+    const heli = this.activeMode === 'helicopter';
+    const margin = heli ? 6000 : 0;
+    const minX = ISLAND_BOUNDS.minX - margin, maxX = ISLAND_BOUNDS.maxX + margin;
+    const minZ = ISLAND_BOUNDS.minZ + (heli ? -6000 : 30), maxZ = ISLAND_BOUNDS.maxZ + margin;
+    for (let distance = 0.5; distance <= 1024; distance += 0.5) {
+      const directions = distance < 16 ? 16 : 8;
+      for (let i = 0; i < directions; i++) {
+        const angle = i * Math.PI * 2 / directions;
+        const px = x + Math.cos(angle) * distance;
+        const pz = z + Math.sin(angle) * distance;
+        if (px < minX || px > maxX || pz < minZ || pz > maxZ) continue;
+        if (!heli && getIslandBoundsAtZ) {
+          const shore = getIslandBoundsAtZ(pz);
+          if (px < shore.westX + 8 || px > shore.eastX - 8) continue;
+        }
+        if (this.horizontalPositionClear(px, y, pz, body, reach)) return { x: px, z: pz };
+      }
+    }
+    return null;
+  }
+
+  resolveHorizontalCollision(pos, radius, carEntity = null, entity = carEntity, previousPosition = null) {
     // The detailed island (the helicopter may roam out over the harbour & the boroughs)
     const heli = this.activeMode === 'helicopter';
     const m = heli ? 6000 : 0;
@@ -1638,74 +1626,96 @@ class ThirdPersonControllerManager {
     }
 
     const body = collisionBody(this.activeMode, radius, entity?.heading || 0, 0, entity?.bodySpec);
-    const { sin: sinH, cos: cosH, extX, extZ } = body;
-    const contact = this._buildingContact ??= { nx: 0, nz: 0, depth: 0 };
+    const reach = Math.max(body.extX, body.extZ) + 1;
+    const y = Number.isFinite(pos.y) ? pos.y : 0;
+    let lastClear = null;
+    let responded = false;
 
-    const reach = Math.max(extX, extZ) + 6;
-    let gx = pos.x;
-    let gz = pos.z;
-    let near = this.nearColliders(gx, gz, reach);
-    for (let i = 0; i < near.length; i++) {
-      const c = near[i];
-      if (buildingContact(c, pos.x, pos.y, pos.z, body, contact)) {
-        const { nx, nz, depth } = contact;
-        pos.x += nx * depth;
-        pos.z += nz * depth;
-
-        if (this._collisionListener && entity && entity.type !== 'person') {
-          const sin = carEntity ? sinH : Math.sin(entity.heading);
-          const cos = carEntity ? cosH : Math.cos(entity.heading);
-          const approachSpeed = -((sin * entity.speed + (entity.vx || 0)) * nx + (cos * entity.speed + (entity.vz || 0)) * nz);
-          const support = body.oriented
-            ? Math.abs(nx * cos - nz * sin) * body.hx + Math.abs(nx * sin + nz * cos) * body.hz
-            : radius;
-          this.reportCollision(entity, c, 'building', pos.x - nx * support, pos.y + (heli ? 1.1 : 0.56), pos.z - nz * support,
-            nx, 0, nz, approachSpeed);
+    // Sweep the actual displacement in short bounded steps. The first hit is refined by binary search, then the
+    // remaining displacement is projected onto the contact tangent so a glancing approach keeps sliding.
+    if (previousPosition && Number.isFinite(previousPosition.x) && Number.isFinite(previousPosition.z)
+      && this.horizontalPositionClear(previousPosition.x, y, previousPosition.z, body, reach)) {
+      let sx = previousPosition.x, sz = previousPosition.z;
+      let dx = pos.x - sx, dz = pos.z - sz;
+      lastClear = { x: sx, z: sz };
+      for (let slide = 0; slide < 4 && Math.hypot(dx, dz) > 1e-5; slide++) {
+        const endX = sx + dx, endZ = sz + dz;
+        const candidates = this.horizontalCandidates(sx, sz, endX, endZ, reach);
+        const distance = Math.hypot(dx, dz);
+        const steps = Math.max(1, Math.min(512, Math.ceil(distance / 0.16)));
+        let hit = null;
+        let hitT = 1;
+        let safeT = 0;
+        for (let step = 1; step <= steps; step++) {
+          const t = step / steps;
+          hit = this.horizontalContactAt(sx + dx * t, y, sz + dz * t, body, candidates);
+          if (hit) { hitT = t; safeT = (step - 1) / steps; break; }
+        }
+        if (!hit) {
+          sx = endX; sz = endZ; lastClear = { x: sx, z: sz };
+          dx = dz = 0;
+          break;
         }
 
-        if (carEntity?.type === 'car') {
-          const totalVx = sinH * carEntity.speed + (carEntity.vx || 0);
-          const totalVz = cosH * carEntity.speed + (carEntity.vz || 0);
-          const vn = -(totalVx * nx + totalVz * nz);
-          if (vn > 0.5) {
-            const headOn = Math.abs(sinH * nx + cosH * nz);
-            const sideDot = cosH * nx - sinH * nz;
-            carEntity.vx = (carEntity.vx || 0) + nx * vn * 0.42;
-            carEntity.vz = (carEntity.vz || 0) + nz * vn * 0.42;
-            if (headOn > 0.72) {
-              carEntity.speed = -carEntity.speed * 0.25;
-            } else {
-              carEntity.speed *= (1.0 - 0.62 * headOn);
-              carEntity.angularVel = (carEntity.angularVel || 0) + sideDot * (sinH * nx + cosH * nz >= 0 ? -1 : 1) * Math.min(3.2, vn * 0.22);
-            }
-            carEntity.pitchVel = (carEntity.pitchVel || 0) + (sinH * nx + cosH * nz) * Math.min(14.0, vn) * 0.16;
-            carEntity.rollVel = (carEntity.rollVel || 0) - sideDot * Math.min(14.0, vn) * 0.22;
-            carEntity.heaveVel = (carEntity.heaveVel || 0) + Math.min(1.4, vn * 0.11);
-            if (vn > 2.2) {
-              carEntity.lastCollisionSpark = {
-                x: pos.x - nx * extX * 0.92,
-                y: 0.56,
-                z: pos.z - nz * extZ * 0.92,
-                nx,
-                nz,
-                speed: vn
-              };
-            }
-          }
+        let lo = safeT, hi = hitT;
+        for (let iteration = 0; iteration < 9; iteration++) {
+          const t = (lo + hi) * 0.5;
+          if (this.horizontalContactAt(sx + dx * t, y, sz + dz * t, body, candidates)) hi = t;
+          else lo = t;
+        }
+        hit = this.horizontalContactAt(sx + dx * hi, y, sz + dz * hi, body, candidates) || hit;
+        if (!responded) {
+          this.applyHorizontalContact(hit.collider, radius, carEntity, entity, body,
+            sx + dx * hi, y, sz + dz * hi, hit.nx, hit.nz);
+          responded = true;
         }
 
-        // A push that carried it far from where the candidates were gathered (dropped inside a building): gather
-        // them again around where it is now, carrying on in the same order
-        if (Math.abs(pos.x - gx) > 5 || Math.abs(pos.z - gz) > 5) {
-          gx = pos.x;
-          gz = pos.z;
-          const order = c._order;
-          near = this.nearColliders(gx, gz, reach);
-          i = -1;
-          while (i + 1 < near.length && near[i + 1]._order <= order) i++;
+        const safeX = sx + dx * lo, safeZ = sz + dz * lo;
+        let remainingX = endX - safeX, remainingZ = endZ - safeZ;
+        const into = remainingX * hit.nx + remainingZ * hit.nz;
+        if (into < 0) {
+          remainingX -= into * hit.nx;
+          remainingZ -= into * hit.nz;
         }
+        sx = safeX; sz = safeZ;
+        lastClear = { x: sx, z: sz };
+        dx = remainingX; dz = remainingZ;
+      }
+      pos.x = sx; pos.z = sz;
+    }
+
+    // Resolve any initial/deep penetration. Pick the shortest current correction, then re-query and repeat so
+    // adjacent walls cannot push the body back into an earlier one.
+    let clear = this.horizontalPositionClear(pos.x, y, pos.z, body, reach);
+    for (let pass = 0; !clear && pass < 12; pass++) {
+      const candidates = Array.from(this.nearColliders(pos.x, pos.z, reach + 0.5));
+      let best = null;
+      for (const collider of candidates) {
+        const contact = this.horizontalContactAt(pos.x, y, pos.z, body, [collider]);
+        if (contact && (!best || contact.depth < best.depth)) best = contact;
+      }
+      if (!best) break;
+      if (!responded) {
+        this.applyHorizontalContact(best.collider, radius, carEntity, entity, body, pos.x, y, pos.z, best.nx, best.nz);
+        responded = true;
+      }
+      pos.x += best.nx * best.depth;
+      pos.z += best.nz * best.depth;
+      clear = this.horizontalPositionClear(pos.x, y, pos.z, body, reach);
+      if (clear) lastClear = { x: pos.x, z: pos.z };
+    }
+
+    if (!clear) {
+      const escape = this.boundedHorizontalEscape(pos.x, pos.z, y, body, reach);
+      if (escape) {
+        pos.x = escape.x; pos.z = escape.z;
+        clear = true;
+      } else if (lastClear) {
+        pos.x = lastClear.x; pos.z = lastClear.z;
+        clear = true;
       }
     }
+    this._lastHorizontalCollisionResolved = clear;
   }
 
   // Pose the skinned characters once every entity has moved: the pedestrian's rig walks (or runs, turns, jumps) it to
@@ -1840,9 +1850,10 @@ class ThirdPersonControllerManager {
 
     p.speed += (targetSpeed - p.speed) * Math.min(1, dt * 10);
 
+    const previousPosition = { x: p.position.x, z: p.position.z };
     p.position.x += Math.sin(p.heading) * p.speed * dt;
     p.position.z += Math.cos(p.heading) * p.speed * dt;
-    this.resolveHorizontalCollision(p.position, 0.48);
+    this.resolveHorizontalCollision(p.position, 0.48, null, p, previousPosition);
 
     const groundY = this.getGroundHeight(p.position.x, p.position.z, 'person');
     if (this.keys.up && p.position.y <= groundY + 0.02) {
@@ -1893,7 +1904,7 @@ class ThirdPersonControllerManager {
     c.vx *= tireGripDamp;
     c.vz *= tireGripDamp;
 
-    this.resolveHorizontalCollision(c.position, 1.35, c);
+    this.resolveHorizontalCollision(c.position, 1.35, c, c, { x: prevX, z: prevZ });
     c.position.y = this.getGroundHeight(c.position.x, c.position.z, 'car');
 
     // 3-DOF Spring-Damper Chassis Suspension (Pitch, Roll & Vertical Heave)
@@ -1927,6 +1938,7 @@ class ThirdPersonControllerManager {
   }
 
   updateCyclist(dt, b = this.entities.cyclist, mode = 'cyclist') {
+    const previousPosition = { x: b.position.x, z: b.position.z };
 
     let throttle = 0;
     if (this.keys.forward) throttle = this.keys.forward;
@@ -1955,7 +1967,7 @@ class ThirdPersonControllerManager {
 
     b.position.x += Math.sin(b.heading) * b.speed * dt;
     b.position.z += Math.cos(b.heading) * b.speed * dt;
-    this.resolveHorizontalCollision(b.position, mode === 'cargobike' ? 1.4 : 0.65, null, b);
+    this.resolveHorizontalCollision(b.position, mode === 'cargobike' ? 1.4 : 0.65, null, b, previousPosition);
     b.position.y = this.getGroundHeight(b.position.x, b.position.z, mode);
 
     const targetLean = -turnInput * Math.min(1.0, Math.abs(b.speed) / 9.0) * 0.34;
@@ -2026,6 +2038,7 @@ class ThirdPersonControllerManager {
 
     h.heading += yawInput * 1.45 * dt;
 
+    const previousPosition = { x: h.position.x, z: h.position.z };
     h.position.x += Math.sin(h.heading) * h.speed * dt;
     h.position.z += Math.cos(h.heading) * h.speed * dt;
     h.position.y += h.verticalSpeed * dt;
@@ -2034,7 +2047,7 @@ class ThirdPersonControllerManager {
       this.reportCollision(h, groundCollider, 'ground', h.position.x, 0.25, h.position.z, 0, 1, 0, -h.verticalSpeed);
     }
     h.position.y = Math.max(0.25, Math.min(380, h.position.y));
-    this.resolveHorizontalCollision(h.position, 4.5, null, h);
+    this.resolveHorizontalCollision(h.position, 4.5, null, h, previousPosition);
 
     const targetPitch = (h.speed / maxHorizSpeed) * 0.24;
     const targetRoll = -yawInput * 0.28;

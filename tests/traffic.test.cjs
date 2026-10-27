@@ -67,6 +67,87 @@ test('the traffic module has no emergency-vehicle special cases', () => {
   assert.ok(!/isPolice|policeLight|lightbar/i.test(source));
 });
 
+test('resolved traffic car impact kicks the chassis and sparks once for a bicycle, not a pedestrian', async () => {
+  const applyImpact = trafficFunction('applyVehicleImpact', {
+    clamp: (x, lo, hi) => Math.max(lo, Math.min(hi, x))
+  });
+  const shouldEmitSparks = trafficFunction('shouldEmitImpactSparks', {});
+  const { createCityCollisions } = await import('../js/city-collisions.js');
+  const carBody = { type: 'car', yawVel: 0, yawOffset: 0, pitchVel: 0, rollVel: 0 };
+  let sparkBursts = 0;
+  const car = {
+    kind: 'car', collisionIndex: 0, mode: 'car', spec: { width: 1.8, length: 4.4, height: 1.8 },
+    radius: 2.2, mass: 1300, heading: 0, x: 0, y: 0, z: 0, prevX: 0, prevY: 0, prevZ: 0,
+    _wasPlaced: false, vx: 5, vz: 0,
+    getVelocity(out) { out.x = this.vx; out.z = this.vz; return out; },
+    applyVelocity(dx, dz) { this.vx += dx; this.vz += dz; },
+    move(dx, dz) { this.x += dx; this.z += dz; return this; },
+    onContact(other, nx, nz, speed) {
+      applyImpact(carBody, this, other, nx, nz, speed);
+      if (speed > 2.2 && shouldEmitSparks(this, other)) sparkBursts++;
+    }
+  };
+  const bicycle = {
+    kind: 'cyclist', mode: 'cyclist', radius: 0.38, mass: 95, heading: 0,
+    x: 0.5, y: 0, z: 0, prevX: 0.5, prevY: 0, prevZ: 0, _wasPlaced: false,
+    getVelocity(out) { out.x = 0; out.z = 0; return out; },
+    applyVelocity() {}, move(dx, dz) { this.x += dx; this.z += dz; return this; }
+  };
+  const stage = createCityCollisions();
+  const result = stage.resolve([car, bicycle], { dt: 0 });
+  assert.ok(result.stats.contacts > 0, 'the real shared contact stage resolves the impact');
+  assert.notEqual(carBody.rollVel, 0, 'the car receives chassis roll response');
+  assert.equal(sparkBursts, 1, 'the car/bicycle pair emits one spark burst');
+
+  const pedestrian = {
+    kind: 'pedestrian', mode: 'person', radius: 0.48, mass: 72,
+    x: 0.5, y: 0, z: 0, prevX: 0.5, prevY: 0, prevZ: 0, _wasPlaced: false,
+    getVelocity(out) { out.x = 0; out.z = 0; return out; },
+    applyVelocity() {}, move(dx, dz) { this.x += dx; this.z += dz; return this; }
+  };
+  const personCar = { ...car, x: 0, y: 0, z: 0, prevX: 0, prevY: 0, prevZ: 0, _wasPlaced: false,
+    onContact(other, nx, nz, speed) {
+      applyImpact(carBody, this, other, nx, nz, speed);
+      if (speed > 2.2 && shouldEmitSparks(this, other)) sparkBursts++;
+    }
+  };
+  createCityCollisions().resolve([personCar, pedestrian], { dt: 0 });
+  assert.equal(sparkBursts, 1, 'pedestrian contacts do not emit impact sparks');
+  assert.equal(shouldEmitSparks({ kind: 'bus', mode: 'car', collisionIndex: 0 },
+    { kind: 'car', mode: 'car', collisionIndex: 1 }), true);
+  assert.equal(shouldEmitSparks({ kind: 'car', mode: 'car', collisionIndex: 1 },
+    { kind: 'bus', mode: 'car', collisionIndex: 0 }), false, 'vehicle pairs choose one spark emitter');
+});
+
+test('active player actor resets sweep history when its entity or mode changes', async () => {
+  const bind = trafficFunction('bindPlayerCollisionActor', {});
+  const { createCityCollisions } = await import('../js/city-collisions.js');
+  const fixed = { kind: 'pedestrian', mode: 'person', radius: 0.48, mass: 72,
+    x: 2.5, y: 0, z: 0, prevX: 2.5, prevY: 0, prevZ: 0, _wasPlaced: true };
+  const player = { kind: 'player', mode: 'person', radius: 0.48, mass: 72,
+    entity: { position: { x: 0, y: 0, z: 0 } },
+    x: 5, y: 0, z: 0, prevX: 0, prevY: 0, prevZ: 0, _wasPlaced: true };
+
+  const staleStage = createCityCollisions();
+  assert.ok(staleStage.resolve([player, fixed], { dt: 0.1 }).stats.contacts > 0,
+    'an old identity sweeps across the stationary body');
+
+  const switched = { kind: 'player', mode: 'person', radius: 0.48, mass: 72,
+    entity: { position: { x: 0, y: 0, z: 0 } },
+    x: 0, y: 0, z: 0, prevX: 0, prevY: 0, prevZ: 0, _wasPlaced: true };
+  const stage = createCityCollisions();
+  stage.resolve([switched, fixed], { dt: 0 });
+  const nextEntity = { position: { x: 5, y: 0, z: 0 }, heading: 0 };
+  bind(switched, nextEntity, 'cyclist');
+  switched.x = nextEntity.position.x;
+  switched.y = nextEntity.position.y;
+  switched.z = nextEntity.position.z;
+  assert.equal(switched._wasPlaced, false);
+  assert.equal(switched.prevX, 5);
+  assert.equal(stage.resolve([switched, fixed], { dt: 0.1 }).stats.contacts, 0,
+    'the new actor begins at its current position instead of sweeping through the map');
+});
+
 function populationContext() {
   const context = {
     Math: Object.assign(Object.create(Math), { random: () => 0.5 }),
