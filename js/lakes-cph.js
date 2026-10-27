@@ -1,5 +1,6 @@
 import { triangulatePolygon, pointInRing } from './polygon-cph.js';
 import { densifyRing } from './terrain-cph.js';
+import { getDataBbox } from './city-config.js';
 
 // js/lakes-cph.js
 // Pure (no three.js) geometry for the Soerne (Peblinge, Sortedams and Sankt Joergens Soe) and the other lakes of
@@ -98,7 +99,7 @@ function ringDistance(ring, x, z) {
   return best;
 }
 
-class Arrays {
+export class Arrays {
   constructor() { this.position = []; this.normal = []; this.uv = []; this.kind = []; this.index = []; }
   get vertexCount() { return this.position.length / 3; }
   vertex(x, y, z, nx, ny, nz, u, v, kind) {
@@ -107,10 +108,12 @@ class Arrays {
   }
 }
 
-export const KIND = Object.freeze({ wall: 0, coping: 1, soffit: 2, bank: 3 });
+export const KIND = Object.freeze({ wall: 0, coping: 1, soffit: 2, bank: 3, sand: 4 });
 
 /** Natural lakes (OSM water without a name, e.g. park ponds) have grassed banks, not quay walls: 1 : BANK_BATTER slope. */
 export const BANK_BATTER = 1.6;
+/** Natural beaches (OSM natural=beach / sand at the sea): a flatter slope of sand. */
+export const BEACH_BATTER = 4.0;
 export const isNaturalLake = (lake) => !lake.name || lake.name === 'Lake';
 
 /**
@@ -118,16 +121,16 @@ export const isNaturalLake = (lake) => !lake.name || lake.name === 'Lake';
  * horizontal normal. A coping ledge (copingW wide, on the side opposite to the face normal) caps the wall top when
  * `coping` is set. Returns the metres of wall emitted.
  */
-function wallAlong(arrays, ring, { faceSign, yBottom, yTop, coping = false, bbox = null, skip = null, vOf = (y) => y, batter = 0, kind = KIND.wall }) {  // vOf(y, x, z)
+export function wallAlong(arrays, ring, { faceSign, yBottom, yTop, coping = false, bbox = null, skip = null, vOf = (y) => y, batter = 0, kind = KIND.wall, open = false }) {  // vOf(y, x, z); yBottom / yTop(x, z, k) with k the vertex index
   const n = ring.length / 2;
   // heights may follow terrain: yBottom / yTop are numbers or functions of the vertex (x, z)
   const yb = typeof yBottom === 'function' ? yBottom : () => yBottom;
   const yt = typeof yTop === 'function' ? yTop : () => yTop;
-  // miter normals (unit, pointing away from the face side) for the coping outline
+  // miter normals (unit, pointing away from the face side) for the coping outline; an open polyline's ends have one side only
   const nrm = [];
   for (let k = 0; k < n; k++) {
-    const p = (k + n - 1) % n;
-    const q = (k + 1) % n;
+    const p = open && k === 0 ? 0 : (k + n - 1) % n;
+    const q = open && k === n - 1 ? n - 1 : (k + 1) % n;
     const e0 = [ring[2 * k] - ring[2 * p], ring[2 * k + 1] - ring[2 * p + 1]];
     const e1 = [ring[2 * q] - ring[2 * k], ring[2 * q + 1] - ring[2 * k + 1]];
     const l0 = Math.hypot(...e0) || 1;
@@ -144,7 +147,7 @@ function wallAlong(arrays, ring, { faceSign, yBottom, yTop, coping = false, bbox
   }
   let along = 0;
   let metres = 0;
-  for (let k = 0; k < n; k++) {
+  for (let k = 0; k < (open ? n - 1 : n); k++) {
     const j = (k + 1) % n;
     const dx = ring[2 * j] - ring[2 * k];
     const dz = ring[2 * j + 1] - ring[2 * k + 1];
@@ -154,10 +157,10 @@ function wallAlong(arrays, ring, { faceSign, yBottom, yTop, coping = false, bbox
     if (len < 1e-4 || (bbox && outsideEdge(ring, 2 * k, bbox)) || (skip && skip(k))) continue;
     const fnx = faceSign * -dz / len; // left normal is (-dz, dx)
     const fnz = faceSign * dx / len;
-    const yBk = yb(ring[2 * k], ring[2 * k + 1]);
-    const yBj = yb(ring[2 * j], ring[2 * j + 1]);
-    const yTk = yt(ring[2 * k], ring[2 * k + 1]);
-    const yTj = yt(ring[2 * j], ring[2 * j + 1]);
+    const yBk = yb(ring[2 * k], ring[2 * k + 1], k);
+    const yBj = yb(ring[2 * j], ring[2 * j + 1], j);
+    const yTk = yt(ring[2 * k], ring[2 * k + 1], k);
+    const yTj = yt(ring[2 * j], ring[2 * j + 1], j);
     // a bank leans back from the top edge into the water: the foot is `batter` x the height inward of the outline
     const fa = batter ? (yTk - yBk) * batter : 0;
     const fb = batter ? (yTj - yBj) * batter : 0;
@@ -203,7 +206,7 @@ function edgeTurn(arrays, e, f, g) {
 }
 
 /** Triangulated water surface (normal up) at `y` for a lake record with outline `ring` and `holes` (already extended). */
-function surfaceArrays(ring, holes, y) {
+export function surfaceArrays(ring, holes, y) {
   const { pts, idx } = triangulatePolygon(ring, holes);
   const position = [];
   for (let i = 0; i < pts.length; i += 2) position.push(pts[i], y, pts[i + 1]);
@@ -223,7 +226,7 @@ function surfaceArrays(ring, holes, y) {
  *   walls:   lake walls (faces towards the water), granite coping on top, bridge soffits and fascias
  *   ground:  the lakes' extended outlines (holes of the ground plane) and the islands inside them
  */
-export function buildLakeArrays(doc, { bbox = [-750, -750, 750, 750], terrain = null, modelBridge = () => false } = {}) {
+export function buildLakeArrays(doc, { bbox = getDataBbox(), terrain = null, modelBridge = () => false } = {}) {
   const lakes = doc?.lakes || [];
   const measured = terrain && !terrain.flat ? terrain : null;
   // With terrain every lake sits at its MEASURED water level (the DTM over the lake is the water surface); lakes within
@@ -391,7 +394,7 @@ export function inLake(doc, x, z) {
  * grid (value = distance * 255 / shoreMax). The water shader samples it bilinearly for the soft shoreline.
  * Rasterised at cell centres; cells outside the grid count as water (no shore at the district edge).
  */
-export function shoreDistanceField(doc, { bbox = [-750, -750, 750, 750], cell = WATER.cell, max = WATER.shoreMax } = {}) {
+export function shoreDistanceField(doc, { bbox = getDataBbox(), cell = WATER.cell, max = WATER.shoreMax } = {}) {
   const [x0, z0, x1, z1] = bbox;
   const w = Math.ceil((x1 - x0) / cell);
   const h = Math.ceil((z1 - z0) / cell);

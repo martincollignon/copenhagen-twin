@@ -23,3 +23,6 @@ data/tex/
 data/raw
 data/tex
 data/tex-look/
+data/tiles/
+data/city/
+.context/

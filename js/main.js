@@ -5,6 +5,7 @@ import { ssrReflectionWeight } from './surface-materials-cph.js';
 import { createPostProcessing } from './post-processing.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
 import { isTypingInField, TELEPORT_LOCATIONS } from './city-config.js';
+import { CITY_TELEPORT_LOCATIONS } from './city-teleports.js';
 import { buildWorld } from './world.js';
 import { ThirdPersonControllerManager } from './controllers.js';
 import { TouchControls } from './touch-controls.js';
@@ -71,18 +72,34 @@ async function initApp() {
   }
 
   // 3. Build the city from the Copenhagen geodata
+  // Tile streaming: `?stream=<near radius in m>` overrides the default rings (near 750 m, mid 2500 m, js/tile-rings.js); the city
+  // streams in around where the player was last seen (or the start point)
+  const streamParam = Number(query.get('stream'));
+  const streamMid = Number(query.get('streammid')); // optional: the mid ring radius (default 10/3 of the near radius)
+  let start = { x: 0, z: 0 };
+  try {
+    const saved = JSON.parse(localStorage.getItem('cph-player-state'));
+    const p = saved?.version === 1 ? saved.entities?.[saved.activeMode] : null;
+    if (p && Number.isFinite(p.x) && Number.isFinite(p.z)) start = { x: p.x, z: p.z };
+  } catch { /* no saved position */ }
   const world = await buildWorld(scene, {
     treeDate: lightingSystem.currentSunDateTime,
     markInit,
     debug: new URLSearchParams(location.search).get('debug') || '',
-    water: new URLSearchParams(location.search).get('water') || ''
+    water: new URLSearchParams(location.search).get('water') || '',
+    // meshes created after the boot get the same storage-buffer treatment as the boot-time sweep below
+    adoptMesh: (mesh) => { if (renderer.backend.isWebGPUBackend && mesh.isInstancedMesh) mesh.instanceMatrix = new THREE.StorageInstancedBufferAttribute(mesh.instanceMatrix.array, 16); },
+    tilesUrl: query.get('tiles') || null, // ?tiles=<url of a tile index directory> (default ./data/tiles)
+    stream: Number.isFinite(streamParam) && streamParam > 0 ? { near: streamParam, ...(streamMid > streamParam ? { mid: streamMid } : {}) } : null,
+    start
   });
   const { trafficSystem } = world;
-  const allColliders = world.colliders;
+  const allColliders = world.staticIndex ? [] : world.colliders; // a streamed city's colliders come and go: the controllers query world.staticIndex
 
   // 4. Initialize Third-Person Controllers (Person, Car, both Bikes, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
   controllerManager.groundField = world.groundHeight || null;
+  if (world.staticIndex) controllerManager.staticIndex = world.staticIndex; // streamed city: per-tile colliders
   controllerManager.setSwanWorldData(world.lakeData, world.lakes?.level);
   controllerManager.setGoBoatWorldData({ water: world.lakes ? world.lakeData?.lakes || [] : [], frame: world.geo?.frame });
   // Reuse teleport placement so saved players return at rest, close to their last positions.
@@ -495,18 +512,22 @@ async function initApp() {
     return destination;
   }
 
+  // The district presets are always there; the citywide ones (js/city-teleports.js, positions on the citywide road graph) only where the
+  // tile index covers them (world.tileExists), so a district-only build does not offer places it does not have.
+  const presetFor = (key) => TELEPORT_LOCATIONS[key] || (CITY_TELEPORT_LOCATIONS[key] && world.tileExists?.(CITY_TELEPORT_LOCATIONS[key].x, CITY_TELEPORT_LOCATIONS[key].z) ? CITY_TELEPORT_LOCATIONS[key] : null);
   teleportButtons.forEach((btn) => {
     // Hide the buttons that have no location
-    if (!TELEPORT_LOCATIONS[btn.getAttribute('data-teleport')]) btn.hidden = true;
+    btn.hidden = !presetFor(btn.getAttribute('data-teleport'));
     btn.addEventListener('click', () => {
-      const key = btn.getAttribute('data-teleport');
-      const loc = TELEPORT_LOCATIONS[key];
+      const loc = presetFor(btn.getAttribute('data-teleport'));
       if (loc) {
         teleportTo(loc.x, loc.z, loc.heading);
       }
       closePopovers();
     });
   });
+  const cityTitle = document.getElementById('tp-city-title');
+  if (cityTitle) cityTitle.hidden = !Object.keys(CITY_TELEPORT_LOCATIONS).some((k) => presetFor(k));
 
   if (hudToggleBtn) {
     hudToggleBtn.addEventListener('click', () => {
@@ -687,7 +708,7 @@ async function initApp() {
   // `?hooks` exposes the running twin to headless checks (tools/cph-m3-check.py): a free camera and the live systems
   if (new URLSearchParams(location.search).has('hooks')) {
     const updateCamera = cameraSystem.update.bind(cameraSystem);
-    Object.assign(globalThis.__twin, { THREE, trafficSystem, freeCam: null, frozen: false });
+    Object.assign(globalThis.__twin, { THREE, trafficSystem, freeCam: null, frozen: false, stream: world.stream || null });
     cameraSystem.update = (dt, time) => {
       updateCamera(dt, time);
       const f = globalThis.__twin.freeCam;
@@ -701,6 +722,9 @@ async function initApp() {
     };
   }
 
+  // `?hooks`: the frames that took over 60 ms, split by section (globalThis.__twin.frameLog), for tools/shoot-stream.py
+  const frameProbe = new URLSearchParams(location.search).has('hooks') ? Object.assign([], { lastGeoms: 0, lastTex: 0 }) : null;
+  if (frameProbe) globalThis.__twin.frameLog = frameProbe;
   renderer.setAnimationLoop((now) => {
     const rawDt = (now - lastTime) * 0.001;
     lastTime = now;
@@ -708,6 +732,7 @@ async function initApp() {
     elapsed += dt;
 
     // Update 3rd-person controllers, camera, signals, traffic & vehicle collisions, building LODs, and dynamic shadow focus
+    const T0 = frameProbe ? performance.now() : 0;
     gamepadControls.update(dt);
     controllerManager.update(dt, elapsed);
     if (pierAction) {
@@ -731,7 +756,9 @@ async function initApp() {
       savePlayerState();
       nextPlayerSave = now + 5000;
     }
+    const T1 = frameProbe ? performance.now() : 0;
     world.update(cameraSystem.currentPos.x, cameraSystem.currentPos.z, lightingSystem.uNightFactor.value);
+    const T2 = frameProbe ? performance.now() : 0;
     lightingSystem.update(cameraSystem.currentPos);
     audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.activePresetId === 'midnight');
     if (warmedUp) updateSceneCulling(cameraSystem.camera.position); // the warm-up frame draws every chunk
@@ -756,7 +783,16 @@ async function initApp() {
       for (const o of culled) o.frustumCulled = true;
       markInit('warmup');
     }
+    const T3 = frameProbe ? performance.now() : 0;
     renderPipeline.render();
+    if (frameProbe) {
+      const T4 = performance.now();
+      const g = renderer.info.memory.geometries;
+      const tx = renderer.info.memory.textures;
+      if (T4 - T0 > 60) frameProbe.push({ t: Math.round(now), total: Math.round(T4 - T0), traffic: Math.round(T1 - T0), world: Math.round(T2 - T1), other: Math.round(T3 - T2), render: Math.round(T4 - T3), dGeom: g - frameProbe.lastGeoms, dTex: tx - frameProbe.lastTex, calls: renderer.info.render.drawCalls });
+      frameProbe.lastGeoms = g;
+      frameProbe.lastTex = tx;
+    }
     if (!warmedUp) {
       warmedUp = true;
       markInit('firstFrame');

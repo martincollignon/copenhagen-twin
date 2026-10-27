@@ -10,17 +10,21 @@ const PED_SPAWN_DISTANCE = 150;
 const PED_AVOID_INTERVAL = 0.12;
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
-function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCross, walkOn, visible, nearView, blockAt, groundHeight = null }) {
+function createPedestrianSystem(initialNetwork, { player, nearEdges, nearSignals, mayCross, walkOn, visible, nearView, blockAt, groundHeight = null }) {
   let clock = 0;
   let focusX = 0, focusZ = 140;
   let hasView = false;
   let pedRange = 0;
   let pedCursor = 0;
 
-  for (const n of network.nodes) {
-    n.walkers = []; // pedestrians on its crosswalks
-    n.curb = []; // pedestrians at or approaching its curbs
-  }
+  let network = initialNetwork;
+  const initNodes = () => {
+    for (const n of network.nodes) {
+      n.walkers = []; // pedestrians on its crosswalks
+      n.curb = []; // pedestrians at or approaching its curbs
+    }
+  };
+  initNodes();
 
   // One instanced draw per level of detail; every pedestrian has a PersonRig that plants its footsteps on the
   // sidewalk (no sliding), with their own build, height, sex, hair, clothes and gait
@@ -84,7 +88,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
   }
 
   const KERB = 1.6; // how far along a crosswalk track pedestrians wait to cross (the curb is 2 m along)
-  const pedRoutes = createPedestrianRoutes(network, blockAt);
+  let pedRoutes = createPedestrianRoutes(network, blockAt);
   const track = { ax: 0, az: 0, ux: 0, uz: 1, len: 1, node: null, side: 0, line: 0, route: null };
 
   function sidewalkTrack(e) {
@@ -513,7 +517,24 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     render(dt);
   }
 
-  return { peds, meshes: pedCrowd.meshes, simulate, render, update };
+  /** Swaps the road network the pedestrians walk along (streamed city): everyone is placed afresh by the next updates. */
+  function setNetwork(next) {
+    network = next;
+    initNodes();
+    pedRoutes = createPedestrianRoutes(network, blockAt);
+    curbNodes.length = 0;
+    for (const p of peds) {
+      p.placed = false;
+      p.conversation = null;
+      p.node = null;
+      p.route = null;
+      p.nextRoute = null;
+      p.waiting = false;
+      p.pause = 0;
+    }
+  }
+
+  return { peds, meshes: pedCrowd.meshes, simulate, render, update, setNetwork };
 }
 
 export { createPedestrianSystem };

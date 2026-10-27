@@ -98,8 +98,9 @@ function buildMaterial() {
  * @param {{ surfaces: Array }} vegetationDoc cph-vegetation/1 (only the lawn polygons are read)
  * @param {{ terrain?: object|null }} opts
  */
-export function createGrass(scene, vegetationDoc, { terrain = null } = {}) {
-  const mask = createLawnMask(vegetationDoc?.surfaces);
+export function createGrass(scene, vegetationDoc, { terrain = null, mask: givenMask = null } = {}) {
+  // `mask`: a streamed lawn mask (createTiledLawnMask) the streamer fills tile by tile; otherwise the document's lawns
+  const mask = givenMask || createLawnMask(vegetationDoc?.surfaces);
   const field = createGrassField({ mask, terrain });
   const geometry = buildTuftGeometry();
   const attr = new THREE.InstancedBufferAttribute(field.data, 4);
@@ -118,6 +119,8 @@ export function createGrass(scene, vegetationDoc, { terrain = null } = {}) {
     update(x, z) {
       if (field.update(x, z, 4)) attr.needsUpdate = true;
     },
+    /** The lawn mask changed under the field: refill it. */
+    invalidate() { field.invalidate(); },
     get tufts() { return field.tufts; },
     dispose() { scene.remove(mesh); geometry.dispose(); mesh.material.dispose(); }
   };

@@ -26,14 +26,24 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Stage site files
+        env:
+          # Citywide data (tiles, city, facade atlases) lives on Cloudflare R2, not in the Pages artifact (1 GB limit).
+          # Override with the repository variable CPH_DATA_URL; bump the vN segment after republishing the data
+          # (tools/hosting/upload_r2.py --version vN).
+          CPH_DATA_URL: ${{ vars.CPH_DATA_URL || 'https://pub-74be4ee48611455badf5e844894d286f.r2.dev/v3' }}
         run: |
           set -euo pipefail
           mkdir -p _site/data
           cp index.html _site/
           cp -R css js _site/
+          # The citywide boot reads everything through js/data-config.js (R2). The monolithic district files under ./data
+          # are what the engine falls back to when the tile index is unreachable (or ?debug=notiles): keep publishing the
+          # tracked JSON documents and the district LoD2 roofs (small). The facade atlases (data/tex-look) come from R2.
           cp data/*.json _site/data/
           cp -R data/lod2 _site/data/
-          cp -R data/tex-look _site/data/
+          # point the engine's data base (js/data-config.js BUILD_DATA_BASE) at R2
+          sed -i "s|^export const BUILD_DATA_BASE = .*|export const BUILD_DATA_BASE = '${CPH_DATA_URL%/}';|" _site/js/data-config.js
+          grep -q "BUILD_DATA_BASE = 'https://" _site/js/data-config.js
           touch _site/.nojekyll
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4

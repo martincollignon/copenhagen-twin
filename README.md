@@ -34,6 +34,8 @@ Lighting uses 26 October 2026 in Europe/Copenhagen: Golden Hour at 16:10, Midday
 | `?wet=0.7` | Overrides ground wetness from 0 to 1; clear presets default to dry. |
 | `?ao=1` | Enables half-resolution GTAO at 0.6 strength. It remains opt-in pending a GPU cost measurement. |
 
+Citywide (the streamed tile index): every harbour basin, canal, lake and pond that is not one of the Soerne is generic water, a post-process like the far layer: `uv run tools/cph-geodata/city_water.py --fetch` (GeoDanmark soe / bassin / rekreativtomraade / begravelsesomraade / skov and OSM landuse into `data/raw/city/water/`, once) and `uv run tools/cph-geodata/city_water.py` write `data/city/water.json` and a `water` layer per tile (surface, quay walls or banks, the ground cut under the water, parks as grass). The Soerne stay the district's hand-made lakes. Details and limits: `docs/citywide-plan.md` (C4). `?water=simple` drops the planar reflection here too, `?debug=nowater` shows the ground without any water.
+
 Water levels come from the DTM over the lakes. `data/cph-lakes.json` stores basin polygons and their measured levels, allowing basins separated by bridges to keep distinct elevations while nearby levels snap together. Lake outlines cut through the terrain or ground mesh; developed shores use quay walls and coping, while natural shores use bank geometry. A shared ground-field shader shades fine gravel along the lake edge and grass over measured park areas.
 
 Capture and benchmark the atmospheric changes on a machine that permits a local browser/server:
@@ -106,7 +108,32 @@ Facade look: photo walls are on by default between about 14 m and 150 m of the c
 uv run tools/cph-geodata/build.py --env-file <path>   # a .env with DHM_TERRAIN_TOKEN (or GSEARCH_TOKEN) for DHM heights
 ```
 
-Raw downloads are cached under `data/raw/`, so reruns are offline. See `tools/cph-geodata/build.py` for options.
+Raw downloads are cached under `data/raw/`, so reruns are offline. See `tools/cph-geodata/build.py` for options. `tools/cph-geodata/frame.py` is the one place for the origin, the district bbox and the 500 m tile grid; compiler steps accept `--bbox` / `--tile` for another area.
+
+The twin loads per-tile layers when `data/tiles/index.json` exists (generated, gitignored, otherwise the files above are used):
+
+```sh
+uv run tools/cph-geodata/tile_split.py   # data/cph-*.json + data/lod2 -> data/tiles/<e500>_<n500>/, data/city/ (format: docs/cph-geodata-schema.md)
+```
+
+The whole of Københavns + Frederiksberg Kommune (496 tiles, `data/city/tiles.json`) is compiled by one resumable script that writes the same tile format directly:
+
+```sh
+uv run tools/cph-geodata/build_city.py --workers 4            # all stages; secrets come from tools/adc-secret.sh (never printed)
+uv run tools/cph-geodata/build_city.py --stage cells --cells 6176_723   # one 1 km cell; every stage and cell has a done-marker under data/city/work/state/
+uv run tools/cph-geodata/build_city.py --stage vegetation --veg-limit 20 --veg-workers 6   # LiDAR + CIR streamed per cell, then deleted
+```
+
+Stages: `fetch fetch2` (citywide sources, cached in `data/raw/city/`), `buildings0`, `geo` (roads, one connected road graph, points), `cells` (DHM heights and terrain per 1 km cell), `surfaces furniture groundfloor streets entrances vegetation`, `index`, `report` (`data/city/coverage.md`: coverage, sources, Frederiksberg substitutions, what is still queued). Raw data stays under `data/raw/` and is never committed; keep an eye on `df -h`: the script stops below 5 GB free.
+
+With tiles the engine **streams** (`js/tile-streamer.js`, milestone C2): it keeps the tiles around the camera resident in rings,
+**near** (750 m: buildings with facades, LoD2 roofs and doors, road surfaces, furniture, trees, grass, ground floor) and **mid**
+(2.5 km: buildings and roads), loads nearest first under a concurrency cap, aborts stale requests, and unloads a tile beyond its
+ring + 250 m (disposing its geometries, materials and photo textures). `?stream=<near m>` (and `&streammid=<m>`) shrinks the rings
+so streaming is visible inside the 2 km district; `?tiles=<url>` reads another tile index; `?debug=notiles` is the monolithic
+fallback (whole district built once). With `?hooks`, `__twin.stream.snapshot()` reports resident tiles per ring, loads, unloads,
+aborts and bytes. `uv run --with playwright python tools/shoot-stream.py` flies the district three times at `?stream=300`,
+and checks the console, the unloads and that the JS heap stays flat.
 
 `data/cph-surfaces.json` (ground-material polygons and road markings, M4) is a separate generated file:
 
@@ -144,6 +171,24 @@ node tools/audit/oneway.mjs                                     # cars and cycli
 
 Look shots for lakes, trees and night lighting: `uv run --with playwright python tools/shoot-look.py --tag after` (docs/look/lakes-trees).
 `uv run tools/cph-geodata/basins.py` adds the per-basin water levels to `data/cph-lakes.json` (after `lakes.py`).
+
+## Hosting the citywide data
+
+The app (index.html, css, js) is deployed by GitHub Pages; the citywide data is too big for Pages (1 GB limit) and for git, so it sits on Cloudflare R2 (free egress), bucket `cph-twin-data`, public through its r2.dev URL, under a version prefix:
+
+```
+<public url>/v1/tiles/   index.json + <tile id>/<layer>.json|bin    from data/tiles
+<public url>/v1/city/    meta, roadgraph, streets, post, far.bin ...  from data/city (the files the index and post.json name)
+<public url>/v1/tex-look/ <building>.webp facade atlases              from gs://lun-integrations-dev-cph-twin/skraafoto/tex-look
+```
+
+**Engine.** `js/data-config.js` holds the one data base URL (`BUILD_DATA_BASE`, default `./data`, so local dev is unchanged). It is used for the tile store (`<base>/tiles`, and the city files through the tile index) and the facade atlases (`<base>/tex-look/...`). `?data=<url>` overrides it for one session (`?data=https://pub-74be4ee48611455badf5e844894d286f.r2.dev/v3`); `?tiles=<url>` still overrides the tile directory alone. Remote data is cached by the browser normally, local data is revalidated on every load as before.
+
+**Pages build.** `.github/workflows/pages.yml` publishes only index.html, css and js and rewrites `BUILD_DATA_BASE` to the repository variable `CPH_DATA_URL` (default: the r2.dev URL above, `v3`).
+
+**Publishing data.** `python3 tools/hosting/upload_r2.py [--version v1] [--only tiles,city,tex-look] [--dry-run]`. It lists the bucket and skips objects whose size and MD5 match, so rerun it after regenerating tiles or atlases. JSON is stored gzip-compressed (`Content-Encoding: gzip`, 1.2 GB of tiles become about 270 MB); layers and atlases get `Cache-Control: public, max-age=31536000, immutable`, the roots (`tiles/index.json`, `city/post.json`, `city/meta.json`) `no-cache`. Because of the immutable headers, publish regenerated data that visitors may already have cached under a new version (`--version v2`), then set `CPH_DATA_URL` to `.../v2`. Objects are written through the small ingest Worker in `tools/hosting/ingest-worker` (the Cloudflare REST object API allows about 4 requests/s, too slow for 158k atlases); its URL and secret are in `~/.config/cph-twin/r2-ingest.json`, never in the repo. GCS is read with an ADC access token (`gcloud auth application-default print-access-token`).
+
+**One-time bucket setup** (done): `wrangler r2 bucket create cph-twin-data`, `wrangler r2 bucket dev-url enable cph-twin-data`, `wrangler r2 bucket cors set cph-twin-data --file tools/hosting/cors.json` (GET/HEAD from https://martincollignon.github.io and localhost:8000/8080/3000/5173), `wrangler deploy` in `tools/hosting/ingest-worker` plus `wrangler secret put INGEST_KEY`. All in the Plans Cloudflare account. The r2.dev endpoint is rate limited and not CDN-cached; for launch traffic put a custom domain on the bucket (Cloudflare dashboard, R2, Settings, Custom Domains) and set `CPH_DATA_URL` to it.
 
 ## Licence and attributions
 

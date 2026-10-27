@@ -31,7 +31,8 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from frame import LOCAL_BBOX, ORIGIN, flat, ring_to_local  # noqa: E402
+import frame  # noqa: E402
+from frame import area_local, ORIGIN, flat, ring_to_local  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data" / "raw" / "veg"
@@ -65,11 +66,17 @@ def mosaic_classes(tids, e0, n1, shape):
     """Per-class count rasters of every tile -> one grid (1 m cells, top-left corner at e0 / n1)."""
     out = {k: np.zeros(shape, "float32") for k in (2, 3, 4, 5, 6, 9, 17)}
     for tid in tids:
+        if not (RAW / f"c2_{tid}.tif").exists():
+            continue  # a LiDAR cell outside the area that was built (the margin of an edge cell)
         for k in out:
             a, t = read(f"c{k}", tid)
             r0, c0 = int(round(n1 - t.f)), int(round(t.c - e0))
             h, w = a.shape
-            out[k][r0:r0 + h, c0:c0 + w] += a
+            # a neighbouring cell only overlaps the area by its margin: clip both to the common window
+            ra0, ca0 = max(r0, 0), max(c0, 0)
+            ra1, ca1 = min(r0 + h, shape[0]), min(c0 + w, shape[1])
+            if ra1 > ra0 and ca1 > ca0:
+                out[k][ra0:ra1, ca0:ca1] += a[ra0 - r0:ra1 - r0, ca0 - c0:ca1 - c0]
     return out
 
 
@@ -111,6 +118,23 @@ def vectorise(mask, transform, kind):
 
 
 def main():
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default=None)
+    ap.add_argument("--geodata", default=str(ROOT / "data" / "cph-geodata.json"))
+    ap.add_argument("--surfaces", default=str(ROOT / "data" / "cph-surfaces.json"))
+    ap.add_argument("--lakes", default=str(ROOT / "data" / "cph-lakes.json"))
+    ap.add_argument("--streets", default=str(ROOT / "data" / "cph-streets.json"))
+    ap.add_argument("--ndvi", default="ndvi.tif", help="NDVI raster (name under the raster folder, covering the area + 20 m)")
+    ap.add_argument("--veg-dir", default=None, help="folder of the class / NDVI rasters (default data/raw/veg)")
+    frame.add_area_args(ap)
+    args = ap.parse_args()
+    global RAW
+    if args.veg_dir:
+        RAW = Path(args.veg_dir)
+    frame.apply_area_args(args)
+    out_path = frame.resolve_out(args, OUT)
     import rasterio  # noqa: PLC0415
     from rasterio.features import geometry_mask  # noqa: PLC0415
     from rasterio.transform import from_origin  # noqa: PLC0415
@@ -120,9 +144,9 @@ def main():
     sys.path.insert(0, str(ROOT / "tools" / "lod2"))
     import common  # noqa: PLC0415
 
-    geo = json.loads((ROOT / "data" / "cph-geodata.json").read_text())
-    surf = json.loads((ROOT / "data" / "cph-surfaces.json").read_text())
-    lakes = json.loads((ROOT / "data" / "cph-lakes.json").read_text())
+    geo = json.loads(Path(args.geodata).read_text())
+    surf = json.loads(Path(args.surfaces).read_text())
+    lakes = json.loads(Path(args.lakes).read_text())
 
     def utm_poly(ring, holes=()):
         pts = lambda r: [(ORIGIN[0] + r[i], ORIGIN[1] - r[i + 1]) for i in range(0, len(r), 2)]  # noqa: E731
@@ -136,7 +160,7 @@ def main():
     parks = unary_union([utm_poly(p["ring"], p.get("holes", [])) for p in geo["parks"] if ".161" not in p["id"]])
     # carriageways and their raised cycle strips, as the viewer lays them out (measured half width of cph-streets.json): no grass
     # on a road, not even under tree crowns. Where the street document has no entry the OSM width stands in.
-    streets = json.loads((ROOT / "data" / "cph-streets.json").read_text())
+    streets = json.loads(Path(args.streets).read_text())
     road_polys = []
     for r in geo["roads"]:
         if r["class"] not in ROAD_CLASSES:
@@ -160,11 +184,11 @@ def main():
                       + [utm_poly(l["ring"]).buffer(0.3) for l in lakes["lakes"]])
 
     # the common 1 m grid: district + 20 m, whole metres (the NDVI raster and the class rasters share it)
-    e0, n0, e1, n1 = (int(v) for v in (common.DISTRICT_BBOX[0] - 20, common.DISTRICT_BBOX[1] - 20, common.DISTRICT_BBOX[2] + 20, common.DISTRICT_BBOX[3] + 20))
+    e0, n0, e1, n1 = (int(v) for v in (frame.area_utm()[0] - 20, frame.area_utm()[1] - 20, frame.area_utm()[2] + 20, frame.area_utm()[3] + 20))
     shape = (n1 - n0, e1 - e0)
     T = from_origin(e0, n1, 1.0, 1.0)
-    c = mosaic_classes(common.tiles_for_bbox(common.DISTRICT_BBOX, 20.0), e0, n1, shape)
-    with rasterio.open(RAW / "ndvi.tif") as s:
+    c = mosaic_classes(common.tiles_for_bbox(frame.area_utm(), 20.0), e0, n1, shape)
+    with rasterio.open(RAW / args.ndvi) as s:
         ndvi = np.full(shape, np.nan, "float32")
         a, t = s.read(1), s.transform
         r0, c0 = int(round(n1 - t.f)), int(round(t.c - e0))
@@ -172,8 +196,9 @@ def main():
     masks, thr = classify(c, ndvi, geometry_mask([hard], shape, T, invert=True), geometry_mask([parks], shape, T, invert=True))
     print(f"NDVI threshold {thr:.3f}", file=sys.stderr)
 
-    district = Polygon([(ORIGIN[0] + LOCAL_BBOX[0], ORIGIN[1] - LOCAL_BBOX[3]), (ORIGIN[0] + LOCAL_BBOX[2], ORIGIN[1] - LOCAL_BBOX[3]),
-                        (ORIGIN[0] + LOCAL_BBOX[2], ORIGIN[1] - LOCAL_BBOX[1]), (ORIGIN[0] + LOCAL_BBOX[0], ORIGIN[1] - LOCAL_BBOX[1])])
+    lx0, lz0, lx1, lz1 = area_local()
+    district = Polygon([(ORIGIN[0] + lx0, ORIGIN[1] - lz1), (ORIGIN[0] + lx1, ORIGIN[1] - lz1),
+                        (ORIGIN[0] + lx1, ORIGIN[1] - lz0), (ORIGIN[0] + lx0, ORIGIN[1] - lz0)])
 
     def records(kind, geoms, subtract=None):
         out = []
@@ -208,7 +233,7 @@ def main():
              "canopy_m2": round(sum(g["area_m2"] for g in canopy)), "polygons": len(grass), "ndvi_threshold": round(thr, 3)}
     doc = {
         "version": "cph-vegetation/1",
-        "frame": {"epsg": 25832, "origin": list(ORIGIN), "axes": "x=east, z=south, y=up", "bbox": list(LOCAL_BBOX)},
+        "frame": {"epsg": 25832, "origin": list(ORIGIN), "axes": "x=east, z=south, y=up", "bbox": list(area_local())},
         "attribution": ["Indeholder data fra Klimadatastyrelsen (DHM Punktsky)", "GeoDanmark ortofoto (Styrelsen for Dataforsyning og Infrastruktur)"],
         "method": f"NDVI of the CIR orthophoto > hard-ground p97 (>= {NDVI_MIN}); lawn / planting split by DHM class 3/4 returns (>= {PLANTING_MIN}/m2); "
                   f"crown floor inside KK parks; {SMOOTH}x{SMOOTH} mean, open/close, min {MIN_AREA:.0f} m2, cut by buildings, KK pavements and lakes",
@@ -216,8 +241,8 @@ def main():
         "surfaces": grass,
         "canopy": canopy,
     }
-    OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
-    print(f"wrote {OUT.relative_to(ROOT)} ({OUT.stat().st_size / 1e6:.2f} MB)", stats)
+    out_path.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
+    print(f"wrote {out_path} ({out_path.stat().st_size / 1e6:.2f} MB)", stats)
 
 
 if __name__ == "__main__":

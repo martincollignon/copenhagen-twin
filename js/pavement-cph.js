@@ -9,6 +9,7 @@
 import { triangulatePolygon, pointInRing, ringArea, ringPerimeter } from './polygon-cph.js';
 import { createKerbFrame } from './walk-space-cph.js';
 import { drapePositions } from './terrain-cph.js';
+import { ownList } from './tile-own.js';
 
 export const PAVEMENT_CLASSES = ['kbh_fortov', 'raadhus', 'cobbles', 'setts', 'gravel', 'other'];
 const PLAZA_MIN_AREA = 300; // m2
@@ -231,7 +232,8 @@ export function buildPavementBuckets(geo, surfacesDoc, { roads, y, groundY, skip
   const maxEdge = (x, z) => (nearCycle && nearCycle(x, z) ? 2.5 : 6);
   const groundEdge = terrain && !terrain.flat ? 6 : 12; // register polygons follow the terrain: shorter edges
   let i = 0;
-  for (const s of geo.sidewalks || []) {
+  const sidewalks = ownList(geo, 'sidewalks');
+  for (const s of sidewalks) {
     if (!s.ring || s.ring.length < 6) continue;
     const fallback = sidewalkClass(s.ring);
     tessellateFramed(s.ring, {
@@ -243,7 +245,7 @@ export function buildPavementBuckets(geo, surfacesDoc, { roads, y, groundY, skip
     });
   }
   // the sett strip along the building line, just above the slabs
-  for (const quad of facadeStrips(geo.sidewalks, createBuildingEdgeIndex(geo.buildings))) {
+  for (const quad of facadeStrips(sidewalks, createBuildingEdgeIndex(geo.buildings))) {
     tessellateFramed(quad, { frame, y: y + 0.003, seed: hash01(++i), skip, maxEdge: () => 6, buckets, terrain, classOf: () => 'setts' });
   }
   // raised side-street crossings (junction-mouths-cph.js): pavement slabs bridging the gaps in the KK sidewalk polygons
@@ -251,7 +253,7 @@ export function buildPavementBuckets(geo, surfacesDoc, { roads, y, groundY, skip
     tessellateFramed(q, { frame, y, seed: hash01(++i), buckets, terrain, maxEdge: () => 6, classOf: () => 'kbh_fortov' });
   }
   // register polygons that are not pavements (park paths, squares, gravel); drawn just above the ground plane
-  for (const s of surfacesDoc?.surfaces || []) {
+  for (const s of ownList(surfacesDoc, 'surfaces')) {
     if (!s.ring || s.ring.length < 6) continue;
     // holes (lawns inside a path network) are carved out by the triangulation; measured lawns (DHM/CIR) lie over the register
     tessellateFramed(s.ring, {

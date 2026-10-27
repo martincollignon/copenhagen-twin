@@ -25,7 +25,8 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from frame import LOCAL_BBOX, ORIGIN, flat, ring_to_local  # noqa: E402
+import frame  # noqa: E402
+from frame import area_local, ORIGIN, flat, ring_to_local  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "data" / "cph-surfaces.json"
@@ -97,7 +98,7 @@ def centroid(ring):
 
 
 def inside_bbox(c):
-    x0, z0, x1, z1 = LOCAL_BBOX
+    x0, z0, x1, z1 = area_local()
     return x0 - MARGIN <= c[0] <= x1 + MARGIN and z0 - MARGIN <= c[1] <= z1 + MARGIN
 
 
@@ -159,7 +160,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--refresh", action="store_true")
     ap.add_argument("--sanitize-existing", action="store_true", help="repair invalid polygons in the committed data file without refetching")
+    ap.add_argument("--out", default=None)
+    frame.add_area_args(ap)
     args = ap.parse_args()
+    frame.apply_area_args(args)
+    out_path = frame.resolve_out(args, OUT)
     if args.sanitize_existing:
         doc = sanitize_doc(json.loads(OUT.read_text()))
         OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
@@ -215,14 +220,14 @@ def main():
 
     doc = {
         "version": "cph-surfaces/1",
-        "frame": {"epsg": 25832, "origin": list(ORIGIN), "axes": "x=east, z=south, y=up", "bbox": list(LOCAL_BBOX)},
+        "frame": {"epsg": 25832, "origin": list(ORIGIN), "axes": "x=east, z=south, y=up", "bbox": list(area_local())},
         "attribution": ["Indeholder data fra Københavns Kommune (kbhkort, CC BY 4.0 / Open Data DK licens)"],
         "classes": list(CLASSES),
         "surfaces": surfaces,
         "markings": markings,
     }
-    OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
-    print(f"wrote {OUT.relative_to(ROOT)} ({OUT.stat().st_size / 1e6:.2f} MB)")
+    out_path.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
+    print(f"wrote {out_path} ({out_path.stat().st_size / 1e6:.2f} MB)")
     print("surfaces", len(surfaces), dict(Counter(s["cls"] for s in surfaces)))
     print("  by material", dict(Counter(s["material"] for s in surfaces)))
     print("markings", len(markings), dict(Counter(m["kind"] for m in markings)))

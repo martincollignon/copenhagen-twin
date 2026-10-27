@@ -382,8 +382,8 @@ export function buildFurniturePlan(doc, groundHeight = null, { seed = 1, place =
 
 export const FURNITURE_BOUNDS = { minX: -820, maxX: 820, minZ: -820, maxZ: 820 };
 
-export function indexItems(items) {
-  const qt = new Quadtree({ ...FURNITURE_BOUNDS }, 12, 8);
+export function indexItems(items, bounds = FURNITURE_BOUNDS) {
+  const qt = new Quadtree({ ...bounds }, 12, 8);
   for (const it of items) qt.insert(it);
   return qt;
 }

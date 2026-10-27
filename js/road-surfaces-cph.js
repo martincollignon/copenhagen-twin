@@ -10,7 +10,9 @@ import { carriagewayWidth, movingHalfWidth, cycleStrips, intersectIntervals, sub
 import { triangulatePolygon, pointInRing } from './polygon-cph.js';
 import { buildPavementBuckets, createSurfaceIndex } from './pavement-cph.js';
 import { createHeightGrid, composeHeightField } from './ground-height-cph.js';
-import { densifyPts, drapePositions } from './terrain-cph.js';
+import { ownList, isOwned } from './tile-own.js';
+import { disposeTree } from './dispose-tree.js';
+import { densifyPts, drapePositions, vertexNormals, faceNormals } from './terrain-cph.js';
 import { computeMouthLayouts, subtractIntervals } from './junction-mouths-cph.js';
 import { hasContraflow, bikeBanned, stripCoverage, stripDirection } from './bike-direction.js';
 
@@ -477,7 +479,7 @@ export function buildGroundBuckets(geo, surfacesDoc, terrain = null) {
     groundY: SURFACE_Y.ground,
     skip: (x, z) => cycles.near(x, z, -0.3),
     nearCycle: (x, z) => cycles.near(x, z, 6),
-    extraPavement: [...mouthLayouts(geo).values()].flat().flatMap((m) => m.plateaus),
+    extraPavement: [...mouthLayouts(geo)].filter(([ri]) => isOwned(geo, 'roads', geo.roads[ri])).flatMap(([, list]) => list).flatMap((m) => m.plateaus),
     terrain
   });
 }
@@ -487,18 +489,31 @@ export function buildGroundBuckets(geo, surfacesDoc, terrain = null) {
  * @returns {{ heightAt: (x: number, z: number) => number }}
  */
 export function buildGroundHeightField(geo, surfaces = null, terrain = null) {
-  let x0 = Infinity;
-  let z0 = Infinity;
-  let x1 = -Infinity;
-  let z1 = -Infinity;
-  for (const list of [geo.roads || [], geo.sidewalks || []]) {
-    for (const it of list) {
-      const a = it.pts || it.ring || [];
-      for (let i = 0; i + 1 < a.length; i += 2) { x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]); z0 = Math.min(z0, a[i + 1]); z1 = Math.max(z1, a[i + 1]); }
+  const grid = buildGroundHeightGrid(geo, surfaces);
+  return grid ? composeHeightField(terrain, grid) : composeHeightField(terrain, { heightAt: () => 0 });
+}
+
+/**
+ * The 0.5 m grid of surface offsets (SURFACE_Y) over `bbox` (default: the extent of the roads and pavements + 20 m); null when
+ * there is nothing to draw. Every item of the document is rasterised, owned or not: a tile's grid needs the pavements of its
+ * neighbours that reach into it.
+ */
+export function buildGroundHeightGrid(geo, surfaces = null, bbox = null) {
+  if (!bbox) {
+    let x0 = Infinity;
+    let z0 = Infinity;
+    let x1 = -Infinity;
+    let z1 = -Infinity;
+    for (const list of [geo.roads || [], geo.sidewalks || []]) {
+      for (const it of list) {
+        const a = it.pts || it.ring || [];
+        for (let i = 0; i + 1 < a.length; i += 2) { x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]); z0 = Math.min(z0, a[i + 1]); z1 = Math.max(z1, a[i + 1]); }
+      }
     }
+    if (!Number.isFinite(x0)) return null;
+    bbox = [x0 - 20, z0 - 20, x1 + 20, z1 + 20];
   }
-  if (!Number.isFinite(x0)) return composeHeightField(terrain, { heightAt: () => 0 });
-  const grid = createHeightGrid({ bbox: [x0 - 20, z0 - 20, x1 + 20, z1 + 20], cell: 0.5 });
+  const grid = createHeightGrid({ bbox, cell: 0.5 });
   for (const s of surfaces?.surfaces || []) if (s.ring && s.cls !== 'grass') grid.polygon(s.ring, SURFACE_Y.ground, s.holes || []);
   for (const r of geo.roads || []) if (VEHICULAR.has(r.class) && r.pts?.length >= 4 && !r.drop) grid.ribbon(r.pts, -carriagewayWidth(r) / 2, carriagewayWidth(r) / 2, SURFACE_Y.asphalt);
   for (const s of geo.sidewalks || []) grid.polygon(s.ring, SURFACE_Y.sidewalk);
@@ -517,7 +532,7 @@ export function buildGroundHeightField(geo, surfaces = null, terrain = null) {
       for (const q of m.plateaus) grid.polygon(q, SURFACE_Y.sidewalk);
     }
   }
-  return composeHeightField(terrain, grid);
+  return grid;
 }
 
 /**
@@ -573,7 +588,7 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
   const standing = (lay, side, kind, from, to) => subtractIntervals(to - from, lay.filter((m) => m.mouth.side === side && m[kind]).map((m) => [m[kind][0] - from, m[kind][1] - from]))
     .map(([a, b]) => [a + from, b + from]);
   const piecesOf = (pts, list, fn) => { for (const [a, b] of list) { const q = slicePts(pts, a, b); if (q.length >= 4) fn(q, a); } };
-  for (const r of geo.roads || []) {
+  for (const r of ownList(geo, 'roads')) {
     if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4 || r.drop) continue;
     const w = carriagewayWidth(r);
     const h = w / 2;
@@ -683,7 +698,8 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
 
   // side-street mouths: kerb returns round the corners of through streets, ramps up to the raised crossings of the
   // small ones (their pavement-level plateaus are pavement-cph.js triangles)
-  for (const list of layouts.values()) {
+  for (const [mouthRoad, list] of layouts) {
+    if (!isOwned(geo, 'roads', geo.roads[mouthRoad])) continue;
     for (const m of list) {
       for (const arc of m.arcs) {
         // the carriageway side of the arc: toward the junction centre
@@ -699,17 +715,18 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
     }
   }
 
-  for (const c of geo.cycleTracks || []) {
+  for (const c of ownList(geo, 'cycleTracks')) {
     if (!c.pts || c.pts.length < 4) continue;
     const hw = (c.width || CYCLE_W) / 2;
     ribbon(cycle, c.pts, -hw, hw, SURFACE_Y.cycle - 0.002);
   }
-  if (!pavement) for (const s of geo.sidewalks || []) if (s.ring && s.ring.length >= 6) fillRing(sidewalk, s.ring, pavementY);
+  if (!pavement) for (const s of ownList(geo, 'sidewalks')) if (s.ring && s.ring.length >= 6) fillRing(sidewalk, s.ring, pavementY);
 
   // KK markings as decals on whichever surface they lie on
   if (marks.length) {
     const cycles = cycleTrackIndex(geo);
     for (const m of marks) {
+      if (!isOwned(surfaces, 'markings', m)) continue;
       const [cx, cz] = ringCentroid(m.ring);
       const onCycle = cycles.near(cx, cz);
       const y = onCycle ? SURFACE_Y.cyclePaint : m.kind === 'bluecycle' ? SURFACE_Y.asphalt + 0.012 : SURFACE_Y.paint;
@@ -753,47 +770,115 @@ export function buildRoadSurfaceArrays(geo, { surfaces = null, pavement = false,
   return layers;
 }
 
+/** Meshes of one road-surface document into `group`; `materials` are shared (createRoadSurfaceMaterials). Returns the stats. */
+const LITE_SKIPS = new Set(['paint', 'blue', 'red', 'yellow', 'sidewalk']); // layers a mid-ring tile does not draw
+
+/**
+ * The meshes a set of road surfaces makes, as typed arrays (pure: a worker runs it, js/road-compute.js): the carriageway, kerb,
+ * cycle, paint ... layers (indexed) and the pavement / register-ground buckets (one non-indexed mesh per material class, each
+ * triangle with its own kerb frame), with their normals. `cls` is the key into the materials.
+ */
+export function computeSurfaceMeshes(geo, surfaces, terrain, { lite = false } = {}) {
+  const meshes = [];
+  const layers = buildRoadSurfaceArrays(geo, { surfaces, pavement: true, terrain });
+  for (const [name, layer] of Object.entries(layers)) {
+    if (!layer.vertexCount) continue;
+    if (lite && LITE_SKIPS.has(name)) continue;
+    const { position, kuv, index } = layer.arrays();
+    meshes.push({ name: `road-${name}`, cls: name, ground: false, position, kuv, index, seed: null, normal: vertexNormals(position, index) });
+  }
+  if (lite) return meshes; // the mid ring: carriageways, kerbs and cycle tracks; no markings, pavements or register ground
+  for (const [key, bucket] of buildGroundBuckets(geo, surfaces, terrain)) {
+    if (!bucket.vertexCount || key === 'ground:other') continue; // classes without a look (tree grates, ...) are not drawn
+    const { position, kuv, seed } = bucket.arrays();
+    meshes.push({ name: `ground-${key}`, cls: key.replace('ground:', ''), ground: true, position, kuv, index: null, seed, normal: faceNormals(position) });
+  }
+  return meshes;
+}
+
+async function fillSurfaceGroup(THREE, group, geo, surfaces, terrain, materials, slice = null, computed = null, lite = false) {
+  const meshes = computed || computeSurfaceMeshes(geo, surfaces, terrain, { lite });
+  if (slice) await slice();
+  const stats = { pavementTriangles: 0, markings: surfaces?.markings?.length || 0 };
+
+  for (const m of meshes) {
+    const material = m.ground ? materials.ground[m.cls] : materials[m.cls];
+    if (!material) continue;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(m.position, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(m.normal, 3));
+    g.setAttribute('kuv', new THREE.BufferAttribute(m.kuv, 2));
+    if (m.seed) g.setAttribute('seed', new THREE.BufferAttribute(m.seed, 1));
+    if (m.index) g.setIndex(new THREE.BufferAttribute(m.index, 1));
+    const mesh = new THREE.Mesh(g, material);
+    mesh.name = m.name;
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
+    group.add(mesh);
+    if (m.ground) stats.pavementTriangles += m.position.length / 9;
+    if (slice) await slice();
+  }
+  return stats;
+}
+
 export async function buildCphRoadSurfaces(scene, geo, { surfaces = null, terrain = null } = {}) {
   const THREE = await import('three/webgpu');
   const { createRoadSurfaceMaterials } = await import('./surface-materials-cph.js');
   const materials = createRoadSurfaceMaterials(THREE);
-  const layers = buildRoadSurfaceArrays(geo, { surfaces, pavement: true, terrain });
   const group = new THREE.Group();
   group.name = 'CopenhagenRoadSurfaces';
-  const stats = { pavementTriangles: 0, markings: surfaces?.markings?.length || 0 };
-
-  const addMesh = (name, position, kuv, index, mat, extra = {}) => {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(position, 3));
-    g.setAttribute('kuv', new THREE.BufferAttribute(kuv, 2));
-    if (extra.seed) g.setAttribute('seed', new THREE.BufferAttribute(extra.seed, 1));
-    if (index) g.setIndex(new THREE.BufferAttribute(index, 1));
-    g.computeVertexNormals();
-    const mesh = new THREE.Mesh(g, mat);
-    mesh.name = name;
-    mesh.receiveShadow = true;
-    mesh.frustumCulled = false;
-    group.add(mesh);
-    return mesh;
-  };
-
-  for (const [name, layer] of Object.entries(layers)) {
-    if (!layer.vertexCount) continue;
-    const { position, kuv, index } = layer.arrays();
-    addMesh(`road-${name}`, position, kuv, index, materials[name]);
-  }
-
-  // pavements and register ground: one mesh per material class, non-indexed (each triangle has its own frame)
-  const buckets = buildGroundBuckets(geo, surfaces, terrain);
-  for (const [key, bucket] of buckets) {
-    if (!bucket.vertexCount) continue;
-    const cls = key.replace('ground:', '');
-    const mat = materials.ground[cls];
-    if (!mat || key === 'ground:other') continue; // classes without a look (tree grates, ...) are not drawn
-    const { position, kuv, seed } = bucket.arrays();
-    addMesh(`ground-${key}`, position, kuv, null, mat, { seed });
-    stats.pavementTriangles += bucket.vertexCount / 3;
-  }
+  const stats = await fillSurfaceGroup(THREE, group, geo, surfaces, terrain, materials);
   scene.add(group);
   return { group, stats, groundHeight: buildGroundHeightField(geo, surfaces, terrain), terrain };
+}
+
+/**
+ * The streamed road surfaces: one group per tile under a shared root, one set of materials for all of them, and the tiled
+ * ground-height field (offsets per near tile on top of the streamed terrain). `addTile(id, geo, surfaces, { bounds, near, slice })`
+ * builds the meshes of the OWNED items of the context document (js/tile-own.js); `near` also rasterises the 0.5 m height
+ * chunk the agents and the furniture stand on. `slice` (js/yield-frame.js) shares the main thread with the render loop.
+ */
+export async function createRoadSurfaceLayer(scene, { terrain = null, tiledHeight = null } = {}) {
+  const THREE = await import('three/webgpu');
+  const { createRoadSurfaceMaterials } = await import('./surface-materials-cph.js');
+  const materials = createRoadSurfaceMaterials(THREE);
+  const group = new THREE.Group();
+  group.name = 'CopenhagenRoadSurfaces';
+  scene.add(group);
+  const tiles = new Map();
+  const stats = { tiles: 0, pavementTriangles: 0 };
+  const HEIGHT_MARGIN = 20;
+  return {
+    group,
+    stats,
+    groundHeight: tiledHeight,
+    /** `computed` = { meshes, heightGrid } from a worker (js/road-compute.js): the arrays are only turned into meshes here. */
+    async addTile(id, geo, surfaces, { bounds, near = true, slice = null, computed = null } = {}) {
+      this.removeTile(id);
+      const tileGroup = new THREE.Group();
+      tileGroup.name = `road-surfaces-${id}`;
+      group.add(tileGroup); // its meshes appear as they are made
+      const st = await fillSurfaceGroup(THREE, tileGroup, geo, near ? surfaces : null, terrain, materials, slice, computed?.meshes || null, !near);
+      if (slice) await slice();
+      if (near && tiledHeight && bounds) {
+        const grid = computed ? (computed.heightGrid ? createHeightGrid(computed.heightGrid) : null)
+          : buildGroundHeightGrid(geo, surfaces, [bounds[0] - HEIGHT_MARGIN, bounds[1] - HEIGHT_MARGIN, bounds[2] + HEIGHT_MARGIN, bounds[3] + HEIGHT_MARGIN]);
+        if (grid) tiledHeight.addTile(id, grid, bounds);
+      }
+      tiles.set(id, { group: tileGroup, triangles: st.pavementTriangles });
+      stats.tiles = tiles.size;
+      stats.pavementTriangles += st.pavementTriangles;
+    },
+    removeTile(id) {
+      const t = tiles.get(id);
+      if (!t) return false;
+      disposeTree(t.group);
+      tiledHeight?.removeTile(id);
+      stats.pavementTriangles -= t.triangles;
+      tiles.delete(id);
+      stats.tiles = tiles.size;
+      return true;
+    },
+    has: (id) => tiles.has(id)
+  };
 }

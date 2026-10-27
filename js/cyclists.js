@@ -54,15 +54,20 @@ function batch(group, name, geometry, material, { framePaint = false, colored = 
   };
 }
 
+/** The lane graph of `geo` (roads, cycle tracks) with the bike lights of the signalised junctions in `signalNodes`. */
+export function buildCyclistNetworkFor(geo, signalNodes = []) {
+  return buildCyclistNetwork(geo, signalNodes.map((n) => ({
+    x: n.x, z: n.z, sigOffset: n.sigOffset ?? signalOffset(n.x, n.z), arms: n.arms
+  })));
+}
+
 /**
  * @param scene the three.js scene
  * @param geo data/cph-geodata.json
  * @param signalNodes road-network nodes with signals, which supply the cycle lights' offsets and arms
  */
-export function createCyclistSystem(scene, geo, signalNodes = [], { groundHeight = null } = {}) {
-  const network = buildCyclistNetwork(geo, signalNodes.map((n) => ({
-    x: n.x, z: n.z, sigOffset: n.sigOffset ?? signalOffset(n.x, n.z), arms: n.arms
-  })));
+export function createCyclistSystem(scene, geo, signalNodes = [], { groundHeight = null, network: prebuilt = null } = {}) {
+  let network = prebuilt || buildCyclistNetworkFor(geo, signalNodes);
   const sim = createCyclists(network, { count: NUM_CYCLISTS });
   const group = new THREE.Group();
   group.name = 'CopenhagenCyclists';
@@ -213,5 +218,11 @@ export function createCyclistSystem(scene, geo, signalNodes = [], { groundHeight
     }
   }
 
-  return { group, network, sim, riders: sim.riders, collisionActors, syncCollisionActors, simulate, render, update };
+  /** Swaps the lane graph (see createCyclists); the riders (and their collision actors) are placed afresh. */
+  function setNetwork(next) {
+    network = next;
+    sim.setNetwork(next);
+  }
+
+  return { group, get network() { return network; }, sim, riders: sim.riders, collisionActors, syncCollisionActors, simulate, render, update, setNetwork };
 }

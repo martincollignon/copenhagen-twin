@@ -87,7 +87,11 @@ def main(argv=None):
     ap.add_argument("--no-dhm", action="store_true")
     ap.add_argument("--patch-roads", action="store_true",
                     help="recompile ONLY roads + roadGraph (roads.py) into the existing --out file; every other field is kept as it is")
+    frame.add_area_args(ap)
     a = ap.parse_args(argv)
+    frame.apply_area_args(a)
+    if not frame.is_district() and a.out == "data/cph-geodata.json":
+        raise SystemExit("--bbox/--tile builds an area other than the district: pass --out so data/cph-geodata.json is not overwritten")
     if a.patch_roads:
         return patch_roads(a)
 
@@ -136,7 +140,7 @@ def main(argv=None):
         "version": "cph-geodata/1",
         "generated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "frame": {"epsg": 25832, "vertical": "DVR90", "origin": list(frame.ORIGIN),
-                  "axes": "x=east, z=south, y=up", "bbox": list(frame.LOCAL_BBOX)},
+                  "axes": "x=east, z=south, y=up", "bbox": list(frame.area_local())},
         "attribution": [
             "Indeholder data fra Klimadatastyrelsen / GeoDanmark (Bygning), BBR og Københavns Kommune (kbhkort, CC BY 4.0 / Open Data DK licens).",
             "Indeholder data fra Styrelsen for Dataforsyning og Infrastruktur, Skråfoto 2023 and 2025 (retrieved October 2026).",

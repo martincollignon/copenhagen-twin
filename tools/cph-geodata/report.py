@@ -37,7 +37,7 @@ def footprint_coverage(doc):
     ref_path = fetch.RAW / "kk_bygning_kk.json"
     if not ref_path.exists():
         return None
-    bb = box(*frame.LOCAL_BBOX)
+    bb = box(*frame.area_local())
     ref = set()
     for f in json.loads(ref_path.read_text())["features"]:
         g = shape(f["geometry"])

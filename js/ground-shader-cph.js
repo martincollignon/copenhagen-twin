@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { Fn, float, vec2, vec4, texture, positionWorld, fwidth, length, mix, smoothstep, step, context } from 'three/tsl';
+import { Fn, float, vec2, vec4, texture, positionWorld, fwidth, length, mix, smoothstep, step, context, uniform } from 'three/tsl';
 import { groundField, LAND } from './ground-field-cph.js';
 import { poolLightAt } from './pool-light-cph.js';
 import { gravelRGB, noise2D, srgb, wetFinish, wetReflectionWeightAt } from './surface-materials-cph.js';
@@ -9,20 +9,9 @@ import { gravelRGB, noise2D, srgb, wetFinish, wetReflectionWeightAt } from './su
 // grass in the parks, and along the Soerne a fine-gravel lake path of LAND.pathW metres (soft, noisy edge) between the
 // granite coping and the grass slope. One world-space shader fed by the ground-field texture (js/ground-field-cph.js).
 
-/** Replaces the colour of `material` with the field shader. Returns { field, texture }. */
-export function applyGroundField(material, lakesDoc, parks, { bbox }) {
-  const field = groundField(lakesDoc, parks, { bbox });
-  const tex = new THREE.DataTexture(field.data, field.width, field.height, THREE.RGBAFormat, THREE.UnsignedByteType);
-  tex.magFilter = tex.minFilter = THREE.LinearFilter;
-  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.generateMipmaps = false;
-  tex.needsUpdate = true;
-  const [x0, z0, x1, z1] = bbox;
+/** The colour / roughness nodes of the field shader for a field sample `f` (R lake distance, G green) and the distance `dist` in metres. */
+function applyFieldSurface(material, f, dist, inside) {
   const wp = positionWorld.xz;
-  const uvf = vec2(wp.x.sub(x0).div(x1 - x0), wp.y.sub(z0).div(z1 - z0));
-  const inside = step(x0, wp.x).mul(step(wp.x, x1)).mul(step(z0, wp.y)).mul(step(wp.y, z1));
-  const f = texture(tex, uvf);
-  const dist = f.r.mul(field.max).add(float(1000).mul(float(1).sub(inside))); // outside the district: far from any lake
   const edge = float(LAND.pathW).add(noise2D(wp.mul(0.22)).sub(0.5).mul(1.8)).add(noise2D(wp.mul(1.7)).sub(0.5).mul(0.5));
   const pathMask = float(1).sub(smoothstep(edge.sub(0.55), edge.add(0.65), dist)).mul(step(0.05, dist.add(f.r))); // 1 on the path
   const underCoping = float(1).sub(smoothstep(0.0, 0.5, dist)); // damp dark strip at the coping foot
@@ -49,5 +38,70 @@ export function applyGroundField(material, lakesDoc, parks, { bbox }) {
   material.contextNode = context({
     wetSurfaceReflection: pathMask.mul(wetReflectionWeightAt(wp))
   });
+}
+
+/** Replaces the colour of `material` with the field shader. Returns { field, texture }. */
+export function applyGroundField(material, lakesDoc, parks, { bbox }) {
+  const field = groundField(lakesDoc, parks, { bbox });
+  const tex = new THREE.DataTexture(field.data, field.width, field.height, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.magFilter = tex.minFilter = THREE.LinearFilter;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  const [x0, z0, x1, z1] = bbox;
+  const wp = positionWorld.xz;
+  const uvf = vec2(wp.x.sub(x0).div(x1 - x0), wp.y.sub(z0).div(z1 - z0));
+  const inside = step(x0, wp.x).mul(step(wp.x, x1)).mul(step(z0, wp.y)).mul(step(wp.y, z1));
+  const f = texture(tex, uvf);
+  const dist = f.r.mul(field.max).add(float(1000).mul(float(1).sub(inside))); // outside the district: far from any lake
+  applyFieldSurface(material, f, dist, inside);
   return { field, texture: tex };
+}
+
+/**
+ * The same shader on a window raster that follows the camera (the streamed city: parks and grass everywhere, the Soerne's gravel path
+ * where the hand-made lakes are). `n` x `n` RGBA bytes (js/water-tiles-cph.js groundWindow); `update(origin, data)` swaps the raster.
+ */
+export function applyGroundWindow(material, { n = 1024, size = 1536 } = {}) {
+  const data = new Uint8Array(n * n * 4);
+  for (let i = 0; i < n * n; i++) { data[4 * i] = 255; data[4 * i + 3] = 255; }
+  const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.magFilter = tex.minFilter = THREE.LinearFilter;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  const origin = uniform(new THREE.Vector2(-1e6, -1e6));
+  const sizeU = uniform(size);
+  const wp = positionWorld.xz;
+  const uvf = vec2(wp.x.sub(origin.x), wp.y.sub(origin.y)).div(sizeU);
+  const inside = step(0.0, uvf.x).mul(step(uvf.x, 1.0)).mul(step(0.0, uvf.y)).mul(step(uvf.y, 1.0));
+  const f = texture(tex, uvf);
+  const dist = f.r.mul(LAND.max).add(float(1000).mul(float(1).sub(inside)));
+  applyFieldSurface(material, f, dist, inside);
+  return {
+    texture: tex,
+    update(x0, z0, bytes, newSize = size) {
+      tex.image.data.set(bytes);
+      tex.needsUpdate = true;
+      origin.value.set(x0, z0);
+      sizeU.value = newSize;
+    }
+  };
+}
+
+/**
+ * The plain ground for a city without the lake field (the streamed city outside the district): quiet grey stone with the same fine
+ * speckle as the field shader's stone, no grid, no lake path.
+ */
+export function applyPlainGround(material) {
+  const wp = positionWorld.xz;
+  const fpw = length(vec2(fwidth(wp.x), fwidth(wp.y)));
+  const fine = float(1).sub(smoothstep(0.02, 0.2, fpw));
+  const big = noise2D(wp.mul(0.35));
+  const mid = noise2D(wp.mul(3.1));
+  const speck = noise2D(wp.mul(46.0)).sub(0.5).mul(0.16).mul(fine);
+  material.colorNode = mix(srgb(112, 109, 103), srgb(132, 128, 120), big).mul(float(0.94).add(mid.mul(0.1)).add(speck));
+  material.roughnessNode = float(0.95);
+  material.metalness = 0;
+  return material;
 }

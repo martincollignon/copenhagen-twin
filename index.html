@@ -38,6 +38,29 @@
   <link rel="modulepreload" href="./js/bridge-dlb-geometry.js" />
   <link rel="modulepreload" href="./js/bridge-dlb.js" />
   <link rel="modulepreload" href="./js/lod2-geometry.js" />
+  <link rel="modulepreload" href="./js/tile-grid.js" />
+  <link rel="modulepreload" href="./js/data-config.js" />
+  <link rel="modulepreload" href="./js/tile-store.js" />
+  <link rel="modulepreload" href="./js/buildings-stream.js" />
+  <link rel="modulepreload" href="./js/dispose-tree.js" />
+  <link rel="modulepreload" href="./js/ground-stream.js" />
+  <link rel="modulepreload" href="./js/tile-data.js" />
+  <link rel="modulepreload" href="./js/tile-own.js" />
+  <link rel="modulepreload" href="./js/tile-rings.js" />
+  <link rel="modulepreload" href="./js/tile-streamer.js" />
+  <link rel="modulepreload" href="./js/yield-frame.js" />
+  <link rel="modulepreload" href="./js/agent-region.js" />
+  <link rel="modulepreload" href="./js/hero-cache.js" />
+  <link rel="modulepreload" href="./js/building-compute.js" />
+  <link rel="modulepreload" href="./js/tile-pool.js" />
+  <link rel="modulepreload" href="./js/tile-worker.js" />
+  <link rel="modulepreload" href="./js/road-compute.js" />
+  <link rel="modulepreload" href="./js/furniture-compute.js" />
+  <link rel="modulepreload" href="./js/far-lod.js" />
+  <link rel="modulepreload" href="./js/far-lod-geometry.js" />
+  <link rel="modulepreload" href="./js/water-stream.js" />
+  <link rel="modulepreload" href="./js/reflect-gate.js" />
+  <link rel="modulepreload" href="./js/water-tiles-cph.js" />
   <link rel="modulepreload" href="./js/appearance.js" />
   <link rel="modulepreload" href="./js/facade-lod.js" />
   <link rel="modulepreload" href="./js/facade-style.js" />
@@ -48,6 +71,7 @@
   <link rel="modulepreload" href="./js/bike-direction.js" />
   <link rel="modulepreload" href="./js/cameras.js" />
   <link rel="modulepreload" href="./js/city-config.js" />
+  <link rel="modulepreload" href="./js/city-teleports.js" />
   <link rel="modulepreload" href="./js/collision-shapes.js" />
   <link rel="modulepreload" href="./js/static-colliders.js" />
   <link rel="modulepreload" href="./js/city-collisions.js" />
@@ -205,6 +229,15 @@
     <button id="tp-peblinge" class="pop-item tp-btn" data-teleport="peblinge" type="button"><span class="pop-name">Peblinge Sø</span><span class="pop-sub">Peblinge Dossering</span></button>
     <button id="tp-nbro" class="pop-item tp-btn" data-teleport="nbro" type="button"><span class="pop-name">Nørrebrogade</span><span class="pop-sub">Nørrebro · cycle street</span></button>
     <button id="tp-blaag" class="pop-item tp-btn" data-teleport="blaag" type="button"><span class="pop-name">Blågårds Plads</span><span class="pop-sub">Nørrebro · square</span></button>
+    <div id="tp-city-title" class="pop-title" hidden>Citywide</div>
+    <button id="tp-rhus" class="pop-item tp-btn" data-teleport="rhus" type="button" hidden><span class="pop-name">Rådhuspladsen</span><span class="pop-sub">Indre By · town hall square</span></button>
+    <button id="tp-nyhavn" class="pop-item tp-btn" data-teleport="nyhavn" type="button" hidden><span class="pop-name">Nyhavn</span><span class="pop-sub">Indre By · the canal</span></button>
+    <button id="tp-slot" class="pop-item tp-btn" data-teleport="slot" type="button" hidden><span class="pop-name">Christiansborg</span><span class="pop-sub">Slotsholmen</span></button>
+    <button id="tp-brygge" class="pop-item tp-btn" data-teleport="brygge" type="button" hidden><span class="pop-name">Islands Brygge</span><span class="pop-sub">Amager · the harbour front</span></button>
+    <button id="tp-vesterbro" class="pop-item tp-btn" data-teleport="vesterbro" type="button" hidden><span class="pop-name">Istedgade</span><span class="pop-sub">Vesterbro</span></button>
+    <button id="tp-frbrhus" class="pop-item tp-btn" data-teleport="frbrhus" type="button" hidden><span class="pop-name">Frederiksberg Rådhus</span><span class="pop-sub">Frederiksberg · Smallegade</span></button>
+    <button id="tp-frballe" class="pop-item tp-btn" data-teleport="frballe" type="button" hidden><span class="pop-name">Frederiksberg Allé</span><span class="pop-sub">Frederiksberg · the avenue</span></button>
+    <button id="tp-trianglen" class="pop-item tp-btn" data-teleport="trianglen" type="button" hidden><span class="pop-name">Trianglen</span><span class="pop-sub">Østerbro</span></button>
   </div>
 
   <!-- Bottom-Left: Street-Name Sign -->

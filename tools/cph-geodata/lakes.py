@@ -34,7 +34,6 @@ BRIDGE_CLOSE_M = 15.0  # gaps narrower than 2 x this are bridged (a bridge deck 
 MIN_FILL_M2 = 50.0  # closing artefacts smaller than this are not bridges
 REGISTER_LAKE_PREFIX = "kk:parkregister:parkregister.161"
 MIN_CUT_M2 = 2.0  # overlaps smaller than this are ignored
-BBOX = 750.0
 
 
 def _poly(flat_ring, holes=()):
