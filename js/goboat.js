@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { mergeRigidMeshes } from './rigid-meshes.js';
 
 // A metric, reference-based Copenhagen electric picnic boat. Local +Z points toward the bow; y=0 is the waterline.
 export const GOBOAT_DIMENSIONS = Object.freeze({ length: 5.0, beam: 2.0, hullRadius: 2.7 });
@@ -237,5 +238,6 @@ export function createGoBoat({ fleet = false, number = '08' } = {}) {
     object.castShadow = !fleet && !object.material?.transparent;
     object.receiveShadow = !fleet && !object.material?.transparent;
   });
+  mergeRigidMeshes(group);
   return { group };
 }

@@ -7,8 +7,8 @@ function offsetRanges(ranges, offset) {
   return ranges.map((range) => ({ ...range, start: range.start + offset, end: range.end + offset }));
 }
 
-/** Packs the static mesh children of named building cells into material/name batches. */
-function batchBuildingCells(root, leaves, pickables) {
+/** Produces checkpoints while packing static mesh children of named building cells into material/name batches. */
+function* batchBuildingCellsSteps(root, leaves, pickables) {
   root.updateMatrixWorld(true);
   const rootInverse = new THREE.Matrix4().copy(root.matrixWorld).invert();
   const groupsByMaterial = new Map();
@@ -23,14 +23,17 @@ function batchBuildingCells(root, leaves, pickables) {
 
       let groupsByName = groupsByMaterial.get(mesh.material);
       if (!groupsByName) groupsByMaterial.set(mesh.material, groupsByName = new Map());
-      let group = groupsByName.get(mesh.name);
+      const shadowState = `${mesh.castShadow ? 1 : 0}:${mesh.receiveShadow ? 1 : 0}`;
+      const key = `${mesh.name}:${shadowState}`;
+      let group = groupsByName.get(key);
       if (!group) {
-        group = { material: mesh.material, name: mesh.name, sources: [], vertexCount: 0, indexCount: 0 };
-        groupsByName.set(mesh.name, group);
+        group = { material: mesh.material, name: mesh.name, castShadow: mesh.castShadow, receiveShadow: mesh.receiveShadow, sources: [], vertexCount: 0, indexCount: 0 };
+        groupsByName.set(key, group);
       }
       group.sources.push({ mesh, cell });
       group.vertexCount += position.count;
       group.indexCount += mesh.geometry.index?.count ?? position.count;
+      yield;
     }
   }
 
@@ -38,6 +41,7 @@ function batchBuildingCells(root, leaves, pickables) {
   const replacementBySource = new Map();
   for (const groupsByName of groupsByMaterial.values()) {
     for (const group of groupsByName.values()) {
+      yield;
       const batch = new THREE.BatchedMesh(
         group.sources.length,
         group.vertexCount,
@@ -47,13 +51,15 @@ function batchBuildingCells(root, leaves, pickables) {
       batch.name = group.name;
       batch.sortObjects = false;
       batch.perObjectFrustumCulled = true;
-      batch.castShadow = group.sources[0].mesh.castShadow;
-      batch.receiveShadow = group.sources[0].mesh.receiveShadow;
+      batch.castShadow = group.castShadow;
+      batch.receiveShadow = group.receiveShadow;
       batch.userData.ranges = [];
       batch.userData.detailRanges = [];
+      root.add(batch); // keep partial work reachable if an async build is cancelled at a checkpoint
 
       let isPickable = false;
       for (const { mesh, cell } of group.sources) {
+        yield;
         const geometryId = batch.addGeometry(mesh.geometry);
         const indexOffset = batch.getGeometryRangeAt(geometryId).indexStart;
         const instanceId = batch.addInstance(geometryId);
@@ -73,9 +79,9 @@ function batchBuildingCells(root, leaves, pickables) {
         mesh.geometry = null;
       }
 
+      yield;
       batch.computeBoundingBox();
       batch.computeBoundingSphere();
-      root.add(batch);
       batches.push(batch);
       if (isPickable) {
         for (const { mesh } of group.sources) replacementBySource.set(mesh, batch);
@@ -101,6 +107,25 @@ function batchBuildingCells(root, leaves, pickables) {
   return batches;
 }
 
+function batchBuildingCells(root, leaves, pickables) {
+  const steps = batchBuildingCellsSteps(root, leaves, pickables);
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+  }
+}
+
+async function batchBuildingCellsAsync(root, leaves, pickables, slice, signal = null) {
+  const steps = batchBuildingCellsSteps(root, leaves, pickables);
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+    if (signal?.aborted) throw Object.assign(new Error('Building tile build aborted'), { name: 'AbortError' });
+    if (slice) await slice();
+    if (signal?.aborted) throw Object.assign(new Error('Building tile build aborted'), { name: 'AbortError' });
+  }
+}
+
 /** Mirrors cell streaming visibility onto each batched instance in that cell. */
 function updateBuildingCellVisibility(cell, visible) {
   if (cell.visible === visible) return;
@@ -110,4 +135,4 @@ function updateBuildingCellVisibility(cell, visible) {
   }
 }
 
-export { batchBuildingCells, updateBuildingCellVisibility };
+export { batchBuildingCells, batchBuildingCellsAsync, updateBuildingCellVisibility };

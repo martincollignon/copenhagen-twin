@@ -21,3 +21,23 @@ export function createSlicer(budgetMs = 8, wait = nextFrame) {
     start = performance.now();
   };
 }
+
+/**
+ * A slicer shared by concurrent tile builds. Every waiter joins the same frame wait and budget reset, then
+ * checks the shared clock again in case another continuation already used the new slice.
+ */
+export function createSharedSlicer(budgetMs = 5, { wait = nextFrame, now = () => performance.now() } = {}) {
+  let start = now();
+  let waiting = null;
+  return async () => {
+    while (now() - start >= budgetMs) {
+      if (!waiting) {
+        const previousStart = start;
+        waiting = Promise.resolve().then(wait).then(() => {
+          if (start === previousStart) start = now();
+        }).finally(() => { waiting = null; });
+      }
+      await waiting;
+    }
+  };
+}

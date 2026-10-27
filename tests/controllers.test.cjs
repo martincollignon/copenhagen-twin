@@ -57,6 +57,7 @@ function keyboardHarness(overrides = {}, moduleImports = {}) {
       './vehicle-lights.js': {},
       './collision-shapes.js': collisionShapesModule,
       './static-colliders.js': staticCollidersModule,
+      './rigid-meshes.js': { mergeRigidMeshes: () => ({}) },
       ...moduleImports
     }
   });

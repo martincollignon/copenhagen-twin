@@ -8,6 +8,7 @@ import { createRoadSurfaceMaterials, ssrReflectionWeight } from '../js/surface-m
 import { cityUniforms, createContactShadowMaterial, createCarFlareMaterial } from '../js/tsl-materials.js';
 import { createLakeWallMaterial, createWaterMaterial } from '../js/water-cph.js';
 import { applyGroundField } from '../js/ground-shader-cph.js';
+import { createPhotoMaterial } from '../js/facade-photo-material.js';
 
 const renderer = new THREE.WebGPURenderer({ canvas: { width: 1440, height: 900, style: {}, addEventListener() {} } });
 renderer.hasFeature = () => false;
@@ -30,6 +31,15 @@ materials.groundField = groundFieldMaterial;
 materials.wall = createLakeWallMaterial();
 materials.water = createWaterMaterial({ sdf, bbox: [-750, -750, 750, 750], planar: null }).material;
 materials.waterPlanar = createWaterMaterial({ sdf, bbox: [-750, -750, 750, 750], planar: { resolutionScale: 0.4 } }).material;
+
+const photoAtlas = new THREE.Texture();
+photoAtlas.colorSpace = THREE.SRGBColorSpace;
+materials.photoMasked = createPhotoMaterial(photoAtlas);
+materials.photoRaw = createPhotoMaterial(photoAtlas, { hasMask: false });
+const photoVariants = [
+  { tone: [0.19, 0.25, 0.3], brick: false, layout: { floorH: 3.3, groundH: 4.1, seed: 42 } },
+  { tone: [0.6, 0.55, 0.4], brick: true, layout: { floorH: 2.7, groundH: 2.9, seed: 73 } }
+];
 
 const writeMaskMaterial = new THREE.MeshStandardNodeMaterial({ metalness: 0 });
 writeMaskMaterial.name = 'colorWrite:false/depthWrite:false';
@@ -153,6 +163,13 @@ for (const { mode, materials: visibleMaterials, expectedOutputs } of passConfigu
     const builder = compile(material);
     assertNoEmptyOutput(builder, `${mode} / ${name}`);
     assertOutputLocations(builder, expectedOutputs, `${mode} / ${name}`);
+    if (name === 'photoMasked' || name === 'photoRaw') {
+      for (const parameters of photoVariants) {
+        const variant = compile(createPhotoMaterial(photoAtlas, { ...parameters, hasMask: name === 'photoMasked' }));
+        assert.equal(variant.vertexShader, builder.vertexShader, `${mode} / ${name}: building parameters changed the vertex program`);
+        assert.equal(variant.fragmentShader, builder.fragmentShader, `${mode} / ${name}: building parameters changed the fragment program`);
+      }
+    }
     if (mode === 'unnamed reflection target') {
       assert.match(builder.fragmentShader, /@location\(\s*0\s*\)\s+color\s*:/, `${name} has no color output for the unnamed reflection target`);
     }

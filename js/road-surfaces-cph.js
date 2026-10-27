@@ -810,10 +810,10 @@ async function fillSurfaceGroup(THREE, group, geo, surfaces, terrain, materials,
     g.setAttribute('kuv', new THREE.BufferAttribute(m.kuv, 2));
     if (m.seed) g.setAttribute('seed', new THREE.BufferAttribute(m.seed, 1));
     if (m.index) g.setIndex(new THREE.BufferAttribute(m.index, 1));
+    g.computeBoundingSphere();
     const mesh = new THREE.Mesh(g, material);
     mesh.name = m.name;
     mesh.receiveShadow = true;
-    mesh.frustumCulled = false;
     group.add(mesh);
     if (m.ground) stats.pavementTriangles += m.position.length / 9;
     if (slice) await slice();

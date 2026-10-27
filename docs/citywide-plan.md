@@ -35,7 +35,7 @@ Status: approved 2026-10-26. Scope: **Københavns Kommune plus Frederiksberg Kom
 | Ring | Radius | Contents |
 |---|---|---|
 | Near | ≤ 750 m (3×3 to 5×5 tiles) | everything at today's fidelity: facades, furniture, grass, agents |
-| Mid | ≤ 2.5 km | buildings with tone facades and LoD2 roofs, roads, trees as impostors; no furniture or agents |
+| Mid | ≤ 1.25 km | buildings with tone facades and LoD2 roofs, roads, trees as impostors; no furniture or agents |
 | Far | rest of the city | per-tile block meshes and the city water and ground |
 
 Tiles load and unload with hysteresis, and the build is done in a worker. Existing modules get `addTile(tile)` / `removeTile(id)` instead of a one-shot build. The quadtree and `scene-culling.js` stay as the per-tile culling layer. Agents are already spawned within ~320 m of the camera; they need the graph only in the near ring and are despawned when their tile unloads.

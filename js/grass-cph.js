@@ -104,7 +104,8 @@ export function createGrass(scene, vegetationDoc, { terrain = null, mask: givenM
   const field = createGrassField({ mask, terrain });
   const geometry = buildTuftGeometry();
   const attr = new THREE.InstancedBufferAttribute(field.data, 4);
-  attr.setUsage(THREE.DynamicDrawUsage);
+  // Tufts change only when the field moves; StaticDraw avoids reuploading an unchanged buffer each frame.
+  attr.setUsage(THREE.StaticDrawUsage);
   geometry.setAttribute('aTuft', attr);
   geometry.instanceCount = field.count;
   const mesh = new THREE.Mesh(geometry, buildMaterial());
