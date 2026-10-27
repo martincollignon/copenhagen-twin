@@ -17,7 +17,7 @@ import { CPH_FRAME, toLocal } from './city-config.js';
 import { disposeTree } from './dispose-tree.js';
 import { nextFrame } from './yield-frame.js';
 import { createHeroCache } from './hero-cache.js';
-import { dataUrl } from './data-config.js';
+import { dataUrl, heroesEnabled } from './data-config.js';
 import { batchBuildingCells, updateBuildingCellVisibility } from './building-batches.js';
 
 // js/buildings-real.js
@@ -120,7 +120,9 @@ function mergeByMaterial(root) {
 }
 
 /** Loads one hero glb and places it in the Copenhagen frame from its building.json `frame.origin` (EPSG:25832 + DVR90). */
-async function loadHero(hero, { fetchImpl = globalThis.fetch } = {}) {
+async function loadHero(hero, { fetchImpl = globalThis.fetch, enabled = heroesEnabled() } = {}) {
+  // published builds carry no hero models (js/data-config.js heroesEnabled): extrude without asking for files that are not there
+  if (!enabled) throw Object.assign(new Error(`hero ${hero.building_id}: hero models are local-only (not published)`), { code: 'hero-disabled' });
   const dir = `${HEROES_DIR}/${String(hero.building_id).replace(/[^\w.-]+/g, '_')}`;
   let origin = null;
   try {
@@ -571,7 +573,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHeroCached, wit
       heroGroups.push(group);
       heroStatus.push({ id: hero.building_id, loaded: true, position: group.position.toArray() });
     } catch (error) {
-      console.warn(`[cph] hero ${hero.building_id} not loaded (run tools/link-heroes.sh); extruding its footprint instead:`, error?.message || error);
+      if (error?.code !== 'hero-disabled') console.warn(`[cph] hero ${hero.building_id} not loaded (run tools/link-heroes.sh); extruding its footprint instead:`, error?.message || error);
       heroStatus.push({ id: hero.building_id, loaded: false, error: String(error?.message || error) });
       const b = byId.get(hero.building_id);
       if (b) heroIds.delete(hero.building_id);

@@ -35,3 +35,12 @@ test('a remote tile store fetches index and layers under its base, city files vi
   assert.ok(seen.every(([u]) => u.startsWith('https://x.r2.dev/v1/')));
   assert.equal(seen.find(([u]) => u.endsWith('post.json'))[1], 'default');
 });
+
+test('hero models are requested only by a local build (they are never published), ?heroes= overrides', async () => {
+  const { heroesEnabled } = await import('../js/data-config.js');
+  assert.equal(heroesEnabled('', './data'), true);
+  assert.equal(heroesEnabled('?data=https://x.r2.dev/v3', './data'), true, 'a local checkout testing the R2 data still has its linked hero');
+  assert.equal(heroesEnabled('', 'https://x.r2.dev/v3'), false, 'the Pages build');
+  assert.equal(heroesEnabled('?heroes=1', 'https://x.r2.dev/v3'), true);
+  assert.equal(heroesEnabled('?heroes=0', './data'), false);
+});

@@ -27,3 +27,18 @@ export const isRemoteBase = (base) => /^https?:\/\//i.test(String(base));
 export function dataUrl(rel, base = resolveDataBase()) {
   return `${trim(base)}/${String(rel).replace(/^\/+/, '')}`;
 }
+
+/**
+ * Whether hero glTFs (data/heroes/<id>/building.{json,glb}) may be requested. They are built from building-case drawings,
+ * which are third-party copyrighted works (.claude/skills/building-case-to-3d/SKILL.md): the models stay outside git and are
+ * never published, neither in the Pages artifact nor on R2. So they only exist in a local checkout (tools/link-heroes.sh), and
+ * a published build (BUILD_DATA_BASE rewritten to an http(s) URL by the Pages workflow) never asks for them and extrudes the
+ * footprint instead. `?heroes=0` / `?heroes=1` overrides either way.
+ */
+export function heroesEnabled(search = globalThis.location?.search || '', configured = BUILD_DATA_BASE) {
+  let flag = null;
+  try { flag = new URLSearchParams(search).get('heroes'); } catch { /* no usable query string */ }
+  if (flag === '0' || flag === 'off') return false;
+  if (flag !== null) return true;
+  return !isRemoteBase(configured);
+}
