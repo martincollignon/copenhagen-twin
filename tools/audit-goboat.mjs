@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import * as THREE from 'three/webgpu';
+import { createGoBoat } from '../js/goboat.js';
+import { createGoBoatPiers } from '../js/goboat-piers.js';
+import { createGoBoatNavigation } from '../js/goboat-navigation.js';
+const boat = createGoBoat().group, pier = createGoBoatPiers();
+let meshes = 0;
+for (const root of [boat, pier.group]) root.traverse(mesh => {
+  if (!mesh.isMesh) return;
+  meshes++;
+  const p = mesh.geometry.attributes.position;
+  assert([...p.array].every(Number.isFinite), 'finite vertices');
+  if (mesh.geometry.index) for (const i of mesh.geometry.index.array) assert(i >= 0 && i < p.count, 'indices within geometry');
+});
+const boatBox = new THREE.Box3().setFromObject(boat), pierBox = new THREE.Box3().setFromObject(pier.group);
+assert(boatBox.max.z - boatBox.min.z < 5.5 && boatBox.max.z - boatBox.min.z > 4.8);
+assert(boatBox.max.x - boatBox.min.x < 2.2);
+assert(pierBox.min.x > 1100 && pierBox.max.x < 1160 && pierBox.min.z > 1390 && pierBox.max.z < 1460, 'pavilion and pier share the mapped frame');
+const deckNormals = pier.group.children[0].geometry.attributes.normal;
+for (let i = 0; i < deckNormals.count; i++) assert(deckNormals.getY(i) > 0.99, 'deck faces upward');
+const navigation = createGoBoatNavigation({ waterOverride: [{ ring: [1000, 1300, 1300, 1300, 1300, 1600, 1000, 1600], level: -6.84 }], pierRecords: pier.records });
+assert(navigation?.isPositionLegal(1111, 1446), 'departure clears dock and fleet');
+for (const mooring of pier.fleetLayouts[0]) assert(!navigation.isPositionLegal(mooring.x, mooring.z), 'moored boats are obstacles');
+assert(Number.isFinite(pier.getDeckHeightAt(1117.1, 1444.4)), 'boarding point lies on deck');
+console.log(JSON.stringify({ meshes, mooredBoats: pier.fleetLayouts[0].length, verticesAndIndices: 'valid', deckNormals: 'up', departure: 'clear' }));
