@@ -44,6 +44,7 @@ import { applyPlainGround } from './ground-shader-cph.js';
 import { BODY_SPECS } from './actor-models.js';
 import { createCityCollisions, createCollisionActor } from './city-collisions.js';
 import { buildStaticColliders, createStaticIndex, createTiledStaticIndex } from './static-colliders.js';
+import { overrideFootprints } from './detail-overrides.js';
 
 // js/world.js
 // The Copenhagen world: a ground plane in the Copenhagen frame (docs/cph-geodata-schema.md) plus data/cph-geodata.json,
@@ -787,7 +788,13 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
       },
       remove: (id) => roads.removeTile(id)
     });
-    layers.push({ name: 'walk', rings: ['near', 'mid'], add: (ctx) => walk.addBuildings(ctx.id, ctx.ownBuildings), remove: (id) => walk.removeBuildings(id) });
+    // the footprints people cannot walk through: an override whose footprint differs from the generated one (js/detail-overrides.js
+    // overrideFootprints) takes its place in the near ring, where it is drawn; rebuilt when the tile changes ring
+    layers.push({
+      name: 'walk', rings: ['near', 'mid'], fidelity: true,
+      add: (ctx, ring) => { walk.removeBuildings(ctx.id); walk.addBuildings(ctx.id, ring === 'near' ? overrideFootprints(ctx.ownBuildings, ctx.overrides) : ctx.ownBuildings); },
+      remove: (id) => walk.removeBuildings(id)
+    });
   }
 
   // static colliders (js/static-colliders.js) per near tile: its own buildings here, its placed furniture with the furniture layer below. The
@@ -797,7 +804,7 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
   if (!flags.has('nobuildings')) {
     layers.push({
       name: 'colliders', rings: ['near'],
-      add: (ctx) => staticIndex.set(`b:${ctx.id}`, buildStaticColliders({ buildings: ctx.ownBuildings }, { groundHeight: colliderGround })),
+      add: (ctx) => staticIndex.set(`b:${ctx.id}`, buildStaticColliders({ buildings: overrideFootprints(ctx.ownBuildings, ctx.overrides) }, { groundHeight: colliderGround })),
       remove: (id) => staticIndex.remove(`b:${id}`)
     });
   }

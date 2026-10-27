@@ -214,3 +214,16 @@ test('churn: the camera route replayed through the loop shows no tier oscillatio
   assert.deepEqual(tierOscillations(run.plans), [], 'tier oscillation along the route');
   assert.equal(run.counts.evictions, 0, 'wanted atlases evicted along the route');
 });
+
+test('detail overrides: their texture budget is committed, and photo + override textures stay under the combined cap', async () => {
+  const { OVERRIDE, readOverrideLayer, createOverrideBudget, admitOverrides } = await import('../js/detail-overrides.js');
+  assert.equal(OVERRIDE.maxTextureBytes, budget.overrideMaxBytes, 'the committed override budget and the runtime budget must match');
+  assert.equal(OVERRIDE.maxMeshes, budget.overrideMaxMeshes);
+  assert.ok(PHOTO.maxResidentBytes + OVERRIDE.maxTextureBytes <= budget.combinedMaxBytes, 'photo + override budgets above the combined cap');
+  // Nyhavn, the busiest photo band: every override admitted from the canal, within its budget
+  const nyhavn = readOverrideLayer(readJson('./fixtures/overrides-nyhavn.json'));
+  const b = createOverrideBudget();
+  for (const at of [{ x: 1760, z: 190 }, { x: 1600, z: 140 }, { x: 2100, z: 300 }]) admitOverrides(nyhavn, at, b);
+  assert.ok(b.peak <= OVERRIDE.maxTextureBytes);
+  assert.equal(b.memory().meshes, nyhavn.entries.size);
+});

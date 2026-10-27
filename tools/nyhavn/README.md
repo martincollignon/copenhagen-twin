@@ -42,3 +42,7 @@ The installer copies the checked-in viewer and downloads checksum-pinned Three.j
 Open <http://127.0.0.1:8765/viewer-v2/>. The viewer opens across the canal, offers district and street-level camera presets, retains camera-photo alignment mode, and identifies inferred detail and photo layers separately.
 
 All geometry uses EPSG:25832 and DVR90. Photo sampling density is not position accuracy, and Roofer fits are not tied to survey control. Facade and roof feature dimensions, near-shore repairs, paving, tile scale and quay profiles are inferred. This is a source-linked visual reconstruction, not survey-grade geometry. Attribution and source records remain under `sources/` and in each detail manifest.
+
+## Into the twin
+
+`python3 tools/nyhavn/export_overrides.py` converts `model-v2/` and `detail-v3/` into a detail-override set. The output goes to `~/.local/share/cph-twin/overrides/nyhavn`, as one compact GLB per GeoDanmark building plus the photo-traced openings, cornices, roof windows and chimneys as parametric details. The twin's pack build publishes it. The format, the footprint mapping and what is and is not published are in [docs/detail-overrides.md](../../docs/detail-overrides.md).

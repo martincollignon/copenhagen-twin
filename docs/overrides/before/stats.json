@@ -1,0 +1,331 @@
+{
+ "run": "before",
+ "query": "hooks&data=https://pub-d3c994d177d048d5b64ecfc3df496b48.r2.dev&overrides=0",
+ "bootS": 20.7,
+ "stops": {
+  "south-quay-nyhavn-9-17": {
+   "settleS": 22.6,
+   "stream": {
+    "near": 14,
+    "mid": 94,
+    "fetching": 0,
+    "building": 0,
+    "errors": 0
+   },
+   "photoLoading": 0,
+   "photoBand": {
+    "inBand": 131,
+    "resident": 131
+   },
+   "photoMemory": {
+    "residentBytes": 48674808,
+    "pendingBytes": 0,
+    "reservedBytes": 48674808,
+    "peakReservedBytes": 48674808,
+    "budgetBytes": 50331648,
+    "residentCount": 149,
+    "pendingCount": 0,
+    "wanted": 149,
+    "density": 0.5
+   },
+   "overrides": {
+    "mode": "off",
+    "shown": 0,
+    "failed": 0,
+    "refused": 0,
+    "details": 0,
+    "textureBytes": 0,
+    "errors": [],
+    "budget": null
+   },
+   "buildings": {
+    "buildings": 29798,
+    "cells": 328,
+    "triangles": 2995747,
+    "meshes": 260
+   },
+   "geometries": 1556,
+   "textures": 361,
+   "texturesSize": 198144737,
+   "triangles": 8801260,
+   "calls": 2564,
+   "heap": 3614998462,
+   "fps": {
+    "fps": 38.2,
+    "samples": [
+     31.8,
+     38.2,
+     41
+    ],
+    "medianMs": 33.3,
+    "p95Ms": 33.4
+   }
+  },
+  "north-quay-south-row": {
+   "settleS": 16.2,
+   "stream": {
+    "near": 15,
+    "mid": 92,
+    "fetching": 0,
+    "building": 0,
+    "errors": 0
+   },
+   "photoLoading": 0,
+   "photoBand": {
+    "inBand": 144,
+    "resident": 144
+   },
+   "photoMemory": {
+    "residentBytes": 50114504,
+    "pendingBytes": 0,
+    "reservedBytes": 50114504,
+    "peakReservedBytes": 50292108,
+    "budgetBytes": 50331648,
+    "residentCount": 186,
+    "pendingCount": 0,
+    "wanted": 186,
+    "density": 0.5
+   },
+   "overrides": {
+    "mode": "off",
+    "shown": 0,
+    "failed": 0,
+    "refused": 0,
+    "details": 0,
+    "textureBytes": 0,
+    "errors": [],
+    "budget": null
+   },
+   "buildings": {
+    "buildings": 29101,
+    "cells": 330,
+    "triangles": 2941176,
+    "meshes": 259
+   },
+   "geometries": 1862,
+   "textures": 507,
+   "texturesSize": 202156762,
+   "triangles": 7467107,
+   "calls": 1879,
+   "heap": 2277360740
+  },
+  "canal-goboat-west": {
+   "settleS": 11.1,
+   "stream": {
+    "near": 15,
+    "mid": 92,
+    "fetching": 0,
+    "building": 0,
+    "errors": 0
+   },
+   "photoLoading": 0,
+   "photoBand": {
+    "inBand": 125,
+    "resident": 125
+   },
+   "photoMemory": {
+    "residentBytes": 42994444,
+    "pendingBytes": 0,
+    "reservedBytes": 42994444,
+    "peakReservedBytes": 50292108,
+    "budgetBytes": 50331648,
+    "residentCount": 168,
+    "pendingCount": 0,
+    "wanted": 168,
+    "density": 0.5
+   },
+   "overrides": {
+    "mode": "off",
+    "shown": 0,
+    "failed": 0,
+    "refused": 0,
+    "details": 0,
+    "textureBytes": 0,
+    "errors": [],
+    "budget": null
+   },
+   "buildings": {
+    "buildings": 29101,
+    "cells": 330,
+    "triangles": 2941176,
+    "meshes": 259
+   },
+   "geometries": 2091,
+   "textures": 506,
+   "texturesSize": 201768558,
+   "triangles": 10487663,
+   "calls": 3403,
+   "heap": 2362030133
+  },
+  "canal-goboat-east": {
+   "settleS": 13.9,
+   "stream": {
+    "near": 15,
+    "mid": 92,
+    "fetching": 0,
+    "building": 0,
+    "errors": 0
+   },
+   "photoLoading": 0,
+   "photoBand": {
+    "inBand": 117,
+    "resident": 117
+   },
+   "photoMemory": {
+    "residentBytes": 45854608,
+    "pendingBytes": 0,
+    "reservedBytes": 45854608,
+    "peakReservedBytes": 50292108,
+    "budgetBytes": 50331648,
+    "residentCount": 152,
+    "pendingCount": 0,
+    "wanted": 152,
+    "density": 0.42
+   },
+   "overrides": {
+    "mode": "off",
+    "shown": 0,
+    "failed": 0,
+    "refused": 0,
+    "details": 0,
+    "textureBytes": 0,
+    "errors": [],
+    "budget": null
+   },
+   "buildings": {
+    "buildings": 29101,
+    "cells": 330,
+    "triangles": 2941176,
+    "meshes": 259
+   },
+   "geometries": 2145,
+   "textures": 551,
+   "texturesSize": 202438448,
+   "triangles": 7885787,
+   "calls": 1996,
+   "heap": 2573926181
+  },
+  "aerial-low": {
+   "settleS": 13.0,
+   "stream": {
+    "near": 18,
+    "mid": 89,
+    "fetching": 0,
+    "building": 0,
+    "errors": 0
+   },
+   "photoLoading": 0,
+   "photoBand": {
+    "inBand": 9,
+    "resident": 9
+   },
+   "photoMemory": {
+    "residentBytes": 15235956,
+    "pendingBytes": 0,
+    "reservedBytes": 15235956,
+    "peakReservedBytes": 50292108,
+    "budgetBytes": 50331648,
+    "residentCount": 11,
+    "pendingCount": 0,
+    "wanted": 11,
+    "density": 1
+   },
+   "overrides": {
+    "mode": "off",
+    "shown": 0,
+    "failed": 0,
+    "refused": 0,
+    "details": 0,
+    "textureBytes": 0,
+    "errors": [],
+    "budget": null
+   },
+   "buildings": {
+    "buildings": 28780,
+    "cells": 328,
+    "triangles": 2800292,
+    "meshes": 263
+   },
+   "geometries": 2024,
+   "textures": 438,
+   "texturesSize": 174594400,
+   "triangles": 8947706,
+   "calls": 3025,
+   "heap": 3105145175,
+   "fps": {
+    "fps": 25.2,
+    "samples": [
+     23.4,
+     25.2,
+     26.4
+    ],
+    "medianMs": 33.4,
+    "p95Ms": 50.1
+   }
+  },
+  "aerial-high": {
+   "settleS": 7.9,
+   "stream": {
+    "near": 17,
+    "mid": 92,
+    "fetching": 0,
+    "building": 0,
+    "errors": 0
+   },
+   "photoLoading": 0,
+   "photoBand": {
+    "inBand": 0,
+    "resident": 0
+   },
+   "photoMemory": {
+    "residentBytes": 0,
+    "pendingBytes": 0,
+    "reservedBytes": 0,
+    "peakReservedBytes": 50292108,
+    "budgetBytes": 50331648,
+    "residentCount": 0,
+    "pendingCount": 0,
+    "wanted": 0,
+    "density": 1
+   },
+   "overrides": {
+    "mode": "off",
+    "shown": 0,
+    "failed": 0,
+    "refused": 0,
+    "details": 0,
+    "textureBytes": 0,
+    "errors": [],
+    "budget": null
+   },
+   "buildings": {
+    "buildings": 30005,
+    "cells": 353,
+    "triangles": 2893364,
+    "meshes": 265
+   },
+   "geometries": 2041,
+   "textures": 446,
+   "texturesSize": 174601968,
+   "triangles": 5763700,
+   "calls": 1667,
+   "heap": 3459635102
+  }
+ },
+ "budget": {
+  "overrides": null,
+  "photo": {
+   "residentBytes": 0,
+   "pendingBytes": 0,
+   "reservedBytes": 0,
+   "peakReservedBytes": 50292108,
+   "budgetBytes": 50331648,
+   "residentCount": 0,
+   "pendingCount": 0,
+   "wanted": 0,
+   "density": 1
+  }
+ },
+ "errors": [],
+ "warnings": []
+}

@@ -1,6 +1,9 @@
 {
   "maxBytes": 50331648,
   "maxResidentAtlases": 224,
+  "overrideMaxBytes": 33554432,
+  "overrideMaxMeshes": 400,
+  "combinedMaxBytes": 83886080,
   "sampleEveryMetres": 35,
   "cameraHeight": 12,
   "aerialHeight": 420,

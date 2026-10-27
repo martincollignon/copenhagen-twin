@@ -1,0 +1,424 @@
+{
+ "data": "https://pub-d3c994d177d048d5b64ecfc3df496b48.r2.dev",
+ "note": "tools/shoot-overrides.py (headless Chromium, WebGPU/Metal, 1600x900; fps = frames in 5 s windows, three windows, vsync-quantised and noisy) and tools/hosting/measure_visit.py",
+ "before": {
+  "query": "hooks&data=https://pub-d3c994d177d048d5b64ecfc3df496b48.r2.dev&overrides=0",
+  "budget": {
+   "overrides": null,
+   "photo": {
+    "residentBytes": 0,
+    "pendingBytes": 0,
+    "reservedBytes": 0,
+    "peakReservedBytes": 50292108,
+    "budgetBytes": 50331648,
+    "residentCount": 0,
+    "pendingCount": 0,
+    "wanted": 0,
+    "density": 1
+   }
+  },
+  "stops": {
+   "south-quay-nyhavn-9-17": {
+    "calls": 2564,
+    "triangles": 8801260,
+    "textures": 361,
+    "texturesSize": 198144737,
+    "geometries": 1556,
+    "heap": 3614998462,
+    "fps": {
+     "fps": 38.2,
+     "samples": [
+      31.8,
+      38.2,
+      41
+     ],
+     "medianMs": 33.3,
+     "p95Ms": 33.4
+    },
+    "photoBand": {
+     "inBand": 131,
+     "resident": 131
+    },
+    "overrides": {
+     "mode": "off",
+     "shown": 0,
+     "failed": 0,
+     "refused": 0,
+     "details": 0,
+     "textureBytes": 0,
+     "errors": [],
+     "budget": null
+    }
+   },
+   "north-quay-south-row": {
+    "calls": 1879,
+    "triangles": 7467107,
+    "textures": 507,
+    "texturesSize": 202156762,
+    "geometries": 1862,
+    "heap": 2277360740,
+    "fps": null,
+    "photoBand": {
+     "inBand": 144,
+     "resident": 144
+    },
+    "overrides": {
+     "mode": "off",
+     "shown": 0,
+     "failed": 0,
+     "refused": 0,
+     "details": 0,
+     "textureBytes": 0,
+     "errors": [],
+     "budget": null
+    }
+   },
+   "canal-goboat-west": {
+    "calls": 3403,
+    "triangles": 10487663,
+    "textures": 506,
+    "texturesSize": 201768558,
+    "geometries": 2091,
+    "heap": 2362030133,
+    "fps": null,
+    "photoBand": {
+     "inBand": 125,
+     "resident": 125
+    },
+    "overrides": {
+     "mode": "off",
+     "shown": 0,
+     "failed": 0,
+     "refused": 0,
+     "details": 0,
+     "textureBytes": 0,
+     "errors": [],
+     "budget": null
+    }
+   },
+   "canal-goboat-east": {
+    "calls": 1996,
+    "triangles": 7885787,
+    "textures": 551,
+    "texturesSize": 202438448,
+    "geometries": 2145,
+    "heap": 2573926181,
+    "fps": null,
+    "photoBand": {
+     "inBand": 117,
+     "resident": 117
+    },
+    "overrides": {
+     "mode": "off",
+     "shown": 0,
+     "failed": 0,
+     "refused": 0,
+     "details": 0,
+     "textureBytes": 0,
+     "errors": [],
+     "budget": null
+    }
+   },
+   "aerial-low": {
+    "calls": 3025,
+    "triangles": 8947706,
+    "textures": 438,
+    "texturesSize": 174594400,
+    "geometries": 2024,
+    "heap": 3105145175,
+    "fps": {
+     "fps": 25.2,
+     "samples": [
+      23.4,
+      25.2,
+      26.4
+     ],
+     "medianMs": 33.4,
+     "p95Ms": 50.1
+    },
+    "photoBand": {
+     "inBand": 9,
+     "resident": 9
+    },
+    "overrides": {
+     "mode": "off",
+     "shown": 0,
+     "failed": 0,
+     "refused": 0,
+     "details": 0,
+     "textureBytes": 0,
+     "errors": [],
+     "budget": null
+    }
+   },
+   "aerial-high": {
+    "calls": 1667,
+    "triangles": 5763700,
+    "textures": 446,
+    "texturesSize": 174601968,
+    "geometries": 2041,
+    "heap": 3459635102,
+    "fps": null,
+    "photoBand": {
+     "inBand": 0,
+     "resident": 0
+    },
+    "overrides": {
+     "mode": "off",
+     "shown": 0,
+     "failed": 0,
+     "refused": 0,
+     "details": 0,
+     "textureBytes": 0,
+     "errors": [],
+     "budget": null
+    }
+   }
+  }
+ },
+ "after": {
+  "query": "hooks&data=https://pub-d3c994d177d048d5b64ecfc3df496b48.r2.dev",
+  "budget": {
+   "overrides": {
+    "residentBytes": 3145724,
+    "peakBytes": 3145724,
+    "budgetBytes": 33554432,
+    "meshes": 5
+   },
+   "photo": {
+    "residentBytes": 0,
+    "pendingBytes": 0,
+    "reservedBytes": 0,
+    "peakReservedBytes": 50195768,
+    "budgetBytes": 50331648,
+    "residentCount": 0,
+    "pendingCount": 0,
+    "wanted": 0,
+    "density": 1
+   }
+  },
+  "stops": {
+   "south-quay-nyhavn-9-17": {
+    "calls": 2611,
+    "triangles": 8847302,
+    "textures": 363,
+    "texturesSize": 195927842,
+    "geometries": 1561,
+    "heap": 2471010671,
+    "fps": {
+     "fps": 30.4,
+     "samples": [
+      27.2,
+      30.4,
+      33.4
+     ],
+     "medianMs": 33.3,
+     "p95Ms": 50.1
+    },
+    "photoBand": {
+     "inBand": 126,
+     "resident": 126
+    },
+    "overrides": {
+     "mode": "on",
+     "shown": 5,
+     "failed": 0,
+     "refused": 0,
+     "details": 0,
+     "textureBytes": 3145724,
+     "errors": [],
+     "budget": {
+      "residentBytes": 3145724,
+      "peakBytes": 3145724,
+      "budgetBytes": 33554432,
+      "meshes": 5
+     }
+    }
+   },
+   "north-quay-south-row": {
+    "calls": 1898,
+    "triangles": 7469529,
+    "textures": 508,
+    "texturesSize": 199650240,
+    "geometries": 1867,
+    "heap": 2274672946,
+    "fps": null,
+    "photoBand": {
+     "inBand": 139,
+     "resident": 139
+    },
+    "overrides": {
+     "mode": "on",
+     "shown": 5,
+     "failed": 0,
+     "refused": 0,
+     "details": 0,
+     "textureBytes": 3145724,
+     "errors": [],
+     "budget": {
+      "residentBytes": 3145724,
+      "peakBytes": 3145724,
+      "budgetBytes": 33554432,
+      "meshes": 5
+     }
+    }
+   },
+   "canal-goboat-west": {
+    "calls": 3439,
+    "triangles": 10495097,
+    "textures": 508,
+    "texturesSize": 198752769,
+    "geometries": 2096,
+    "heap": 2367286687,
+    "fps": null,
+    "photoBand": {
+     "inBand": 120,
+     "resident": 120
+    },
+    "overrides": {
+     "mode": "on",
+     "shown": 5,
+     "failed": 0,
+     "refused": 0,
+     "details": 0,
+     "textureBytes": 3145724,
+     "errors": [],
+     "budget": {
+      "residentBytes": 3145724,
+      "peakBytes": 3145724,
+      "budgetBytes": 33554432,
+      "meshes": 5
+     }
+    }
+   },
+   "canal-goboat-east": {
+    "calls": 2025,
+    "triangles": 7764583,
+    "textures": 551,
+    "texturesSize": 199377284,
+    "geometries": 2149,
+    "heap": 2586993759,
+    "fps": null,
+    "photoBand": {
+     "inBand": 114,
+     "resident": 114
+    },
+    "overrides": {
+     "mode": "on",
+     "shown": 5,
+     "failed": 0,
+     "refused": 0,
+     "details": 0,
+     "textureBytes": 3145724,
+     "errors": [],
+     "budget": {
+      "residentBytes": 3145724,
+      "peakBytes": 3145724,
+      "budgetBytes": 33554432,
+      "meshes": 5
+     }
+    }
+   },
+   "aerial-low": {
+    "calls": 3075,
+    "triangles": 8955668,
+    "textures": 445,
+    "texturesSize": 177739342,
+    "geometries": 2033,
+    "heap": 3094036801,
+    "fps": {
+     "fps": 29.4,
+     "samples": [
+      27.4,
+      29.4,
+      32.4
+     ],
+     "medianMs": 33.3,
+     "p95Ms": 50.1
+    },
+    "photoBand": {
+     "inBand": 9,
+     "resident": 9
+    },
+    "overrides": {
+     "mode": "on",
+     "shown": 5,
+     "failed": 0,
+     "refused": 0,
+     "details": 0,
+     "textureBytes": 3145724,
+     "errors": [],
+     "budget": {
+      "residentBytes": 3145724,
+      "peakBytes": 3145724,
+      "budgetBytes": 33554432,
+      "meshes": 5
+     }
+    }
+   },
+   "aerial-high": {
+    "calls": 1711,
+    "triangles": 5751654,
+    "textures": 453,
+    "texturesSize": 177746910,
+    "geometries": 2050,
+    "heap": 2031435125,
+    "fps": null,
+    "photoBand": {
+     "inBand": 0,
+     "resident": 0
+    },
+    "overrides": {
+     "mode": "on",
+     "shown": 5,
+     "failed": 0,
+     "refused": 0,
+     "details": 0,
+     "textureBytes": 3145724,
+     "errors": [],
+     "budget": {
+      "residentBytes": 3145724,
+      "peakBytes": 3145724,
+      "budgetBytes": 33554432,
+      "meshes": 5
+     }
+    }
+   }
+  }
+ },
+ "visit": {
+  "requests": 171,
+  "bytes": 188410904,
+  "byKind": {
+   "manifest": {
+    "requests": 1,
+    "bytes": 51642
+   },
+   "pack-c": {
+    "requests": 1,
+    "bytes": 6797989
+   },
+   "pack-t": {
+    "requests": 81,
+    "bytes": 118133927
+   },
+   "pack-d": {
+    "requests": 37,
+    "bytes": 26703051
+   },
+   "pack-a": {
+    "requests": 50,
+    "bytes": 36624946
+   },
+   "pack-x": {
+    "requests": 1,
+    "bytes": 99349
+   }
+  },
+  "peak5min": 171,
+  "previous": {
+   "requests": 178,
+   "note": ".context/visit/remote-after-packs (PR #13)"
+  }
+ }
+}

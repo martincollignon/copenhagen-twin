@@ -15,6 +15,7 @@ import { applyStreets, applyTerrainGround, mergeSurfaceCuts } from './layout-cph
 import { applySurfaceCuts } from './lakes-cph.js';
 import { tileOfLocal, tileBoundsLocal } from './tile-grid.js';
 import { neighbourIds } from './tile-rings.js';
+import { readOverrideLayer } from './detail-overrides.js';
 
 const bboxCentre = (flat) => {
   let x0 = Infinity; let z0 = Infinity; let x1 = -Infinity; let z1 = -Infinity;
@@ -265,6 +266,13 @@ export function createTileData({ index, meta, streets = null, lakes = null, geo,
           return (surfaces = doc);
         },
         get lawns() { return cat((t) => api.lawns(t)); },
+        /** The tile's detail overrides (js/detail-overrides.js readOverrideLayer of its `overrides` layer), or null. */
+        get overrides() {
+          const e = entries.get(id);
+          const p = e?.layers.get('overrides');
+          if (!p) return null;
+          return (e.memo.overrides ||= readOverrideLayer(p));
+        },
         /** The tile's `water` layer (generic water, ground cut, green ground), or null. */
         get water() { return entries.get(id)?.layers.get('water') || null; },
         get furniture() {
