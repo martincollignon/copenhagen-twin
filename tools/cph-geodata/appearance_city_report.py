@@ -162,7 +162,7 @@ def coverage() -> str:
             r["wall_obs"] += bool(obsw)
             roof = a.get("roof") or {}
             r["roof_obs"] += roof.get("conf") == "observed"
-            has_atlas = bool(a.get("atlas")) and (tex_look / (b["id"].replace(":", "_") + ".webp")).exists()
+            has_atlas = bool((a.get("atlas") or {}).get("walls"))  # the webp itself is hosted (GCS -> R2), not necessarily local
             r["atlas"] += has_atlas
             r["area_wall"] += area * bool(obsw); r["area_roof"] += area * (roof.get("conf") == "observed"); r["area_atlas"] += area * has_atlas
             ts["wall"] += area * bool(obsw); ts["roof"] += area * (roof.get("conf") == "observed"); ts["atlas"] += area * has_atlas
@@ -178,13 +178,13 @@ def coverage() -> str:
     L.append(f"| **all** | {tot['buildings']:,} | {tot['wall_obs']:,} ({pct(tot['wall_obs'], tot['buildings'])}) | {tot['roof_obs']:,} ({pct(tot['roof_obs'], tot['buildings'])}) | "
              f"{tot['walls_observed']:,} / {tot['walls']:,} ({pct(tot['walls_observed'], tot['walls'])}) | {tot['atlas']:,} ({pct(tot['atlas'], tot['buildings'])}) |")
     ta = {k: sum(r[k] for r in rows.values()) for k in ("area", "area_wall", "area_roof", "area_atlas")}
-    L += ["", "## Share of building footprint area", "", "| kommune | footprint area | wall tone observed | roof tone observed | photo atlas (local `data/tex-look`) |", "|---|---:|---:|---:|---:|"]
+    L += ["", "## Share of building footprint area", "", "| kommune | footprint area | wall tone observed | roof tone observed | photo atlas |", "|---|---:|---:|---:|---:|"]
     for name, r in sorted(rows.items()):
         L.append(f"| {name} | {r['area'] / 1e6:.2f} km2 | {pct(r['area_wall'], r['area'])} | {pct(r['area_roof'], r['area'])} | {pct(r['area_atlas'], r['area'])} |")
     L.append(f"| **all** | {ta['area'] / 1e6:.2f} km2 | {pct(ta['area_wall'], ta['area'])} | {pct(ta['area_roof'], ta['area'])} | {pct(ta['area_atlas'], ta['area'])} |")
     have = [t for t, v in tiles_stat.items() if v["layer"]]
     L += ["", f"Tiles: {len(idx)} in the index, {len(tiles_stat)} with buildings, {len(have)} with an `appearance.json`; "
-          f"{sum(1 for t in have if tiles_stat[t]['atlas'] > 0)} tiles have at least one local atlas, "
+          f"{sum(1 for t in have if tiles_stat[t]['atlas'] > 0)} tiles have at least one photo atlas, "
           f"{sum(1 for t in have if tiles_stat[t]['area'] and tiles_stat[t]['wall'] / tiles_stat[t]['area'] >= 0.9)} tiles have wall tones on >= 90 % of their footprint area.", ""]
     gaps = []
     for t, v in tiles_stat.items():
@@ -196,16 +196,28 @@ def coverage() -> str:
     L += ["## Gaps: lowest wall-tone coverage by tile (footprint area)", "", "| tile | kommune | buildings | wall tone | roof tone | atlas |", "|---|---|---:|---:|---:|---:|"]
     for _, t, main, v in gaps[:15]:
         L.append(f"| {t} | {main} | {v['n']} | {pct(v['wall'], v['area'])} | {pct(v['roof'], v['area'])} | {pct(v['atlas'], v['area'])} |")
-    n_desc = sum(1 for t in have for a in C.jload(C.TILES / t / "appearance.json")["buildings"].values() if a.get("atlas"))
-    L += ["", f"Atlas descriptors (`observed.atlas`, written by the `attach` mode) exist for {n_desc:,} buildings; the engine draws a photo wall only for a building that has one, and its webp has to be fetchable. "
-          "Buildings without a descriptor keep tone facades, whatever sits in the bucket.", ""]
+    descs = [a["atlas"] for t in have for a in C.jload(C.TILES / t / "appearance.json")["buildings"].values() if a.get("atlas")]
+    L += ["", f"Atlas descriptors (`observed.atlas`) exist for {len(descs):,} buildings with {sum(len(d['walls']) for d in descs):,} photo walls; "
+          "the engine draws a photo wall only for a building that has one (and whose webp it can fetch). Buildings without a descriptor keep tone facades.", ""]
+    gate_p = C.ROOT / "data" / "city" / "appearance-atlas-gate.json"
+    if gate_p.exists():
+        g = json.loads(gate_p.read_text())
+        gs = g["gate"]
+        L += ["## Atlas quality gate", "",
+              f"Atlas run of {g['cells']} cells (texel {', '.join(f'{k} m' for k in g['texels'])}): {g['atlases']:,} atlases ({g['webp_mb']:.0f} MB webp), "
+              f"{gs.get('kept', 0):,} of {gs.get('strips', 0):,} strips kept, {gs.get('buildings_dropped', 0):,} buildings dropped (every strip failed: tone facade).", "",
+              "| reason (a strip can have several) | strips |", "|---|---:|"]
+        for k, why in (("unobserved", "under half of the look strip observed after facade_look (occlusion / fill)"), ("low_wall", "wall under 4 m (sheds, annexes: mostly roof / ground in the oblique)"),
+                       ("grazing", "texture view at more than ~70 degrees to the wall normal"), ("low_res", "texture view coarser than 0.16 m per photo pixel")):
+            L.append(f"| {why} | {gs.get(k, 0):,} |")
+        L.append("")
     L += ["## Where the atlases live and how the engine gets them", "",
-          "- Produced by the Cloud Run job `cph-skraafoto` (`tools/cloud/skraafoto/`, mode `atlas`) into `gs://lun-integrations-dev-cph-twin/skraafoto/tex-look/<gdk_id>.webp`; tile layers (`skraafoto/tiles/<tile>/appearance.json`) next to them.",
-          "- `python3 tools/cloud/skraafoto/cloudctl.py sync [--atlas-cap-gb 1.5]` copies the tile layers into `data/tiles/<tile>/appearance.json` and the inner-city atlases (nearest to the centre first, up to the cap) into `data/tex-look/`. The rest stay in the bucket if the atlas job produced them (not verified from this session: gcloud auth expired).",
-          "- The engine does NOT read the bucket. `js/buildings-real.js` requests `./data/tex-look/<id>.webp` relative to the page; a 404 leaves that building on its tone facade (no retry, no console spam once any atlas has loaded). Serving the remaining atlases needs a static host or CDN for `data/tex-look/` (not set up yet); `data/tiles/` and `data/tex-look/` are git-ignored, so a deployment has to publish them separately.", ""]
+          "- Produced by the Cloud Run job `cph-skraafoto` (`tools/cloud/skraafoto/`, mode `atlas`, then `attach`) into `gs://lun-integrations-dev-cph-twin/skraafoto/tex-look/<gdk_id>.webp`; tile layers (`skraafoto/tiles/<tile>/appearance.json`) next to them, `skraafoto/attach.done` once the descriptors are merged.",
+          "- `python3 tools/cloud/skraafoto/cloudctl.py sync` copies the tile layers into `data/tiles/<tile>/appearance.json` (refused while attach is older than the atlas run) and up to `--atlas-cap-gb` of inner-city atlases into `data/tex-look/`.",
+          "- The engine reads atlases from the data base URL (`js/data-config.js`: `./data` locally, the R2 bucket `cph-twin-data` in the deployment, uploaded by `tools/hosting/upload_r2.py`); a 404 leaves that building on its tone facade.", ""]
     sizes = sum(p.stat().st_size for p in C.TILES.glob("*/appearance.json"))
     look = sum(p.stat().st_size for p in tex_look.glob("*.webp")) if tex_look.exists() else 0
-    L += ["", f"Tile layers total {sizes / 1e6:.1f} MB; `data/tex-look` holds {look / 1e6:.0f} MB of webp atlases.", ""]
+    L += ["", f"Tile layers total {sizes / 1e6:.1f} MB; the local `data/tex-look` holds {look / 1e6:.0f} MB of webp atlases.", ""]
     try:
         v = validate()
         if not v.get("compared"):
@@ -232,7 +244,7 @@ def coverage() -> str:
             dr.text((x + 6, y + 6), f"{bid} {name[:5]} {tid}", fill=(230, 230, 230))
             dr.text((x + 88, y + 80), f"roof {roof.get('conf', '-')} {roof.get('type_hint') or ''}", fill=(200, 200, 200))
             dr.text((x + 88, y + 96), f"walls obs {sum(1 for w in a['walls'] if w['conf'] != 'inferred')}/{len(a['walls'])}", fill=(200, 200, 200))
-            if ha:
+            if ha and (tex_look / (bid.replace(":", "_") + ".webp")).exists():
                 try:
                     im = Image.open(tex_look / (bid.replace(":", "_") + ".webp")).convert("RGBA")
                     im.thumbnail((W - 12, 70))

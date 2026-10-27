@@ -8,6 +8,7 @@
     python3 tools/cloud/skraafoto/cloudctl.py status | cancel
     python3 tools/cloud/skraafoto/cloudctl.py report                      # per-cell task seconds, cost estimate, markers
     python3 tools/cloud/skraafoto/cloudctl.py sync [--atlas-cap-gb 1.5]   # tile layers -> data/tiles/*/appearance.json; inner-city webp -> data/tex-look
+                                                                          # refuses while the attach step is older than the atlas run (--allow-stale)
 """
 from __future__ import annotations
 
@@ -88,7 +89,8 @@ def cmd_inputs(a):
         list(ex.map(lambda j: R.gcs_put(P + j[0], j[1].read_bytes(), "application/json"), jobs))
     sys.path.insert(0, str(ROOT / "tools/cph-geodata"))
     import appearance_city as C
-    cells = sorted(C.all_cells(idx["tiles"]), key=lambda c: (math.hypot(int(c.split("_")[0]) * 1000 + 500 - 722500, int(c.split("_")[1]) * 1000 + 500 - 6175300)))
+    from appearance_city_atlas import cell_priority
+    cells = sorted(C.all_cells(idx["tiles"]), key=cell_priority)
     R.gcs_put(P + "config/cells.txt", ("\n".join(cells) + "\n").encode(), "text/plain")
     print(len(jobs), "inputs,", len(cells), "cells (inner first) uploaded")
 
@@ -166,8 +168,26 @@ def cmd_report(a):
                       "max_task_s": max((d.get("task_s", 0) for d in data), default=0), "max_rss_mb": max((d.get("peak_rss_mb", 0) for d in data), default=0)}, indent=1))
 
 
+def attach_state() -> tuple[bool, str]:
+    """Is the bucket's tile layer set current? attach.done (written by the attach task) must be newer than every atlas.pkl.gz;
+    a sync before that copies layers without (or with stale) atlas descriptors."""
+    marker = [i for i in R.gcs_list(P + "attach.done") if i["name"] == P + "attach.done"]
+    atl = [i["updated"] for i in R.gcs_list(P + "cells/") if i["name"].endswith("/atlas.pkl.gz")]
+    if not atl:
+        return True, "no atlas run in the bucket"
+    if not marker:
+        return False, f"no {P}attach.done: run `cloudctl.py run attach` after the atlas run"
+    if marker[0]["updated"] < max(atl):
+        return False, f"attach.done ({marker[0]['updated']}) is older than the newest atlas.pkl.gz ({max(atl)}): run attach again"
+    return True, (R.gcs_get(P + "attach.done") or b"").decode()
+
+
 def cmd_sync(a):
     tiles = ROOT / "data" / "tiles"
+    ok, why = attach_state()
+    print("attach:", why)
+    if not ok and not a.allow_stale:
+        raise SystemExit("sync refused: " + why + " (or --allow-stale)")
     items = R.gcs_list(P + "tiles/")
     with cf.ThreadPoolExecutor(8) as ex:
         def one(i):
@@ -178,7 +198,9 @@ def cmd_sync(a):
                 return int(i["size"])
             return 0
         n = sum(ex.map(one, [i for i in items if i["name"].endswith("appearance.json")]))
-    print(f"tile layers: {n / 1e6:.1f} MB")
+    desc = sum(1 for t in tiles.iterdir() if (t / "appearance.json").exists()
+               for b in json.loads((t / "appearance.json").read_text())["buildings"].values() if b.get("atlas"))
+    print(f"tile layers: {n / 1e6:.1f} MB, {desc} buildings with an atlas descriptor")
     sys.path.insert(0, str(ROOT / "tools/cph-geodata"))
     from appearance_city_atlas import CENTRE_UTM
     look = ROOT / "data" / "tex-look"
@@ -204,6 +226,15 @@ def cmd_sync(a):
         take.append(i)
     with cf.ThreadPoolExecutor(8) as ex:
         list(ex.map(lambda i: (look / Path(i["name"]).name).write_bytes(R.gcs_get(i["name"])), [i for i in take if not (look / Path(i["name"]).name).exists()]))
+    # the atlas run's quality gate, for the coverage report (data/city/appearance-atlas-gate.json)
+    tasks = [json.loads(R.gcs_get(i["name"])) for i in R.gcs_list(P + "cells/") if i["name"].endswith("/atlas.task.json")]
+    gate: dict = {}
+    for d in tasks:
+        for k, v in (d.get("gate") or {}).items():
+            gate[k] = gate.get(k, 0) + v
+    (ROOT / "data" / "city" / "appearance-atlas-gate.json").write_text(json.dumps({
+        "cells": len(tasks), "texels": sorted({d.get("texel") for d in tasks}), "atlases": sum(d.get("atlases", 0) for d in tasks),
+        "webp_mb": round(sum(d.get("webp_mb", 0) for d in tasks), 1), "gate": gate}, indent=1) + "\n")
     print(f"atlases: {len(take)} of {len(want)} synced ({tot / 1e9:.2f} GB, cap {a.atlas_cap_gb} GB); the rest stay in gs://{R.BUCKET}/{P}tex-look/")
 
 
@@ -219,7 +250,9 @@ def main():
     sp.add_parser("status").set_defaults(f=cmd_status)
     sp.add_parser("cancel").set_defaults(f=cmd_cancel)
     sp.add_parser("report").set_defaults(f=cmd_report)
-    p = sp.add_parser("sync"); p.add_argument("--atlas-cap-gb", type=float, default=1.5); p.set_defaults(f=cmd_sync)
+    p = sp.add_parser("sync"); p.add_argument("--atlas-cap-gb", type=float, default=1.5)
+    p.add_argument("--allow-stale", action="store_true", help="sync even if the attach step has not run after the atlas run")
+    p.set_defaults(f=cmd_sync)
     a = ap.parse_args()
     a.f(a)
 

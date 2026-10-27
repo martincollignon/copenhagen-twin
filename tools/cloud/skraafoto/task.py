@@ -6,9 +6,11 @@ MODE (env, per execution)
             -> skraafoto/cells/<cell>/{obs,pairs,views}.pkl.gz + tones.done
   finalize  ONE task: calibrate + finalize (passes B-D) over the cells listed in $CELLS_URI (default: every cell with tones.done), validation
             against data/cph-geodata.json -> skraafoto/tiles/<tile>/appearance.json, cells/<cell>/final.* , validation.json
-  atlas     one cell per task: full-resolution windows of the best views -> strips -> facade_look -> skraafoto/tex-look/<id>.webp,
-            cells/<cell>/atlas.pkl.gz (descriptors)
-  attach    ONE task: merges every cell's atlas.pkl.gz into the tile layers in the bucket
+  atlas     one cell per task: full-resolution windows of each wall's texture view -> strips -> facade_look -> quality gate
+            -> skraafoto/tex-look/<id>.webp, cells/<cell>/atlas.pkl.gz (descriptors of the strips that passed)
+  attach    ONE task: sets every tile layer's citywide atlas descriptors to exactly what the cells' atlas.pkl.gz hold (stale ones from an
+            earlier atlas run are removed; the district's own atlases are kept), then writes skraafoto/attach.done, which
+            `cloudctl.py sync` requires to be newer than every atlas.pkl.gz
 Store: gs://$BUCKET/skraafoto/. Inputs: input/index.json, input/tiles/<tile>/buildings.json, input/cph-geodata.json (uploaded by cloudctl.py inputs).
 Token: GSEARCH_TOKEN comes from Secret Manager (secretKeyRef on the job) and is never printed.
 """
@@ -109,11 +111,12 @@ def main() -> int:
             for f in ("final.done", "final.pkl.gz", "views.pkl.gz"):
                 if not get(f"cells/{cell}/{f}", cd / f):
                     raise SystemExit(f"{cell}: {f} missing in the bucket: run finalize first")
+            get(f"cells/{cell}/obs.pkl.gz", cd / "obs.pkl.gz")  # per-view observations: the texture view candidates
             if not force and bkt.blob(P + f"cells/{cell}/atlas.done").exists():
                 log("already done")
                 return 0
             get("input/cph-geodata.json", DATA / "cph-geodata.json")
-            res = AT.process_atlas(cell, AT.texel_for(cell, os.environ.get("TEXEL", "rings")), force=True)
+            res = AT.process_atlas(cell, AT.texel_for(cell, os.environ.get("TEXEL") or AT.DEFAULT_TEXEL), force=True)
             look = DATA / "tex-look"
             files = sorted(look.glob("*.webp")) if look.exists() else []
             with cf.ThreadPoolExecutor(8) as ex:
@@ -161,28 +164,49 @@ def main() -> int:
     if mode == "attach":
         import appearance_city as C2  # noqa: PLC0415
         todo = sorted({n.split("/")[1] for n in listing("cells/") if n.endswith("/atlas.pkl.gz")})
-        n = 0
+        by_tile: dict[str, dict] = {}
         for c in todo:
             d = Path("/tmp/atl.pkl.gz")
             get(f"cells/{c}/atlas.pkl.gz", d)
             at = C2.load_pkl(d)
-            by_tile: dict[str, dict] = {}
             fin = Path("/tmp/fin.pkl.gz")
             get(f"cells/{c}/final.pkl.gz", fin)
             tid_of = C2.load_pkl(fin)["tid_of"]
             for bid, a in at.items():
                 by_tile.setdefault(tid_of[bid], {})[bid] = a
-            for t, dd in by_tile.items():
-                p = Path("/tmp/tile.json")
-                get(f"tiles/{t}/appearance.json", p)
-                doc = json.loads(p.read_text())
-                for bid, a in dd.items():
-                    if bid in doc["buildings"]:
-                        doc["buildings"][bid]["atlas"] = a
-                        n += 1
+        # the district's atlases (data/cph-geodata.json, served from data/tex-look) are the only descriptors not made here
+        district = set()
+        if get("input/cph-geodata.json", DATA / "cph-geodata.json"):
+            district = {b["id"] for b in json.loads((DATA / "cph-geodata.json").read_text())["buildings"] if (b.get("observed") or {}).get("atlas")}
+        tiles = sorted({n.split("/")[1] for n in listing("tiles/") if n.endswith("/appearance.json")})
+        tot = {"attached": 0, "removed": 0, "tiles_written": 0}
+
+        def one(t):
+            p = Path(f"/tmp/tiles/{t}.json")
+            get(f"tiles/{t}/appearance.json", p)
+            doc = json.loads(p.read_text())
+            dd = by_tile.get(t, {})
+            n_set = n_rm = 0
+            for bid, b in doc["buildings"].items():
+                if bid in dd:
+                    if b.get("atlas") != dd[bid]:
+                        b["atlas"] = dd[bid]
+                        n_set += 1
+                elif "atlas" in b and bid not in district:
+                    del b["atlas"]
+                    n_rm += 1
+            if n_set or n_rm:
                 p.write_text(json.dumps(doc, separators=(",", ":"), ensure_ascii=False))
                 put(f"tiles/{t}/appearance.json", p)
-        log("attached", n, "atlases")
+            return n_set, n_rm, sum(1 for bid in dd if bid in doc["buildings"])
+        with cf.ThreadPoolExecutor(8) as ex:
+            for n_set, n_rm, n_have in ex.map(one, tiles):
+                tot["attached"] += n_have
+                tot["removed"] += n_rm
+                tot["tiles_written"] += bool(n_set or n_rm)
+        tot.update({"cells": len(todo), "tiles": len(tiles), "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+        bkt.blob(P + "attach.done").upload_from_string(json.dumps(tot))
+        log("attach", json.dumps(tot))
         return 0
     raise SystemExit(f"unknown MODE {mode}")
 
