@@ -14,7 +14,8 @@
 import { parseLod2Record } from './lod2-geometry.js';
 import { decodeGrid } from './terrain-cph.js';
 import { tilesForLocalBbox } from './tile-grid.js';
-import { dataUrl, isRemoteBase } from './data-config.js';
+import { dataUrl, isRemoteBase, resolveDataBase, packsWanted } from './data-config.js';
+import { fetchManifest, createPackSource, createAtlasSource, setAtlasSource } from './data-packs.js';
 
 /** The tile directory of this page: `<data base>/tiles` (js/data-config.js: `?data=` or the build default, './data' locally). */
 export const tilesUrl = () => dataUrl('tiles');
@@ -193,30 +194,68 @@ export function createTileLod2(meta, fetchBin) {
 
 // ------------------------------------------------------------------------------------------------------------ store
 
+/** The unpacked layout: one file per layer under the tile directory (data/tiles), the city files beside it. */
+export function createFileSource(baseUrl, fetchImpl = globalThis.fetch) {
+  // remote data sits under a version prefix and is served with long cache headers: let the browser cache it
+  const remote = isRemoteBase(baseUrl);
+  return {
+    kind: 'files',
+    async index() {
+      const response = await fetchImpl(`${baseUrl}/index.json`, { cache: 'no-cache' });
+      return response.ok ? response.json() : null;
+    },
+    async json(rel, signal) {
+      const url = `${baseUrl}/${rel}`;
+      const r = await fetchImpl(url, { cache: remote ? 'default' : 'no-cache', ...(signal ? { signal } : {}) });
+      if (!r.ok) throw new Error(`HTTP ${r.status} ${url}`);
+      return r.json();
+    },
+    async bin(rel) {
+      const r = await fetchImpl(`${baseUrl}/${rel}`);
+      return r.ok ? r.arrayBuffer() : null;
+    },
+    key: (rel) => rel,
+    url: (rel) => `${baseUrl}/${rel}`
+  };
+}
+
+/** The packed layout (js/data-packs.js): the same paths, read out of the packs a manifest names. */
+export function createPackedSource(manifest, opts) {
+  const src = createPackSource(manifest, opts);
+  return { kind: 'packs', ...src, index: () => src.json('index.json') };
+}
+
 /**
- * Opens data/tiles/index.json. Null when absent or not cph-tiles/1: the engine then loads the monolithic files.
+ * Opens the tile store. With `packs` (js/data-config.js packsWanted: any data base but the repo's own ./data) the packed layout is tried
+ * first (<data base>/manifest.json); without a manifest, or with an explicit `baseUrl` (?tiles=), data/tiles/index.json is read.
+ * Null when neither is there or the index is not cph-tiles/1: the engine then loads the monolithic files.
  * @returns {Promise<null | { index, ids: string[], tilesForLocalBbox, loadCity, loadTiles, loadArea }>}
  */
-export async function openTileStore({ baseUrl = tilesUrl(), fetchImpl = globalThis.fetch } = {}) {
+export async function openTileStore({ baseUrl = null, fetchImpl = globalThis.fetch, dataBase = resolveDataBase(), packs = baseUrl ? false : packsWanted() } = {}) {
+  let source = null;
+  if (packs) {
+    const manifest = await fetchManifest(dataBase, fetchImpl);
+    if (manifest) {
+      const atlases = createAtlasSource({ base: dataBase, fetchImpl });
+      source = createPackedSource(manifest, { base: dataBase, fetchImpl, atlases });
+      setAtlasSource(atlases);
+    }
+  }
+  source ||= createFileSource(baseUrl || dataUrl('tiles', dataBase), fetchImpl);
   let index;
   try {
-    const response = await fetchImpl(`${baseUrl}/index.json`, { cache: 'no-cache' });
-    if (!response.ok) return null;
-    index = await response.json();
+    index = await source.index();
+    if (!index) return null;
   } catch (error) {
     console.info('[cph] no tile index:', error?.message || error);
     return null;
   }
   if (index?.version !== TILE_VERSION || !index.tiles) return null;
+  return createStore(index, source);
+}
 
-  const remote = isRemoteBase(baseUrl);
-  const json = async (url, signal) => {
-    // remote data sits under a version prefix and is served with long cache headers: let the browser cache it
-    const r = await fetchImpl(url, { cache: remote ? 'default' : 'no-cache', ...(signal ? { signal } : {}) });
-    if (!r.ok) throw new Error(`HTTP ${r.status} ${url}`);
-    return r.json();
-  };
-  const cityUrl = (rel) => `${baseUrl}/${rel}`;
+async function createStore(index, source) {
+  const json = (rel, signal) => source.json(rel, signal);
   const cityDir = String(index.city?.meta || '../city/meta.json').replace(/\/[^/]*$/, '');
 
   // Post-process layers (data/city/post.json, written by tools/cph-geodata/far_lod.py and tile_streets.py after the tile compiler):
@@ -226,7 +265,7 @@ export async function openTileStore({ baseUrl = tilesUrl(), fetchImpl = globalTh
   //            tools/cph-geodata/city_water.py) + the city header (bodies, far-ring pieces, the Soerne override)
   let post = null;
   try {
-    const doc = await json(`${baseUrl}/${cityDir}/post.json`);
+    const doc = await json(`${cityDir}/post.json`);
     if (doc?.version?.startsWith('cph-post/')) post = doc;
   } catch { /* no post-process layers: the engine uses what the tile index and the city files hold */ }
 
@@ -236,11 +275,11 @@ export async function openTileStore({ baseUrl = tilesUrl(), fetchImpl = globalTh
       // with a per-tile street layout the whole-city streets.json is not read at all (it is only meaningful for the tiles it covers)
       const tiled = !!post?.streets;
       const [meta, roadGraph, streets, streetsGraph, lakes, water] = await Promise.all([
-        json(cityUrl(index.city.meta)), json(cityUrl(index.city.roadgraph)),
-        !tiled && index.city.streets ? json(cityUrl(index.city.streets)).catch(() => null) : null,
-        tiled && post.streets.graph ? json(`${baseUrl}/${cityDir}/${post.streets.graph}`).catch(() => null) : null,
-        index.city.lakes ? json(cityUrl(index.city.lakes)).catch(() => null) : null,
-        post?.water?.header ? json(`${baseUrl}/${cityDir}/${post.water.header}`).catch(() => null) : null
+        json(index.city.meta), json(index.city.roadgraph),
+        !tiled && index.city.streets ? json(index.city.streets).catch(() => null) : null,
+        tiled && post.streets.graph ? json(`${cityDir}/${post.streets.graph}`).catch(() => null) : null,
+        index.city.lakes ? json(index.city.lakes).catch(() => null) : null,
+        post?.water?.header ? json(`${cityDir}/${post.water.header}`).catch(() => null) : null
       ]);
       return { meta, roadGraph, streets, streetsGraph, lakes, water: water?.version?.startsWith('cph-water/') ? water : null };
     })();
@@ -248,34 +287,37 @@ export async function openTileStore({ baseUrl = tilesUrl(), fetchImpl = globalTh
   };
 
   /** The whole street layout document (data/city/streets.json), even where the tiles carry it per tile; null when absent. */
-  const loadStreets = async () => (index.city.streets ? json(cityUrl(index.city.streets)).catch(() => null) : null);
+  const loadStreets = async () => (index.city.streets ? json(index.city.streets).catch(() => null) : null);
 
   const cache = new Map(); // tile id -> Promise<{ [layer]: payload }>
   const loadTile = (tid) => {
     if (!cache.has(tid)) {
       const names = [...Object.keys(index.tiles[tid]?.layers || {}), ...(post?.streets?.tiles?.[tid] ? ['streets'] : []), ...(post?.water?.tiles?.[tid] ? ['water'] : []), ...(post?.appearance?.tiles?.[tid] ? ['appearance'] : [])].filter((n) => !n.endsWith('.bin'));
-      cache.set(tid, Promise.all(names.map(async (n) => [n, await json(`${baseUrl}/${tid}/${n}.json`)])).then(Object.fromEntries));
+      cache.set(tid, Promise.all(names.map(async (n) => [n, await json(`${tid}/${n}.json`)])).then(Object.fromEntries));
     }
     return cache.get(tid);
   };
   const fetchBin = async (tid) => {
     if (!index.tiles[tid]?.layers?.['lod2.bin']) return null;
-    const r = await fetchImpl(`${baseUrl}/${tid}/lod2.bin`);
-    return r.ok ? r.arrayBuffer() : null;
+    return source.bin(`${tid}/lod2.bin`);
   };
   // The streamer (js/tile-streamer.js) keeps the payloads itself: one layer per request, abortable, never cached here.
   const layerSize = (tid, name) => index.tiles[tid]?.layers?.[name] || (name === 'streets' ? post?.streets?.tiles?.[tid] : name === 'water' ? post?.water?.tiles?.[tid] : name === 'appearance' ? post?.appearance?.tiles?.[tid] : 0) || 0;
   const hasLayer = (tid, name) => !!index.tiles[tid] && layerSize(tid, name) > 0;
-  const fetchLayer = (tid, name, signal) => (hasLayer(tid, name) ? json(`${baseUrl}/${tid}/${name}.json`, signal) : Promise.resolve(null));
+  const fetchLayer = (tid, name, signal) => (hasLayer(tid, name) ? json(`${tid}/${name}.json`, signal) : Promise.resolve(null));
+  /** The request a layer is served by (one per layer unpacked, one per pack packed): the streamer caps requests, not layers. */
+  const requestKey = (tid, name) => source.key(`${tid}/${name}.json`);
   const layerBytes = layerSize;
 
   const ids = Object.keys(index.tiles).sort();
   return {
     index,
     post,
-    cityUrl: (rel) => `${baseUrl}/${cityDir}/${rel}`,
-    fetchCityBin: async (rel) => { const r = await fetchImpl(`${baseUrl}/${cityDir}/${rel}`); if (!r.ok) throw new Error(`HTTP ${r.status} ${rel}`); return r.arrayBuffer(); },
-    fetchCityJson: (rel) => json(`${baseUrl}/${cityDir}/${rel}`),
+    source: source.kind,
+    /** URL of a city file (unpacked layout only; packed files have no URL of their own). */
+    cityUrl: (rel) => (source.url ? source.url(`${cityDir}/${rel}`) : null),
+    fetchCityBin: async (rel) => { const b = await source.bin(`${cityDir}/${rel}`); if (!b) throw new Error(`HTTP 404 ${rel}`); return b; },
+    fetchCityJson: (rel) => json(`${cityDir}/${rel}`),
     ids,
     tilesForLocalBbox: (bbox, margin = 0) => tilesForLocalBbox(bbox, margin).filter((id) => index.tiles[id]),
     loadCity,
@@ -285,6 +327,7 @@ export async function openTileStore({ baseUrl = tilesUrl(), fetchImpl = globalTh
     hasLayer,
     fetchLayer,
     layerBytes,
+    requestKey,
     /** Loads every tile touching a local bbox [xmin, zmin, xmax, zmax] (+ margin m) and assembles the layer documents. */
     async loadArea(bbox, margin = 25) {
       const tileIds = this.tilesForLocalBbox(bbox, margin);

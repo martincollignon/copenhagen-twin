@@ -18,6 +18,7 @@ import { disposeTree } from './dispose-tree.js';
 import { nextFrame } from './yield-frame.js';
 import { createHeroCache } from './hero-cache.js';
 import { dataUrl, heroesEnabled } from './data-config.js';
+import { getAtlasSource } from './data-packs.js';
 import { batchBuildingCells, updateBuildingCellVisibility } from './building-batches.js';
 
 // js/buildings-real.js
@@ -252,6 +253,10 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch, budg
   const looksPresent = () => lookSeen || state.look > 0;
 
   async function fetchBlob(file, signal) {
+    // packed data (js/data-packs.js): the atlas comes out of its tile's atlas pack (a Range request per chunk, cached); one the packs
+    // do not hold is a 404 without a request
+    const packed = getAtlasSource();
+    if (packed) return packed.blob(file, signal);
     const url = dataUrl(file); // data/tex-look/<id>.webp, data/tex/<id>.jpg under the data base (js/data-config.js)
     const response = signal ? await fetchImpl(url, { signal }) : await fetchImpl(url);
     if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
