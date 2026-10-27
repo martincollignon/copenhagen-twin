@@ -155,6 +155,11 @@ test('mode changes clear touches and expose the relevant actions', () => {
   assert.equal(buttons.up.hidden, true);
   assert.equal(buttons.down.hidden, true);
   assert.equal(buttons.boost.hidden, true, 'pedal boats do not expose a boost control');
+  controls.setMode('goboat');
+  assert.equal(controls.mode, 'goboat');
+  assert.equal(buttons.up.hidden, true);
+  assert.equal(buttons.down.hidden, true);
+  assert.equal(buttons.boost.hidden, true, 'electric picnic boats do not expose boost');
 });
 
 test('disabling controls clears held input and blocks new input until enabled', () => {

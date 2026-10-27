@@ -1,0 +1,20 @@
+{
+  "retrieved": "2026-10-26",
+  "purpose": "Visual reconstruction references, inspected as a contact sheet and in full-resolution detail. Images are not redistributed in this repository.",
+  "photos": {
+    "01-base-aerial": "https://ik.imagekit.io/goboat/production/prod/sites/3/2022/11/29115238/GoBoat-copenhagen-base-from-above-solar-cells-roof-scaled.jpg?tr=w-1800",
+    "02-hull-side": "https://ik.imagekit.io/goboat/production/prod/sites/3/2023/10/02111910/sikker-sejltur-scaled.jpg?tr=w-1600",
+    "03-empty-cockpit": "https://onthegrid.city/imager/s3_amazonaws_com/onthegrid.city/assets/grid/copenhagen/islands-brygge/rent-a-boat-goboat/DSC_1449_299006722e285f47655d17d1c9136337.jpg",
+    "04-seating": "https://ik.imagekit.io/goboat/production/prod/sites/3/2022/12/15130508/People-sitting-around-picnic-table-in-a-GoBoat-scaled.jpg?tr=w-1600",
+    "05-family-bow": "https://ik.imagekit.io/goboat/production/prod/sites/3/2024/05/29143019/AUZkIqGBmgWRiv0T5YmuzNrg1muuOg6627bfb5a96fe-copy-scaled.jpg?tr=w-1600",
+    "06-dock-boats": "https://ik.imagekit.io/goboat/production/prod/sites/3/2022/12/13101749/goboat-boats-copenhagen-family-scaled.jpg?tr=w-1600",
+    "07-terminal-fleet": "https://ik.imagekit.io/goboat/production/prod/sites/3/2022/12/13094359/Boat-rental-at-Islands-Brygge-in-Copenhagen-GoBoat-scaled.jpg?tr=w-1800",
+    "08-rear-quarter": "https://ik.imagekit.io/goboat/production/prod/sites/3/2022/12/13094501/Oplev-Kobenhavn-scaled.jpg?tr=w-1600",
+    "09-profile": "https://ik.imagekit.io/goboat/production/prod/sites/3/2023/01/02135105/Summer-Copenhagen-harbopr-GoBoat-scaled.jpg?tr=w-1600",
+    "10-bow-quarter": "https://ik.imagekit.io/goboat/production/prod/sites/3/2023/01/02132200/Couple-sailing-in-spring-GoBoat-scaled.jpg?tr=w-1600"
+  },
+  "mapped_footprints": {
+    "pier": "https://www.openstreetmap.org/api/0.6/way/297639626/full",
+    "pavilion": "https://www.openstreetmap.org/api/0.6/way/297639625/full"
+  }
+}

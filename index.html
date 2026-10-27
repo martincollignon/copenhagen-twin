@@ -22,6 +22,10 @@
   <link rel="modulepreload" href="./js/actor-models.js" />
   <link rel="modulepreload" href="./js/swan-boat.js" />
   <link rel="modulepreload" href="./js/swan-navigation.js" />
+  <link rel="modulepreload" href="./js/goboat.js" />
+  <link rel="modulepreload" href="./js/goboat-navigation.js" />
+  <link rel="modulepreload" href="./js/goboat-piers.js" />
+  <link rel="modulepreload" href="./js/goboat-pier-data.js" />
   <link rel="modulepreload" href="./js/irma-neon.js" />
   <link rel="modulepreload" href="./js/irma-neon-art.js" />
   <link rel="modulepreload" href="./js/audio-acoustics.js" />
@@ -249,6 +253,11 @@
       <button class="bike-type-btn active" data-bike-type="cyclist" type="button" aria-pressed="true">City bike</button>
       <button class="bike-type-btn" data-bike-type="cargobike" type="button" aria-pressed="false">Cargo bike</button>
     </div>
+    <div id="boat-type-switch" class="bike-type-switch" role="group" aria-label="Boat type" hidden>
+      <button class="bike-type-btn active" data-boat-type="swanboat" type="button" aria-pressed="true">Swan pedal boat</button>
+      <button class="bike-type-btn" data-boat-type="goboat" type="button" aria-pressed="false" disabled title="Harbour map not loaded">GoBoat</button>
+    </div>
+    <button id="boat-pier-action" class="bike-type-btn boat-pier-action" type="button" hidden>Board GoBoat</button>
     <nav id="mode-switch" class="panel mode-switch" aria-label="Third-Person Navigation Mode">
       <span class="mode-indicator" aria-hidden="true"></span>
       <button id="mode-person" class="mode-btn" data-mode="person" type="button" title="Person [1]">
@@ -263,7 +272,7 @@
       <button id="mode-helicopter" class="mode-btn" data-mode="helicopter" type="button" title="Helicopter [4]">
         <svg class="icon" aria-hidden="true"><use href="#i-heli"/></svg><span class="mode-label">Fly</span><kbd>4</kbd>
       </button>
-      <button id="mode-swanboat" class="mode-btn" data-mode="swanboat" type="button" title="Swan pedal boat [5]">
+      <button id="mode-swanboat" class="mode-btn" data-mode="swanboat" type="button" title="Boat [5]">
         <svg class="icon" aria-hidden="true"><use href="#i-swanboat"/></svg><span class="mode-label">Boat</span><kbd>5</kbd>
       </button>
     </nav>
