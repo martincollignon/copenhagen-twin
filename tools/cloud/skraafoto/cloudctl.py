@@ -13,7 +13,10 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import concurrent.futures as cf
+import hashlib
+import http.client
 import importlib.util
 import io
 import json
@@ -200,6 +203,17 @@ def attach_state() -> tuple[bool, str]:
     return True, (R.gcs_get(P + "attach.done") or b"").decode()
 
 
+def gcs_get_retry(name: str, tries: int = 5) -> bytes:
+    """R.gcs_get, retried on a dropped connection (a citywide sync makes ~10^5 requests)."""
+    for k in range(tries):
+        try:
+            return R.gcs_get(name)
+        except (ConnectionError, OSError, http.client.HTTPException):
+            if k == tries - 1:
+                raise
+            time.sleep(2 ** k)
+
+
 def cmd_sync(a):
     tiles = ROOT / "data" / "tiles"
     ok, why = attach_state()
@@ -242,8 +256,13 @@ def cmd_sync(a):
             break
         tot += int(i["size"])
         take.append(i)
+    def stale(i):  # missing, or an earlier run's atlas (an atlas rerun rewrites the webp under the same name)
+        p = look / Path(i["name"]).name
+        return not p.exists() or base64.b64encode(hashlib.md5(p.read_bytes()).digest()).decode() != i.get("md5Hash")
     with cf.ThreadPoolExecutor(8) as ex:
-        list(ex.map(lambda i: (look / Path(i["name"]).name).write_bytes(R.gcs_get(i["name"])), [i for i in take if not (look / Path(i["name"]).name).exists()]))
+        get = [i for i, s_ in zip(take, ex.map(stale, take)) if s_]
+        list(ex.map(lambda i: (look / Path(i["name"]).name).write_bytes(gcs_get_retry(i["name"])), get))
+    print(f"atlases downloaded: {len(get)} (new or changed)")
     # the atlas run's quality gate, for the coverage report (data/city/appearance-atlas-gate.json)
     tasks = [json.loads(R.gcs_get(i["name"])) for i in R.gcs_list(P + "cells/") if i["name"].endswith("/atlas.task.json")]
     gate: dict = {}
