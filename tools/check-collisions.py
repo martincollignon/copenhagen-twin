@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Run focused actor-collision regressions in the real WebGPU app.
 
-Usage: python tools/check-collisions.py [--root PATH] [--out report.json] [--seed N]
+Usage: python tools/check-collisions.py [--root PATH] [--out report.json] [--seed N] [--query tiles=...]
+       python tools/check-collisions.py --survey [--spots rhus,nyhavn] [--query tiles=...]   (contacts, outcomes, CPU per spot)
 
 The app is served from an ephemeral localhost port. Playwright and a Chromium build
 with WebGPU support must already be installed; this script adds no dependencies.
@@ -52,6 +53,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--profile", action="store_true", help="capture a Chrome V8 CPU profile of collision-enabled traffic updates")
     parser.add_argument("--profile-ticks", type=int, default=120, help="profiled ticks (minimum 120; default: 120)")
     parser.add_argument("--profile-out", type=pathlib.Path, help="raw Chrome CPU profile JSON path")
+    parser.add_argument("--query", default="", help="extra page query, e.g. tiles=.context/merge-tiles/tiles (the district fixture)")
+    parser.add_argument("--survey", action="store_true", help="per-spot contact census, agent outcomes and collision CPU (tools/collision-probe.js)")
+    parser.add_argument("--spots", default="", help="comma-separated spot names for --survey (default: the city or the district set)")
+    parser.add_argument("--ticks", type=int, default=600, help="--survey: measured fixed-dt ticks per spot (default 600 = 10 s)")
+    parser.add_argument("--warm", type=int, default=600, help="--survey: warm-up ticks per spot after streaming (default 600)")
+    parser.add_argument("--city-spots", default="rhus,stroget,vesterbro,frballe,nyhavn",
+                        help="city cases (streamed citywide index only): walk/cycle/drive into walls, poles and parked cars at these spots; '' skips")
+    parser.add_argument("--cpu-only", action="store_true", help="--survey: only the collision CPU windows (for A/B rounds)")
+    parser.add_argument("--perf-rounds", type=int, default=1, help="--survey: CPU windows per spot (alternate builds between runs for A/B)")
     args = parser.parse_args()
     if args.perf_ticks < 120:
         parser.error("--perf-ticks must be at least 120")
@@ -60,6 +70,116 @@ def parse_args() -> argparse.Namespace:
     if args.perf and args.profile:
         parser.error("--perf and --profile cannot be combined")
     return args
+
+
+# --survey spots (local frame; heading: forward is (sin h, cos h)). The city ones are js/city-teleports.js plus Stroget (Vimmelskaftet);
+# the district ones are js/city-config.js TELEPORT_LOCATIONS.
+CITY_SPOTS = {
+    "rhus": (437.9, 723.6, -2.42),
+    "stroget": (827.0, 400.0, 1.99),
+    "nyhavn": (1881.4, 217.6, 2.76),
+    "frballe": (-1305.4, 1024.2, -1.69),
+    "vesterbro": (-281.4, 1414.0, -1.02),
+    "trianglen": (879.5, -2142.6, 0.11),
+    "brygge": (859.3, 1964.1, -0.59),
+}
+DISTRICT_SPOTS = {
+    "ns37": (0.0, 0.0, 3.14159),
+    "dlb": (97.0, -476.7, -2.12),
+    "peblinge": (-76.8, -320.0, -0.45),
+    "nbro": (-147.3, -620.1, -2.1),
+    "blaag": (-314.6, -448.0, 1.04),
+}
+PROBE_JS = pathlib.Path(__file__).resolve().with_name("collision-probe.js")
+COLLISION_FILES = ("city-collisions.js", "static-colliders.js", "collision-shapes.js")
+
+
+def heap_by_file(profile: dict[str, object], functions: dict[str, int] | None = None) -> dict[str, int]:
+    """Bytes sampled per script file in a CDP HeapProfiler sampling profile (self sizes); `functions` collects file:function:line."""
+    out: dict[str, int] = defaultdict(int)
+    stack = [profile.get("head") or {}]
+    while stack:
+        node = stack.pop()
+        frame = node.get("callFrame") or {}
+        url = frame.get("url") or "<native>"
+        name = url.rsplit("/", 1)[-1] or url
+        out[name] += int(node.get("selfSize", 0))
+        if functions is not None and name in COLLISION_FILES and node.get("selfSize"):
+            key = f"{name}:{frame.get('functionName') or '(anonymous)'}:{int(frame.get('lineNumber', -1)) + 1}"
+            functions[key] = functions.get(key, 0) + int(node["selfSize"])
+        stack.extend(node.get("children") or [])
+    return dict(out)
+
+
+def run_survey(page: object, args: argparse.Namespace, district: bool) -> dict[str, object]:
+    page.evaluate(PROBE_JS.read_text(encoding="utf-8"))  # type: ignore[attr-defined]
+    table = DISTRICT_SPOTS if district else CITY_SPOTS
+    names = [n for n in args.spots.split(",") if n] or list(table)
+    spots: dict[str, object] = {}
+    cdp = page.context.new_cdp_session(page)  # type: ignore[attr-defined]
+    cdp.send("HeapProfiler.enable")
+    for name in names:
+        x, z, heading = (CITY_SPOTS | DISTRICT_SPOTS)[name]
+        arrival = page.evaluate("(a) => __collisionProbe.goto(a)", {"x": x, "z": z, "heading": heading, "warm": args.warm})  # type: ignore[attr-defined]
+        perfs = [page.evaluate("(a) => __collisionProbe.perf(a)", {"ticks": args.ticks}) for _ in range(args.perf_rounds)]  # type: ignore[attr-defined]
+        if args.cpu_only:
+            spots[name] = {"spot": {"x": x, "z": z, "heading": heading}, "perf": perfs}
+            cpu = perfs[-1]
+            print(f"CPU {name}: placed~{cpu['placed']['median']} resolve median={cpu['resolveMs']['median']:.3f} "
+                  f"p95={cpu['resolveMs']['p95']:.3f} mean={cpu['resolveMs']['mean']:.3f} ms ({cpu['usPerAgent']:.2f} us/agent)", flush=True)
+            continue
+        census = page.evaluate("(a) => __collisionProbe.census(a)", {"x": x, "z": z})  # type: ignore[attr-defined]
+        counts = page.evaluate("(a) => __collisionProbe.measure(a)", {"ticks": args.ticks})  # type: ignore[attr-defined]
+        alloc_ticks = 240
+        cdp.send("HeapProfiler.collectGarbage")
+        cdp.send("HeapProfiler.startSampling", {"samplingInterval": 256, "includeObjectsCollectedByMajorGC": True,
+                                                "includeObjectsCollectedByMinorGC": True})
+        page.evaluate("(a) => __collisionProbe.run(a)", {"ticks": alloc_ticks})  # type: ignore[attr-defined]
+        sampled = cdp.send("HeapProfiler.stopSampling").get("profile") or {}
+        hot: dict[str, int] = {}
+        by_file = heap_by_file(sampled, hot)
+        collision_bytes = sum(v for k, v in by_file.items() if k in COLLISION_FILES)
+        spots[name] = {
+            "spot": {"x": x, "z": z, "heading": heading}, "arrival": arrival, "census": census, "counts": counts, "perf": perfs,
+            "alloc": {"ticks": alloc_ticks, "collisionBytesPerTick": collision_bytes / alloc_ticks,
+                      "byFile": {k: v for k, v in by_file.items() if k in COLLISION_FILES},
+                      "topFunctions": dict(sorted(hot.items(), key=lambda kv: -kv[1])[:12]),
+                      "totalBytesPerTick": sum(by_file.values()) / alloc_ticks},
+        }
+        t = counts["totals"]
+        cpu = perfs[-1]
+        kinds = counts["byKind"]
+        agents = [k for k in kinds if not k.startswith("player") and k != "parked-player"]
+        stuck = sum(kinds[k]["stuck"] for k in agents)
+        off = sum(kinds[k]["offRoute"] for k in agents)
+        jit = sum(kinds[k]["jitter"] for k in agents)
+        pers = sum(kinds[k]["persistent"] for k in agents)
+        spawn_in = sum(v for k, v in counts["spawnInside"].items() if not k.startswith("player"))
+        print(f"SPOT {name}: placed~{t['placedMedian']} static/agent-frame={t['agentStaticPerAgentFrame']:.4f} "
+              f"pair/agent-frame={t['agentPairPerAgentFrame']:.4f} contacts/frame={t['contactsPerFrame']:.1f} "
+              f"stuck={stuck} offRoute={off} jitter={jit} persistent={pers} spawnInside={spawn_in}/{counts['spawns']} "
+              f"resolve median={cpu['resolveMs']['median']:.3f} p95={cpu['resolveMs']['p95']:.3f} ms "
+              f"({cpu['usPerAgent']:.2f} us/agent) alloc={collision_bytes / alloc_ticks / 1024:.1f} KiB/tick", flush=True)
+        print(f"  static by group {counts['staticByGroup']}", flush=True)
+        print(f"  route in solid {counts['routeInside']} of {counts['routeSamples']}", flush=True)
+    cdp.send("HeapProfiler.disable")
+    cdp.detach()
+    return {"district": district, "ticks": args.ticks, "warm": args.warm, "spots": spots}
+
+
+def run_city_cases(page: object, args: argparse.Namespace) -> list[dict[str, object]]:
+    """The player against a streamed city's solids at busy streets (tools/collision-probe.js cityCases); [] on a district index."""
+    names = [n for n in args.city_spots.split(",") if n]
+    if not names:
+        return []
+    spots = [{"name": n, "x": CITY_SPOTS[n][0], "z": CITY_SPOTS[n][1], "heading": CITY_SPOTS[n][2]} for n in names]
+    covered = page.evaluate("""(spots) => { const w = globalThis.__twin.world;
+      return !!w.staticIndex && spots.every((s) => w.tileExists?.(s.x, s.z)); }""", spots)  # type: ignore[attr-defined]
+    if not covered:
+        print("NOTE city cases skipped: the tile index is not streamed citywide (district fixture or ?debug=notiles)")
+        return []
+    page.evaluate(PROBE_JS.read_text(encoding="utf-8"))  # type: ignore[attr-defined]
+    return page.evaluate("(spots) => __collisionProbe.cityCases({ spots })", spots)  # type: ignore[attr-defined]
 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
@@ -668,7 +788,7 @@ def main() -> int:
     report: dict[str, object] = {
         "root": str(root),
         "seed": args.seed,
-        "url": f"http://127.0.0.1:{port}/index.html?hooks",
+        "url": f"http://127.0.0.1:{port}/index.html?hooks" + (f"&{args.query.lstrip('?&')}" if args.query else ""),
         "browserArgs": browser_args(),
         "cases": [],
         "browserErrors": [],
@@ -694,20 +814,26 @@ def main() -> int:
             page.on("pageerror", lambda error: browser_errors.append(f"pageerror: {error}"))
             page.on(
                 "console",
+                # (a 404's console line names no URL: the response hook below reports every 404 that matters)
                 lambda message: browser_errors.append(f"console: {message.text}")
-                if message.type == "error"
+                if message.type == "error" and "the server responded with a status of 404" not in message.text
                 else None,
             )
+            # the tile streamer aborts the fetches of tiles that left the rings when the player teleports (net::ERR_ABORTED)
             page.on("requestfailed", lambda request: browser_errors.append(
                 f"requestfailed: {request.url}: {request.failure}"
-            ))
+            ) if "ERR_ABORTED" not in str(request.failure) else None)
 
             def response_status(response: object) -> None:
                 status = response.status  # type: ignore[attr-defined]
                 if status < 400:
                     return
                 url = response.url  # type: ignore[attr-defined]
-                if status == 404 and url.split("?", 1)[0].endswith("/favicon.ico"):
+                path = url.split("?", 1)[0]
+                # facade photo atlases a local data checkout may not have (the citywide set lives on R2): not a collision matter;
+                # city/post.json is an optional probe of js/tile-store.js (a district fixture has none)
+                if status == 404 and (path.endswith("/favicon.ico") or "/tex-look/" in path or "/data/tex/" in path
+                                      or path.endswith("/city/post.json")):
                     ignored_404.append(url)
                     return
                 browser_errors.append(f"HTTP {status}: {url}")
@@ -748,7 +874,10 @@ def main() -> int:
                 browser_errors.append(f"WebGPU unavailable: {gpu_info.get('reason')}")
             else:
                 try:
-                    if args.perf:
+                    if args.survey:
+                        district = "merge-tiles" in args.query or "notiles" in args.query
+                        report["survey"] = run_survey(page, args, district)
+                    elif args.perf:
                         report["performance"] = page.evaluate(PERFORMANCE_SCENARIO, {"ticks": args.perf_ticks})
                     elif args.profile:
                         cdp = page.context.new_cdp_session(page)
@@ -777,6 +906,7 @@ def main() -> int:
                         result = page.evaluate(SCENARIOS)
                         report["cases"] = result["cases"]
                         report["browserSideErrors"] = result["errors"]
+                        report["cases"].extend(run_city_cases(page, args))
                     page.wait_for_timeout(100)
                     gpu_errors.extend(page.evaluate("globalThis.__collisionGpuErrors || []"))
                 except PlaywrightError as error:
@@ -795,6 +925,16 @@ def main() -> int:
 
 
 def finish(report: dict[str, object], out: pathlib.Path | None) -> int:
+    if "survey" in report:
+        browser_errors = report.get("browserErrors") or []
+        for error in browser_errors:
+            print(f"FAIL browser: {error}")
+        if out:
+            destination = out.expanduser().resolve()
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+            print(f"JSON {destination}")
+        return 0 if not browser_errors else 1
     profile = report.get("profileSummary")
     if profile:
         v8 = profile["v8Profile"]
