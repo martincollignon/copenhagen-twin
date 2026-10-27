@@ -99,7 +99,7 @@ function unionBoundary(polygons, contains) {
  * The component connected to a pier is navigable; isolated lakes are never selected. No water is invented.
  * lakeData.lakes is a rendering collection, not an exclusion list: it may contain the expanded harbour.
  */
-export function createGoBoatNavigation({ geo, lakeData, waterOverride, harbourDoc, pierRecords = [], obstacleRings = [], hullRadius = GOBOAT_HULL_RADIUS, clearance = 0.12 } = {}) {
+export function createGoBoatNavigation({ geo, lakeData, waterOverride, harbourDoc, pierRecords = [], obstacleRings = [], hullRadius = GOBOAT_HULL_RADIUS, clearance = 0.12, tileGrid = null } = {}) {
   const source = waterOverride ?? harbourDoc?.water ?? harbourDoc?.polygons ?? lakeData?.lakes ?? geo?.water ?? [];
   const polygons = (Array.isArray(source) ? source : source.water || source.polygons || []).map(polygon).filter(Boolean);
   if (!polygons.length || !pierRecords.length || !Number.isFinite(hullRadius) || hullRadius <= 0) return null;
@@ -116,23 +116,77 @@ export function createGoBoatNavigation({ geo, lakeData, waterOverride, harbourDo
   const waterAt = (x, z) => component.some(p => inPolygon(p, x, z));
   const obstacles = [...obstacleRings, ...pierRecords.flatMap(p => p.obstacles || [])].map(r => ringOf(r.ring || r)).filter(r => r.length >= 3);
   const boundary = unionBoundary(component, waterAt);
-  const nearBoundary = segmentIndex([...boundary, ...obstacles.flatMap(edges)]);
+  const nearBoundary = segmentIndex(boundary);
+  const nearObstacle = segmentIndex(obstacles.flatMap(edges));
   const radius = hullRadius + Math.max(0, clearance), radiusSq = radius * radius;
-  const isPositionLegal = (x, z) => {
-    if (!Number.isFinite(x) || !Number.isFinite(z) || !waterAt(x, z) || obstacles.some(r => pointInRing(x, z, r))) return false;
-    for (const s of nearBoundary({ minX: x - radius, maxX: x + radius, minZ: z - radius, maxZ: z + radius })) {
-      if (distanceSq(x, z, s.a, s.b) < radiusSq) return false;
-    }
+  const clear = (index, x, z, box) => {
+    for (const s of index(box)) if (distanceSq(x, z, s.a, s.b) < radiusSq) return false;
     return true;
+  };
+  const coarseLegal = (x, z, box) => waterAt(x, z) && clear(nearBoundary, x, z, box);
+  // Full-resolution water of the tiles the world holds (setDetailWater): where every tile the hull touches has it, the quay is the
+  // drawn one; elsewhere the coarse citywide water decides. Connectivity always comes from the coarse water.
+  const detail = new Map();
+  const detailLegal = (x, z, box) => {
+    if (!tileGrid || !detail.size) return null;
+    const ids = new Set([tileGrid.tileOf(box.minX, box.minZ), tileGrid.tileOf(box.maxX, box.minZ), tileGrid.tileOf(box.minX, box.maxZ), tileGrid.tileOf(box.maxX, box.maxZ)]);
+    for (const id of ids) if (!detail.has(id)) return null;
+    if (!detail.get(tileGrid.tileOf(x, z)).polygons.some(p => inPolygon(p, x, z))) return false;
+    for (const id of ids) if (!clear(detail.get(id).index, x, z, box)) return false;
+    return true;
+  };
+  const isPositionLegal = (x, z) => {
+    if (!Number.isFinite(x) || !Number.isFinite(z) || obstacles.some(r => pointInRing(x, z, r))) return false;
+    const box = { minX: x - radius, maxX: x + radius, minZ: z - radius, maxZ: z + radius };
+    if (!clear(nearObstacle, x, z, box)) return false;
+    return detailLegal(x, z, box) ?? coarseLegal(x, z, box);
   };
   const seed = seeds.find(p => isPositionLegal(p.x, p.z));
   if (!seed) return null;
   const seedPolygon = component.find(p => inPolygon(p, seed.x, seed.z));
+  const level = Number.isFinite(seedPolygon.level) ? seedPolygon.level : GOBOAT_SEA_LEVEL_LOCAL;
+  // a point of (or within `d` of) the coarse component water
+  const nearCoarse = (x, z, d) => {
+    if (waterAt(x, z)) return true;
+    for (const s of nearBoundary({ minX: x - d, maxX: x + d, minZ: z - d, maxZ: z + d })) if (distanceSq(x, z, s.a, s.b) < d * d) return true;
+    return false;
+  };
+  /** The full-resolution water layer of one tile (data/tiles/<id>/water.json: bodies with level, polys clipped to the tile), or null to drop it.
+   *  Only pieces at this water level whose outline follows the coarse component are taken; the clip seams on the tile edge are not quay. */
+  const setDetailWater = (id, payload, tolerance = 2.5) => {
+    if (!tileGrid) return false;
+    if (!payload) return detail.delete(id);
+    const [x0, z0, x1, z1] = tileGrid.boundsOf(id);
+    const polygons = [];
+    for (const body of payload.bodies || []) {
+      if (body.pond || !Number.isFinite(body.level) || Math.abs(body.level - level) > 0.05) continue;
+      for (const piece of body.polys || []) {
+        const p = polygon(piece);
+        if (!p) continue;
+        const vertices = [p.ring, ...p.holes].flat();
+        if (vertices.filter(([x, z]) => nearCoarse(x, z, tolerance)).length * 2 >= vertices.length) polygons.push(p);
+      }
+    }
+    const tol = 0.05;
+    const seam = (e) => {
+      const onX = [x0, x1].find(v => Math.abs(e.a[0] - v) < tol && Math.abs(e.b[0] - v) < tol);
+      const onZ = [z0, z1].find(v => Math.abs(e.a[1] - v) < tol && Math.abs(e.b[1] - v) < tol);
+      if (onX === undefined && onZ === undefined) return false;
+      // the water goes on across the tile edge: probe just beyond the middle of the edge
+      const mx = (e.a[0] + e.b[0]) / 2, mz = (e.a[1] + e.b[1]) / 2;
+      const ox = onX === undefined ? 0 : onX === x0 ? -0.5 : 0.5, oz = onZ === undefined ? 0 : onZ === z0 ? -0.5 : 0.5;
+      return waterAt(mx + ox, mz + oz);
+    };
+    const shore = polygons.flatMap(p => [p.ring, ...p.holes].flatMap(edges)).filter(e => !seam(e));
+    detail.set(id, { polygons, index: segmentIndex(shore), edges: shore.length });
+    return true;
+  };
   return {
     enabled: true, hullRadius, clearance, polygons: component, obstacles, boundary,
     bounds: bounds(component.flatMap(p => p.ring)), seed: { ...seed },
-    level: Number.isFinite(seedPolygon.level) ? seedPolygon.level : GOBOAT_SEA_LEVEL_LOCAL,
-    isWaterPoint: waterAt, isPositionLegal,
+    level,
+    isWaterPoint: waterAt, isPositionLegal, setDetailWater,
+    hasDetailAt: (x, z) => !!tileGrid && detail.has(tileGrid.tileOf(x, z)),
     findNearestLegalPosition(x, z, maxDistance = 24, step = 0.5) {
       if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
       if (isPositionLegal(x, z)) return { x, z };
@@ -167,4 +221,17 @@ export function advanceGoBoatSpeed(speed, throttle, dt) {
   if (!throttle) return speed * Math.exp(-0.7 * dt);
   if (speed * throttle < 0) return Math.sign(speed) * Math.max(0, Math.abs(speed) - 1.6 * Math.abs(throttle) * dt);
   return Math.max(-0.85, Math.min(GOBOAT_MAX_SPEED, speed + throttle * 0.55 * dt));
+}
+
+/** The water at `level` of the citywide water header (data/city/water.json `far`: every tile's water pieces, clipped to the tile and
+ *  simplified by 2 m) as navigation polygons. It is resident from boot, so the GoBoat's reach does not follow the streamed tiles. */
+export function goBoatWaterFromCity(cityWater, level = cityWater?.sea ?? GOBOAT_SEA_LEVEL_LOCAL) {
+  const out = [];
+  for (const pieces of Object.values(cityWater?.far || {})) {
+    for (const piece of pieces) {
+      if (!Number.isFinite(piece.l) || Math.abs(piece.l - level) > 0.05) continue;
+      for (const p of piece.p || []) out.push({ ring: p.ring, holes: p.holes || [], level: piece.l });
+    }
+  }
+  return out;
 }

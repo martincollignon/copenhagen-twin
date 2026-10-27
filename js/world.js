@@ -25,6 +25,7 @@ import { createTiledHeightField } from './ground-height-cph.js';
 import { createTiledLawnMask } from './grass-layout-cph.js';
 import { tileOfLocal, tileBoundsLocal } from './tile-grid.js';
 import { createBaseGeo, graphFixFits, createTileData } from './tile-data.js';
+import { isGoBoatPierBuilding } from './goboat-pier-data.js';
 import { createTileStreamer } from './tile-streamer.js';
 import { streamConfig, extentOfTiles, distanceToRect } from './tile-rings.js';
 import { createBuildingsLayer } from './buildings-stream.js';
@@ -646,7 +647,7 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
   const terrain = terrainHeader && !flags.has('flat') ? createStreamTerrain(terrainHeader) : FLAT_TERRAIN;
   const lod2 = city.meta.lod2 && !flags.has('nolod2') ? createTileLod2(city.meta, store.fetchBin) : null;
   const streets = flags.has('nostreets') ? null : city.streets;
-  const data = createTileData({ index, meta: city.meta, streets, lakes: city.lakes, geo, terrain, lod2 });
+  const data = createTileData({ index, meta: city.meta, streets, lakes: city.lakes, geo, terrain, lod2, dropBuilding: isGoBoatPierBuilding });
   globalThis.CPH_TERRAIN = terrain;
 
   // Lakes with a level in the terrain header get the district's water (walls, coping, the shore field, reflections); they are global:
@@ -756,6 +757,16 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
   const layers = [];
   layers.push({ name: 'ground', rings: ['near', 'mid'], fidelity: true, add: (ctx, ring) => ground.addTile(ctx.id, ctx.bounds, { near: ring === 'near', tileCut: waterLayer ? ctx.water?.cut || null : null }), remove: (id) => ground.removeTile(id) });
   if (waterLayer) layers.push(waterLayer.layer);
+  // the full-resolution water layers of the resident tiles, for the GoBoat's quay collision (main.js; js/goboat-navigation.js setDetailWater)
+  const waterTiles = new Map();
+  const waterWatchers = new Set();
+  if (waterLayer) {
+    layers.push({
+      name: 'water-watch', rings: ['near', 'mid'],
+      add: (ctx) => { const w = ctx.water; if (!w) return; waterTiles.set(ctx.id, w); for (const fn of waterWatchers) fn(ctx.id, w); },
+      remove: (id) => { if (waterTiles.delete(id)) for (const fn of waterWatchers) fn(id, null); }
+    });
+  }
 
   const tiledHeight = createTiledHeightField(terrain.flat ? null : terrain, tileOfLocal);
   let roads = null;
@@ -988,6 +999,10 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     lakes,
     waterLayer,
     cityWater,
+    /** The water layers (data/tiles/<id>/water.json) of the tiles in the near and mid rings, by tile id. */
+    waterTiles,
+    /** fn(id, payload | null) whenever a tile's water layer arrives or leaves; returns the unsubscribe. */
+    onWaterTile: (fn) => { waterWatchers.add(fn); return () => waterWatchers.delete(fn); },
     lakeData: hasLakes ? lakesDoc : null,
     grass,
     geo,

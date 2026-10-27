@@ -4,27 +4,31 @@ Choose **Boat [5] → GoBoat**, alongside **Swan pedal boat**, just as Cycle off
 
 At the Islands Brygge boarding point, **E**, the contextual button, or gamepad **A** boards the boat. The same action steps onto the pier when the boat has returned to its departure area and slowed below 0.35 m/s. Reboarding preserves the boat position. Choosing Walk while out on the water returns the walker to the boarding pier. The skipper uses the existing character rig, with one hand on the tiller and one resting forward.
 
-## City expansion integration
+## City integration
 
-The current small Søerne map has no harbour. GoBoat remains disabled, titled “Harbour map not loaded”; no boats or pier are drawn on missing water. No generated city data, terrain, water rendering or map bounds were changed for this feature.
+GoBoat runs on the citywide streamed build (data/city/water.json, data/tiles/<id>/water.json, tools/cph-geodata/city_water.py).
 
-`main.js` passes the **rendered** `world.lakeData.lakes` collection to `controllerManager.setGoBoatWorldData()` only when `world.lakes` exists. If the city expansion continues using that renderer and supplies harbour polygons at Islands Brygge, initialization is automatic. The array name `lakes` does not exclude harbour water.
+- **Reach: the citywide water, resident from boot.** `main.js` hands `setGoBoatWorldData` the sea-level (`-6.84` local y) pieces of the citywide water header's `far` table (`goBoatWaterFromCity`). The header is already loaded for the water layer and the far ring, so there is no extra fetch, and what the boat can reach never depends on which tiles are streamed in. The pieces are clipped to the 500 m tiles and simplified by 2 m; the adapter removes the seams and keeps the component that holds the departure point: the inner harbour, Nyhavn, Christianshavns Kanal, Trangraven, Sydhavnen and the open sound. The water polygons run on under the bridges (Langebro, Lille Langebro, Knippelsbro, Inderhavnsbroen, the canal bridges), so the boat passes beneath them.
+- **Quay: the drawn one where it is loaded.** The world reports the full-resolution water layer of every tile in the near and mid rings (`world.waterTiles`, `world.onWaterTile`); `setGoBoatDetailWater` feeds it to the navigation. Where every tile the hull circle touches has its layer, the boat collides with the drawn polygons (the quay walls of js/water-tiles-cph.js stand on their outline); elsewhere the 2 m-simplified water decides. Clip seams on the tile edges are not quay. If a tile arrives with the hull already inside its quay, the boat steps back onto open water (at most 8 m).
+- **Pier and pavilion.** The pier is OSM way 297639626 and the pavilion OSM way 297639625 (amenity=boat_rental, name=GoBoat); the OSM centroid lands at local (1139, 1415). The floating spine lies on the harbour 15-20 m off the Islands Brygge quay, and the pavilion's landward edge is on the quay line. GeoDanmark maps the pavilion as three small buildings at the sea level (gdk:1205593464, gdk:1205593478, gdk:1233983966). `isGoBoatPierBuilding` (js/goboat-pier-data.js) drops them from the tile buildings (`createTileData({ dropBuilding })`), so the pier model is not covered by building boxes and does not become a building collider. No street furniture stands on the pier; the nearest bench and lamp are on the quay.
+- **Moored boats.** Twenty-seven boats lie bow-in on both sides of the spine. Their hull footprints are navigation obstacles, and every corner is on the drawn water inside the quay.
 
-For a separate harbour renderer, call after creating its visible water surface:
+The pier records are plain data in js/goboat-pier-data.js (no three.js), so the world and the tests can read them. Coordinates are metres, EPSG:25832 relative to the world origin `[723900, 6176500, 6.84]`; x is east, z is south. Additional verified piers can be supplied as records; no fictional GoBoat bases are included.
+
+For another water source, call after creating its visible water surface:
 
 ```js
 controllerManager.setGoBoatWorldData({
-  water: renderedHarbourPolygons,
+  water: renderedHarbourPolygons, // [{ ring: [x,z,...], holes: [[x,z,...]], level }]; level is local y
   frame: world.geo.frame,
+  tileGrid: { tileOf, boundsOf }, // optional: enables setGoBoatDetailWater(id, payload)
   // Optional: pierRecords, using the same fields as GOBOAT_PIER_RECORDS.
 });
 ```
 
-Each water record has `{ ring: [x,z,...], holes: [[x,z,...]], level }`. Coordinates are metres, EPSG:25832 relative to the world origin; x is east, z is south. `level` is **local y**, not absolute DVR90. At the current origin `[723900, 6176500, 6.84]`, sea level DVR90 0 is `-6.84`. Do not use the elevated Søerne lake level. When missing, a water level defaults to `-6.84`.
+Without the citywide water (the district fallback, `?debug=notiles`), only the rendered Søerne are passed and GoBoat stays disabled ("Harbour map not loaded").
 
-The adapter selects the connected water component containing the real departure point. It splits polygon edges at intersections and removes interior seams, then uses exact distances to the remaining boundary, islands, pier and moored boat footprints. A conservative 2.7 m hull radius plus 0.12 m clearance prevents the whole boat penetrating land. Motion is substepped at 0.25 m. Bridges are not blanket obstacles: the rendered water must continue beneath navigable bridge openings. This models physical water access, not the operator’s full commercial route restrictions or harbour traffic rules.
-
-The default pier is OSM way 297639626, pavilion 297639625. Departure is local `(1111, 1446)`, heading `-1` rad; the boarding point is `(1117.1, 1444.4)`. Both must fall within the expanded map. Keep the pier out of the generic building collider set, or account for its actual walkable deck. The controller supplies the pier deck height for walking. Additional verified piers can be supplied as records; no fictional GoBoat bases are included.
+The adapter splits polygon edges at intersections and removes interior seams, then uses exact distances to the remaining boundary, islands, pier and moored boat footprints. A conservative 2.7 m hull radius plus 0.12 m clearance keeps the whole boat off the land. Motion is substepped at 0.25 m. This models physical water access, not the operator's commercial route restrictions or harbour traffic rules. Bridge piers inside the water polygons are not obstacles.
 
 ## Reconstruction evidence and accuracy
 
@@ -47,8 +51,8 @@ node --test tests/*.cjs tests/*.mjs
 node --experimental-loader /private/tmp/dlb-three/loader.mjs tools/audit-goboat.mjs
 ```
 
-Navigation tests cover absent water, shared/overlapping seams, disconnected collinear polygons, tiny islands, narrow quay intrusions, swept collision and throttle limits. Controller tests cover availability, safe pier return, speed-gated disembarking, reboarding and saved walking positions.
+Navigation tests cover absent water, shared/overlapping seams, disconnected collinear polygons, tiny islands, narrow quay intrusions, swept collision and throttle limits. tests/goboat-harbour.test.mjs runs against the real harbour (tests/fixtures/goboat-harbour.json: the sea-level `far` pieces of the inner-harbour tiles and the full water layers of the five tiles around the pier, Langebro and Christianshavn, from R2 v3): the boat reaches Langebro, Knippelsbro, Christianshavns Kanal and Nyhavn from the pier, stays off the land, keeps its hull clear of the drawn quay, and the moored boats float inside the quay bow-in. Controller tests cover availability, safe pier return, speed-gated disembarking, reboarding and saved walking positions.
 
-A Playwright browser probe also exercised the actual Boat sub-selector, unavailable harbour state, boarding, driving, disembarking, subtype memory and swan regression without page errors. It supplied a **test-only** water polygon because the separate city expansion has not landed. Screenshots of the boat/pier are model studies, not a reconstructed city backdrop.
+A Playwright browser probe also exercised the actual Boat sub-selector, unavailable harbour state, boarding, driving, disembarking, subtype memory and swan regression without page errors. On the citywide build (`?data=<R2 v3>`) the probe teleports to Islands Brygge, selects Boat → GoBoat, drives under Langebro and back on the real harbour, and steps onto the pier, with no console errors.
 
 The design scan flags existing Inter usage (suggests a distinctive face and a complementary font) and existing `padding`, `max-width` and `width` transitions (suggests transform/opacity). The GoBoat selector follows the existing bicycle selector; this change does not redesign the application’s typography or animations.

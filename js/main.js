@@ -8,6 +8,8 @@ import { isTypingInField, TELEPORT_LOCATIONS } from './city-config.js';
 import { CITY_TELEPORT_LOCATIONS } from './city-teleports.js';
 import { buildWorld } from './world.js';
 import { ThirdPersonControllerManager } from './controllers.js';
+import { goBoatWaterFromCity } from './goboat-navigation.js';
+import { tileOfLocal, tileBoundsLocal } from './tile-grid.js';
 import { TouchControls } from './touch-controls.js';
 import { GamepadControls } from './gamepad-controls.js';
 import { CameraSystem, CAMERA_PRESETS } from './cameras.js';
@@ -101,7 +103,14 @@ async function initApp() {
   controllerManager.groundField = world.groundHeight || null;
   if (world.staticIndex) controllerManager.staticIndex = world.staticIndex; // streamed city: per-tile colliders
   controllerManager.setSwanWorldData(world.lakeData, world.lakes?.level);
-  controllerManager.setGoBoatWorldData({ water: world.lakes ? world.lakeData?.lakes || [] : [], frame: world.geo?.frame });
+  // GoBoat: the citywide sea-level water (data/city/water.json, resident from boot) is the harbour it can reach; the streamed tiles' full
+  // water layers sharpen the quay where they are loaded. Without the citywide water (the district fallback) only the rendered lakes count.
+  const goBoatWater = world.cityWater ? goBoatWaterFromCity(world.cityWater) : world.lakes ? world.lakeData?.lakes || [] : [];
+  controllerManager.setGoBoatWorldData({ water: goBoatWater, frame: world.geo?.frame, tileGrid: world.cityWater ? { tileOf: tileOfLocal, boundsOf: tileBoundsLocal } : null });
+  if (world.waterTiles) {
+    for (const [id, payload] of world.waterTiles) controllerManager.setGoBoatDetailWater(id, payload);
+    world.onWaterTile((id, payload) => controllerManager.setGoBoatDetailWater(id, payload));
+  }
   // Reuse teleport placement so saved players return at rest, close to their last positions.
   try {
     const saved = JSON.parse(localStorage.getItem('cph-player-state'));

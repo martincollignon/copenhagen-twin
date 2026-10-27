@@ -262,6 +262,7 @@ class ThirdPersonControllerManager {
     this.swanNavigation = null;
     this.goBoatNavigation = null;
     this.goBoatPiers = null;
+    this.goBoatDetailWater = new Map();
     this.swanFleet = SWAN_STATIC_MOORINGS.map((point, index) => {
       const model = createSwanBoat();
       model.group.position.set(point.x, this.swanWaterLevel, point.z);
@@ -403,8 +404,9 @@ class ThirdPersonControllerManager {
     return true;
   }
 
-  setGoBoatWorldData({ water = [], frame = null, pierRecords = GOBOAT_PIER_RECORDS } = {}) {
+  setGoBoatWorldData({ water = [], frame = null, pierRecords = GOBOAT_PIER_RECORDS, tileGrid = null } = {}) {
     // Only pass water that is actually rendered. Empty/partial maps keep both the pier and boat hidden.
+    // `tileGrid` ({ tileOf, boundsOf }): the streamed tiles' full-resolution water refines the quay (setGoBoatDetailWater).
     const rawRecords = normalizeGoBoatPierRecords(pierRecords, frame);
     const preliminary = createGoBoatNavigation({ waterOverride: water, pierRecords: rawRecords });
     if (this.goBoatPiers) this.scene.remove(this.goBoatPiers.group);
@@ -413,11 +415,12 @@ class ThirdPersonControllerManager {
     this.entities.goboat.mesh.visible = false;
     if (preliminary) {
       const piers = createGoBoatPiers({ records: pierRecords, frame, waterLevel: preliminary.level });
-      const navigation = createGoBoatNavigation({ waterOverride: water, pierRecords: piers.records });
+      const navigation = createGoBoatNavigation({ waterOverride: water, pierRecords: piers.records, tileGrid });
       if (navigation && piers.fleetLayouts.every(fleet => fleet.every(p => navigation.isWaterPoint(p.x, p.z)))) {
         this.goBoatPiers = piers;
         this.goBoatNavigation = navigation;
         this.goBoatLastPier = piers.records[0];
+        for (const [id, payload] of this.goBoatDetailWater) navigation.setDetailWater(id, payload);
         this.scene.add(piers.group);
         const boat = this.entities.goboat, start = piers.records[0].departurePoint;
         boat.position.set(start.x, navigation.level, start.z);
@@ -433,6 +436,13 @@ class ThirdPersonControllerManager {
     }
     this.syncSwanRiderVisibility();
     return Boolean(this.goBoatNavigation);
+  }
+
+  /** A streamed tile's water layer arrived (payload) or left (null): the GoBoat collides with the drawn quay there. */
+  setGoBoatDetailWater(id, payload) {
+    if (payload) this.goBoatDetailWater.set(id, payload);
+    else this.goBoatDetailWater.delete(id);
+    this.goBoatNavigation?.setDetailWater(id, payload || null);
   }
 
   placePersonOnGoBoatPier(pier) {
@@ -2202,6 +2212,11 @@ class ThirdPersonControllerManager {
     const inertia = 1 - Math.exp(-dt * 2);
     boat.vx += (Math.sin(boat.heading) * boat.speed - boat.vx) * inertia;
     boat.vz += (Math.cos(boat.heading) * boat.speed - boat.vz) * inertia;
+    if (!this.goBoatNavigation.isPositionLegal(boat.position.x, boat.position.z)) {
+      // a tile's full-resolution quay just replaced the coarse one under the hull: step back onto open water
+      const free = this.goBoatNavigation.findNearestLegalPosition(boat.position.x, boat.position.z, 8, 0.25);
+      if (free) { boat.position.x = free.x; boat.position.z = free.z; }
+    }
     const move = confineGoBoatMotion(this.goBoatNavigation, boat.position, { x: boat.vx * dt, z: boat.vz * dt });
     boat.position.x = move.x; boat.position.z = move.z;
     boat.position.y = this.goBoatNavigation.level;
