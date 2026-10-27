@@ -136,4 +136,3 @@ test('a failed draw remains cold and can retry on a later frame', () => {
   budget.render(mesh, context, () => { retried = true; });
   assert.equal(retried, true);
 });
-
