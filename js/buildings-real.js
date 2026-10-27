@@ -276,12 +276,14 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch, budg
     }
     try {
       const blob = await fetchBlob(lookFile(c.walls.file), signal);
+      if (pool.stats) pool.stats.decodes++;
       return { bitmap: await createImageBitmap(blob, bitmapOptions), hasMask: true };
     } catch (error) {
       if (signal?.aborted) throw error;
       // once look atlases have loaded, a missing one (the citywide atlases arrive piecemeal) is that building's miss alone: no second request
       if (looksPresent() && error?.status === 404) throw error;
       const blob = await fetchBlob(c.walls.file, signal);
+      if (pool.stats) pool.stats.decodes++;
       return { bitmap: await createImageBitmap(blob, bitmapOptions), hasMask: false };
     }
   }
@@ -349,6 +351,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch, budg
       if (state.disposed || !state.enabled || state.loading.get(c.id) !== job || !currentQuality
         || currentQuality.width !== job.width || currentQuality.height !== job.height) {
         // the tile went away, or camera movement made this request stale: the next plan schedules the selected tier
+        if (pool.stats) pool.stats.discarded++;
         bitmap.close?.();
         bitmap = null;
         return;
@@ -356,6 +359,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch, budg
 
       const previous = state.resident.get(c.id);
       const next = makeResident(c, bitmap, hasMask, quality, previous?.mesh.geometry || null);
+      if (pool.stats) pool.stats.uploads++;
       bitmap = null; // ownership moved into `next`
       if (previous) disposeResident(previous, { disposeGeometry: false });
       root.add(next.mesh);
@@ -367,6 +371,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch, budg
     } catch (error) {
       bitmap?.close?.();
       if (job.controller?.signal.aborted || state.disposed) {
+        if (pool.stats) pool.stats.aborted++;
         // Camera movement made this request stale (or the tile went away); the next plan schedules the selected atlas tier.
       } else if (!job.replacement) {
         state.failed.add(c.id);
