@@ -48,7 +48,7 @@ test('main material/era codes and observed tones survive the window port; every 
   assert.equal(acc.wall.facadeWindow.length, acc.wall.position.length / 3 * 4);
   const { frame, type, frameWidth, reveal } = windowStyle(b);
   for (let i = 0; i < acc.wall.facadeWindow.length; i += 4) {
-    assert.deepEqual(acc.wall.facadeWindow.slice(i, i + 4), [frame, type, frameWidth, reveal]);
+    assert.deepEqual(acc.wall.facadeWindow.slice(i, i + 4), [frame + 4 * type, 65535, frameWidth, reveal]); // x packs frame and type, y the ground-floor bay mask
     assert.equal(acc.wall.facadeBldg[i + 2], added.style.code);
   }
   assert.notDeepEqual(acc.wall.facadeTone.slice(0, 3), acc.wall.facadeTone.slice(16, 19));

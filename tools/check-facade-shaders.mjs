@@ -28,7 +28,7 @@ renderer.hasFeature = () => false;
 renderer._bindings = { getSharedBindGroup: (group) => group };
 const geometry = new THREE.BoxGeometry();
 const attributes = {
-  facadeUV: 2, facadeWall: 4, facadeBldg: 4, facadeTone: 4, facadeTop: 1, facadeWindow: 4,
+  facadeUV: 4, facadeWall: 4, facadeBldg: 4, facadeTone: 4, facadeTop: 4, facadeWindow: 4,
   roofMat: 2, color: 3, box: 4, faces: 4, wallUV: 2
 };
 for (const [name, n] of Object.entries(attributes)) {

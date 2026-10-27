@@ -117,7 +117,7 @@ test('main era rules give mid-era and unknown-year fronts trim, but modern build
     assert.deepEqual(acc.detailParts.map((p) => p.kind), ['cornice', 'plinth', 'gutter']);
     for (const part of acc.detailParts) assertWatertightPart(acc, part);
     assert.equal(acc.detailParts.find((p) => p.kind === 'plinth').end - acc.detailParts.find((p) => p.kind === 'plinth').start, 60);
-    assert.deepEqual(acc.wall.facadeWindow.filter((_, i) => i % 4 === 1).map((v) => Math.floor(v / 4)), [...Array(8).fill(1), ...Array(8).fill(0)], 'painted cornice disabled only where physical trim exists');
+    assert.deepEqual(acc.wall.facadeWindow.filter((_, i) => i % 4 === 0).map((v) => Math.floor(Math.floor(v / 4) / 4)) /* x = frame + 4 * (type + 4 cornice) */, [...Array(8).fill(1), ...Array(8).fill(0)], 'painted cornice disabled only where physical trim exists');
   }
 });
 

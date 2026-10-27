@@ -53,6 +53,7 @@ import {
   mrt,
   If,
   sqrt,
+  exp2,
   specularColor,
   specularColorBlended,
   specularF90
@@ -424,6 +425,10 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0, wallAttr
   let matId = float(0.0); // wallAttr: 0 brick, 1 plaster, 2 concrete, 3 timber (js/facade-style.js)
   let era = float(0.0); // wallAttr: 0 modern, 1 mid, 2 historic
   let wallTop = float(1e4); // wallAttr: metres from the ground to the top of the wall
+  let measured = float(0.0); // wallAttr: 1 on a wall with a measured window grid (js/facade-layout.js)
+  let measuredSolid = float(0.0); // wallAttr: 1 where that grid has no opening (outside its columns, a masked column / bay, above its rows)
+  let mSill = float(0.0); // wallAttr: the measured sill / head as fractions of the storey
+  let mHead = float(0.0);
 
   if (boxLocal) {
     const box = attribute('box', 'vec4'); // width, height, depth, seed (+ the building's tone in its fraction)
@@ -472,18 +477,40 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0, wallAttr
     // wall from its start, metres above the building's ground); facadeWall = (wall length, floor height, ground-floor
     // height, bay pitch); facadeBldg = (hash 0..1, WALL_KINDS of the ground floor, material/era code, integer seed);
     // facadeTone = wall colour. u grows along the wall's CCW (from above) direction, so the tangent is (nz, 0, -nx).
-    const fuv = attribute('facadeUV', 'vec2');
+    const fuv = attribute('facadeUV', 'vec4');
     const fwall = attribute('facadeWall', 'vec4');
     const fbld = attribute('facadeBldg', 'vec4');
+    const ftop = attribute('facadeTop', 'vec4');
+    const fwin = attribute('facadeWindow', 'vec4');
     const len = fwall.x;
     const s = fuv.x;
+    // A measured window grid (facadeTop.z > 0, js/facade-layout.js layoutWords): columns from u0 at the measured pitch (facadeWall.w),
+    // `cols` of them; else the guessed grid: whole bays between the corner piers
+    const sillHead = floor(ftop.z.add(0.5));
+    measured = step(0.5, sillHead);
+    const rowsCols = floor(ftop.w.add(0.5));
+    const mCols = max(floor(rowsCols.div(64.0)), 1.0);
+    const mRows = rowsCols.sub(mCols.mul(64.0));
+    mSill = mod(sillHead, 256.0).div(255.0);
+    mHead = floor(sillHead.div(256.0)).div(255.0);
     const pier = min(float(cornerPier), len.mul(0.2));
     const inner = len.sub(pier.mul(2.0));
-    bays = max(floor(inner.div(fwall.w).add(0.5)), 1.0);
-    bayWidth = inner.div(bays);
-    bayIdx = floor(s.sub(pier).div(bayWidth));
-    gridU = s.sub(pier).div(bayWidth).add(floor(fbld.w.add(0.5)));
-    if (cornerPier > 0) inPier = float(1.0).sub(step(pier, s).mul(step(s, len.sub(pier))));
+    const start = mix(pier, ftop.y, measured);
+    bays = mix(max(floor(inner.div(fwall.w).add(0.5)), 1.0), mCols, measured);
+    bayWidth = mix(inner.div(max(floor(inner.div(fwall.w).add(0.5)), 1.0)), fwall.w, measured);
+    bayIdx = floor(s.sub(start).div(bayWidth));
+    gridU = s.sub(start).div(bayWidth).add(floor(fbld.w.add(0.5)));
+    if (cornerPier > 0) inPier = float(1.0).sub(step(pier, s).mul(step(s, len.sub(pier)))).mul(float(1.0).sub(measured));
+    // per-bit masks (16-bit words, rounded: they are interpolated): upper-storey columns, ground-floor bays
+    const maskBit = (word, i) => mod(floor(floor(word.add(0.5)).div(exp2(i))), 2.0);
+    const bi = clamp(bayIdx, 0.0, 31.0);
+    const colOn = mix(maskBit(mix(fuv.z, fuv.w, step(15.5, bi)), mod(bi, 16.0)), float(1.0), step(31.5, bayIdx));
+    const groundOn = mix(maskBit(fwin.y, clamp(bayIdx, 0.0, 15.0)), float(1.0), step(15.5, bayIdx));
+    const outside = float(1.0).sub(step(0.0, bayIdx).mul(step(bayIdx, bays.sub(0.5))));
+    const storey = floor(mix(fuv.y.div(fwall.z), float(1.0).add(fuv.y.sub(fwall.z).div(fwall.y)), step(fwall.z, fuv.y)));
+    const onGround = float(1.0).sub(step(0.5, storey));
+    const aboveRows = step(mRows.add(0.5), storey);
+    measuredSolid = measured.mul(max(outside, mix(max(float(1.0).sub(colOn), aboveRows), float(1.0).sub(groundOn), onGround)));
     uCoord = gridU.mul(bayWidth);
     wallS = s;
     wallW = len;
@@ -493,7 +520,7 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0, wallAttr
     const code = floor(fbld.z.add(0.5));
     era = floor(code.div(4.0));
     matId = code.sub(era.mul(4.0));
-    wallTop = attribute('facadeTop', 'float');
+    wallTop = ftop.x;
     const ftone = attribute('facadeTone', 'vec4');
     tint = ftone.xyz;
     winRatioX = ftone.w;
@@ -520,7 +547,7 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0, wallAttr
   const isShopKind = float(1.0).sub(step(WALL_KINDS.shop + 0.5, kind));
   const doorBay = step(abs(bayIdx.sub(min(floor(tone.mul(bays)), bays.sub(1.0)))), 0.5);
   // facadeBldg.y = kind + 0.25 marks walls of buildings with real entrance data: their doors are geometry (js/entrances.js), not this bay
-  const door = floor0.mul(wallAttr ? max(isEntry, isShopKind) : isEntry).mul(wall).mul(doorBay).mul(heuristicDoor);
+  const door = floor0.mul(wallAttr ? max(isEntry, isShopKind) : isEntry).mul(wall).mul(doorBay).mul(heuristicDoor).mul(float(1.0).sub(measuredSolid));
   // A box that isn't a whole number of storeys (landmark tiers) ends in a solid parapet instead of slicing a row of
   // windows, and starts with one above the roof it stands on; every wall is capped by a coping at its top
   let partial = float(0.0);
@@ -532,10 +559,11 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0, wallAttr
     partial = float(1.0).sub(whole).mul(wall);
     coping = float(1.0).sub(step(0.32, fromTop)).mul(wall);
   }
-  const solid = max(max(inPier.mul(float(1.0).sub(isGroundFloor)), blank), partial);
+  const solid = max(max(max(inPier.mul(float(1.0).sub(isGroundFloor)), blank), partial), measuredSolid);
   return {
     isRoof, uCoord, vCoord, gridV, cellId, cellUV, fw, bayWidth, isGroundFloor, solid, floor0, back, blank, door, tone, kindId: kind,
-    wallS, wallW, wallH, fromTop, boxSeed, partial, coping, wallTan, tint, winRatioX, floorH, matId, era, wallTop, groundH: wallAttr ? attribute('facadeWall', 'vec4').z : float(3.0)
+    wallS, wallW, wallH, fromTop, boxSeed, partial, coping, wallTan, tint, winRatioX, floorH, matId, era, wallTop, groundH: wallAttr ? attribute('facadeWall', 'vec4').z : float(3.0),
+    measured, mSill, mHead
   };
 }
 
@@ -810,11 +838,17 @@ function createPreWarBuildingMaterial(opts = {}) {
   // Residential ground floors (street and courtyard walls) sit on a raised plinth: smaller windows, sill about 1 m up
   const resGround = CPH ? floor0.mul(float(1.0).sub(isRoof)).mul(step(0.5, facade.kindId)).mul(float(1.0).sub(step(2.5, facade.kindId))) : float(0.0);
   // Shopfronts: stall riser below the glazing, a sign fascia above it
-  const effHalfY = CPH ? mix(mix(float(halfWinY), float(0.27), resGround), float(0.17), isGroundFloor) : mix(float(halfWinY), float(0.10), isGroundFloor);
-  const effHiY = CPH ? mix(mix(float(1.0 - halfWinY), float(0.80), resGround), float(0.76), isGroundFloor) : float(1.0).sub(effHalfY);
+  // A measured grid (facade.measured) puts the upper-storey sill and head where the photo has them
+  const upperLo = CPH ? mix(float(halfWinY), facade.mSill, facade.measured) : float(halfWinY);
+  const upperHi = CPH ? mix(float(1.0 - halfWinY), facade.mHead, facade.measured) : float(1.0 - halfWinY);
+  const effHalfY = CPH ? mix(mix(upperLo, float(0.27), resGround), float(0.17), isGroundFloor) : mix(float(halfWinY), float(0.10), isGroundFloor);
+  const effHiY = CPH ? mix(mix(upperHi, float(0.80), resGround), float(0.76), isGroundFloor) : float(1.0).sub(effHalfY);
   // Pack the cornice flag with the division type to stay within WebGPU's eight vertex-buffer baseline.
+  // facadeWindow.x = frame palette + 4 * (division type + 4 with a physical cornice); .y is the measured ground-floor bay mask
   const windowInfo = CPH ? attribute('facadeWindow', 'vec4') : vec4(0, 0, 0.075, 0);
-  const windows = vec4(windowInfo.x, mod(windowInfo.y, 4), windowInfo.z, windowInfo.w);
+  const winCode = floor(windowInfo.x.add(0.5));
+  const typeCode = floor(winCode.div(4));
+  const windows = vec4(winCode.sub(typeCode.mul(4)), mod(typeCode, 4), windowInfo.z, windowInfo.w);
   const cellH = mix(facade.floorH, groundH, floor0);
   const openingSize = vec2(bayWidth.mul(float(1).sub(effHalfX.mul(2))), cellH.mul(effHiY.sub(effHalfY)));
   const openingUV = vec2(cellUV.x.sub(effHalfX), cellUV.y.sub(effHalfY))
@@ -855,7 +889,7 @@ function createPreWarBuildingMaterial(opts = {}) {
   const fromTopW = wallTop.sub(vCoord);
   const historic = CPH ? step(1.5, era).mul(float(1).sub(isRoof)) : float(0);
   const midEra = CPH ? step(0.5, era).mul(float(1).sub(isRoof)) : float(0);
-  const paintedCornice = CPH ? float(1).sub(step(3.5, windowInfo.y)) : float(1);
+  const paintedCornice = CPH ? float(1).sub(step(3.5, typeCode)) : float(1);
   const corniceBand = historic.mul(float(1).sub(step(0.65, fromTopW)))
     .add(midEra.mul(float(1).sub(historic)).mul(float(1).sub(step(0.4, fromTopW))))
     .mul(step(0, fromTopW)).mul(paintedCornice);

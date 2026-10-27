@@ -61,7 +61,7 @@ test('walls: one quad per edge, u restarts per wall, ranges cover every index', 
   addBuilding(acc, { id: 'b', ring: [0, 0, 10, 0, 10, -5, 0, -5], holes: [], ground: 0, eave: 9, ridge: 9, roof: 'flat', facade: { floor_h: 3, ground_floor_h: 3, bay_w: 3, window_w: 1, ground_type: 'blank' } });
   assert.equal(acc.wall.index.length / 6, 4);
   const us = [];
-  for (let q = 0; q < 4; q++) us.push([acc.wall.facadeUV[q * 8], acc.wall.facadeUV[q * 8 + 2]]);
+  for (let q = 0; q < 4; q++) us.push([acc.wall.facadeUV[q * 16], acc.wall.facadeUV[q * 16 + 4]]); // facadeUV is (u, v, mask words): 4 floats per vertex
   assert.deepEqual(us.map(([a]) => a), [0, 0, 0, 0], 'each wall starts at u = 0');
   assert.deepEqual(us.map(([, b]) => Math.round(b)), [10, 5, 10, 5]);
   assert.deepEqual(acc.wallRanges, [{ id: 'b', start: 0, end: 24 }]);

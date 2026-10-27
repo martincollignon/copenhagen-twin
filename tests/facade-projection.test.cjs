@@ -142,23 +142,26 @@ const evalWall = vm.runInNewContext(`(function (attribute, facadeWorldNormal, co
   let bays = float(1), bayWidth = float(1), bayIdx = float(0), gridU = float(0), inPier = float(0), uCoord = float(0);
   let wallS = float(0), wallW = float(1), tone = float(0.5), kind = float(0), tint = null, winRatioX = null;
   let floorH = float(3), vCoord = float(0), gridV = float(0), wallTan = vec3(0, 0, 0);
+  let measured = float(0), measuredSolid = float(0), mSill = float(0), mHead = float(0);
   const wallAttr = true;
   ${attrBlock}
-  return { bays, bayWidth, bayIdx, gridU, inPier, uCoord, wallS, wallW, tone, kind, tint, winRatioX, floorH, vCoord, gridV, wallTan };
+  return { bays, bayWidth, bayIdx, gridU, inPier, uCoord, wallS, wallW, tone, kind, tint, winRatioX, floorH, vCoord, gridV, wallTan, measured, measuredSolid, mSill, mHead };
 })`, {
   float: v => new Node(v),
   vec3: (...v) => new Node(v.flatMap(values)),
   floor: unary(Math.floor), min: (a, b) => binary(a, b, Math.min), max: (a, b) => binary(a, b, Math.max),
   step: (edge, v) => binary(edge, v, (a, b) => b < a ? 0 : 1),
+  mod: (a, b) => binary(a, b, (x, y) => x - y * Math.floor(x / y)), exp2: unary((x) => 2 ** x),
+  clamp: (v, lo, hi) => binary(binary(v, lo, Math.max), hi, Math.min),
   mix: (a, b, t) => binary(binary(a, t, (v, t) => v * (1 - t)), binary(b, t, (v, t) => v * t), (a, b) => a + b),
   normalize: v => v.normalize()
 });
 const attributes = (a) => (name) => new Node(a[name]);
 
-function wallsOf(building) {
+function wallsOf(building, opts = {}) {
   const { createAccumulator, addBuilding } = geometry;
   const acc = createAccumulator();
-  addBuilding(acc, building);
+  addBuilding(acc, building, opts);
   const w = acc.wall;
   const walls = [];
   for (let q = 0; q < w.position.length / 12; q++) {
@@ -166,8 +169,9 @@ function wallsOf(building) {
       const k = q * 4 + i;
       return {
         position: w.position.slice(k * 3, k * 3 + 3), normal: w.normal.slice(k * 3, k * 3 + 3),
-        facadeUV: w.facadeUV.slice(k * 2, k * 2 + 2), facadeWall: w.facadeWall.slice(k * 4, k * 4 + 4),
-        facadeBldg: w.facadeBldg.slice(k * 4, k * 4 + 4), facadeTone: w.facadeTone.slice(k * 4, k * 4 + 4)
+        facadeUV: w.facadeUV.slice(k * 4, k * 4 + 4), facadeWall: w.facadeWall.slice(k * 4, k * 4 + 4),
+        facadeBldg: w.facadeBldg.slice(k * 4, k * 4 + 4), facadeTone: w.facadeTone.slice(k * 4, k * 4 + 4),
+        facadeTop: w.facadeTop.slice(k * 4, k * 4 + 4), facadeWindow: w.facadeWindow.slice(k * 4, k * 4 + 4)
       };
     };
     walls.push([0, 1, 2, 3].map(vertex));
@@ -225,7 +229,7 @@ test('wallAttr: window grid is rigid-motion invariant (same cells at the same wa
 
 test('wallAttr: the ground floor is cell 0 with its own height, every storey above uses floor_h', () => {
   const [wall] = wallsOf(rectangle(15));
-  const at = (v) => evalWall(attributes({ ...wall[0], facadeUV: [5, v] }), new Node(wall[0].normal), 0.9).gridV.values[0];
+  const at = (v) => evalWall(attributes({ ...wall[0], facadeUV: [5, v, 0, 0] }), new Node(wall[0].normal), 0.9).gridV.values[0];
   close(at(0), 0); close(at(4), 1); // ground_floor_h = 4
   close(at(2), 0.5);
   const floorH = wall[0].facadeWall[1];
@@ -259,4 +263,34 @@ test('wallAttr: walls of a concave ring and a courtyard hole all face away from 
     const f = evalWall(attributes(a), new Node(a.normal), 0.9);
     close(f.wallTan.values[0] * a.normal[0] + f.wallTan.values[2] * a.normal[2], 0);
   }
+});
+
+test('wallAttr: a measured window grid (js/facade-layout.js) replaces the guessed bays, storeys and sill / head on its wall only', () => {
+  // the rectangle's raw edge 0 runs 20 m along its first wall; a measured layout: 5 columns at 3.2 m from u0 = 1.5, the middle one blind,
+  // ground floor 4.4 m, storeys 3.1 m, three rows, sill 0.9 / head 2.5, ground bays 0, 1 and 4 open
+  const b = rectangle(15);
+  const lay = { u0: 1.5, p: 3.2, n: 5, w: 1.2, cm: 0b11011, g: 4.4, f: 3.1, rows: 3, sill: 0.9, head: 2.5, gm: 0b10011, conf: 0.9 };
+  b.observed = { walls: [{ ring: 0, edge: 0, tone: [0.7, 0.6, 0.5], conf: 'observed' }], atlas: { walls: [{ ring: 0, edge: 0, len_m: 20 }] }, layout: { '0:0': lay } };
+  const walls = wallsOf(b);
+  const vtx = walls[0][0];
+  close(vtx.facadeWall[1], 3.1); close(vtx.facadeWall[2], 4.4); close(vtx.facadeWall[3], 3.2);
+  const at = (u, v) => evalWall(attributes({ ...vtx, facadeUV: [u, v, vtx.facadeUV[2], vtx.facadeUV[3]] }), new Node(vtx.normal), 0.9);
+  const f = at(1.5 + 3.2 * 0.5, 6);
+  assert.equal(f.measured.values[0], 1);
+  close(f.bays.values[0], 5); close(f.bayWidth.values[0], 3.2); close(f.bayIdx.values[0], 0);
+  assert.ok(Math.abs(f.mSill.values[0] - 0.9 / 3.1) < 0.004 && Math.abs(f.mHead.values[0] - 2.5 / 3.1) < 0.004, 'sill / head as storey fractions');
+  close(f.gridV.values[0], 1 + (6 - 4.4) / 3.1);
+  const solid = (u, v) => at(u, v).measuredSolid.values[0];
+  assert.equal(solid(1.5 + 3.2 * 0.5, 6), 0, 'column 0, first storey: windows');
+  assert.equal(solid(1.5 + 3.2 * 2.5, 6), 1, 'column 2 is blind');
+  assert.equal(solid(0.7, 6), 1, 'before the first column: wall');
+  assert.equal(solid(1.5 + 3.2 * 5.2, 6), 1, 'after the last column: wall');
+  assert.equal(solid(1.5 + 3.2 * 3.5, 4.4 + 3.1 * 3 + 0.5), 1, 'above the measured rows: wall');
+  assert.equal(solid(1.5 + 3.2 * 1.5, 2), 0, 'ground bay 1 open');
+  assert.equal(solid(1.5 + 3.2 * 3.5, 2), 1, 'ground bay 3 closed');
+  // the other walls keep the guessed grid
+  assert.equal(at(5, 6).inPier.values[0], 0);
+  const other = evalWall(attributes(walls[1][0]), new Node(walls[1][0].normal), 0.9);
+  assert.equal(other.measured.values[0], 0);
+  assert.equal(other.measuredSolid.values[0], 0);
 });

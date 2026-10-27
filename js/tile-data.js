@@ -16,6 +16,7 @@ import { applySurfaceCuts } from './lakes-cph.js';
 import { tileOfLocal, tileBoundsLocal } from './tile-grid.js';
 import { neighbourIds } from './tile-rings.js';
 import { readOverrideLayer } from './detail-overrides.js';
+import { applyWindows } from './facade-layout.js';
 
 const bboxCentre = (flat) => {
   let x0 = Infinity; let z0 = Infinity; let x1 = -Infinity; let z1 = -Infinity;
@@ -200,6 +201,7 @@ export function createTileData({ index, meta, streets = null, lakes = null, geo,
         const p = e.layers.get('buildings');
         const list = p?.buildings ? (dropBuilding ? p.buildings.filter((b) => !dropBuilding(b)) : [...p.buildings]) : [];
         applyAppearance(list, e.layers.get('appearance'));
+        applyWindows(list, e.layers.get('windows'));
         const mini = { buildings: list, roads: [] };
         const fixes = e.layers.get('streets')?.buildings || (streets ? fixesFor(streets, new Set(list.map((b) => b.id))) : null);
         if (fixes) applyStreets(mini, { roads: {}, buildings: fixes });
