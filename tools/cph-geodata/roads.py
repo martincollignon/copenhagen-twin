@@ -28,7 +28,6 @@ DEFAULT_WIDTH = {"primary": 14.0, "secondary": 10.0, "residential": 7.0, "servic
 DEFAULT_SPEED = {"primary": 50, "secondary": 50, "residential": 30, "service": 20, "cycleway": 20, "footway": 5}
 SIDEWALK_W = 2.5  # assumed per side when subtracting from the road-parcel width
 CARRIAGEWAY = ("primary", "secondary", "residential", "service")
-BBOX_UTM = (frame.ORIGIN[0] - 750, frame.ORIGIN[1] - 750, frame.ORIGIN[0] + 750, frame.ORIGIN[1] + 750)
 
 
 def _lines(geom):
@@ -154,7 +153,7 @@ def parcel_width(line: LineString, parcels, prepared) -> float | None:
 
 def compile_roads(osm: dict, kk: dict, signal_pts_utm: list[tuple[float, float]]):
     """kk: dict of FeatureCollections (Kommunevej, trafikhastigheder, ensrettede_gader, cykelsti)."""
-    bbox = box(*BBOX_UTM)
+    bbox = box(*frame.area_utm())
     parcels = unary_union([shape(f["geometry"]).buffer(0) for f in kk.get("Kommunevej", {}).get("features", [])]) \
         if kk.get("Kommunevej") else None
     pparcels = prep(parcels) if parcels is not None else None
@@ -314,8 +313,8 @@ _COUNTS = None
 
 
 def build_road_graph(roads, ways_for_graph, names, signal_pts_utm, tol=0.5):
-    polylines = [[frame.to_local(x, y) for x, y in simplify_keep_junctions(
-        [c for _, c in ways_for_graph], i)] for i in range(len(ways_for_graph))]
+    all_coords = [c for _, c in ways_for_graph]  # one list object: simplify_keep_junctions caches its vertex counts on it
+    polylines = [[frame.to_local(x, y) for x, y in simplify_keep_junctions(all_coords, i)] for i in range(len(ways_for_graph))]
     nodes, segs = roadgraph.build_graph(polylines, tol)
     sig = [frame.to_local(x, y) for x, y in signal_pts_utm]
     sig_tree = STRtree([Point(p) for p in sig]) if sig else None

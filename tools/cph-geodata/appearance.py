@@ -184,7 +184,9 @@ class Scene:
         self.tri_n = np.zeros((0, 3))  # outward normals
         self.surf_n = np.zeros((0, 3))
         self.surf_ground = np.zeros(0)
-        self.surf_height = np.zeros(0)  # wall height (eave - ground); roof: 0
+        self.surf_height = np.zeros(0)  # wall height (eave - ground; with an engine frame: up to the highest gable piece); roof: 0
+        self.surf_eave = np.zeros(0)  # wall: eave - ground (= surf_height without gable pieces)
+        self.surf_pieces: dict[int, list[np.ndarray]] = {}  # wall sid -> polygons [(s along the wall 0..1, h above ground)] above the eave
         self.surf_a = np.zeros((0, 2))  # wall start (x,z)
         self.surf_b = np.zeros((0, 2))  # wall end (x,z)
         self.surf_len = np.zeros(0)
@@ -202,16 +204,51 @@ def signed_area(p: np.ndarray) -> float:
     return 0.5 * float(np.sum(x * np.roll(n, -1) - np.roll(x, -1) * n))
 
 
-def build_scene(buildings: list[dict], min_wall_h: float = 0.3) -> Scene:
+def _clip_poly(poly: list, k: int, v: float, keep_below: bool) -> list:
+    """Sutherland-Hodgman: the part of `poly` ([[s, h], ...]) with p[k] <= v (keep_below) or >= v."""
+    inside = (lambda p: p[k] <= v) if keep_below else (lambda p: p[k] >= v)
+    out = []
+    for i in range(len(poly)):
+        a, b = poly[i], poly[(i + 1) % len(poly)]
+        if inside(a):
+            out.append(a)
+        if inside(a) != inside(b):
+            f = (v - a[k]) / (b[k] - a[k])
+            out.append([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f])
+    return out
+
+
+def wall_pieces_on(a, c, g: float, pieces: list) -> list[np.ndarray]:
+    """Engine wall pieces above the eave (world triangles on the wall's line, tools/cph-geodata/engine_walls.py) as polygons
+    [(s along a -> c, h above g)] clipped to the wall's span 0 <= s <= 1."""
+    d = np.asarray(c, float) - np.asarray(a, float)
+    l2 = float(d @ d) or 1.0
+    out = []
+    for tri in pieces:
+        poly = [[((p[0] - a[0]) * d[0] + (p[2] - a[1]) * d[1]) / l2, p[1] - g] for p in tri]
+        poly = _clip_poly(poly, 0, 0.0, False)
+        poly = _clip_poly(poly, 0, 1.0, True) if poly else poly
+        if len(poly) >= 3:
+            q = np.array(poly)
+            if abs(float(np.sum(q[:, 0] * np.roll(q[:, 1], -1) - np.roll(q[:, 0], -1) * q[:, 1]))) * math.sqrt(l2) > 1e-4:
+                out.append(q)
+    return out
+
+
+def build_scene(buildings: list[dict], min_wall_h: float = 0.3, frames: list | None = None) -> Scene:
+    """Triangle mesh of `buildings`: walls from ground to eave and a flat roof at the eave. `frames` (per building, None entries
+    allowed; tools/cph-geodata/engine_walls.py frame()) switches a building to the wall frame the engine draws: its ground, each
+    wall's top at the roofer eave of its edge plus the roofer wall pieces above it (gables, steps), and the roofer roof."""
     sc = Scene()
     V: list[np.ndarray] = []
     T: list[np.ndarray] = []
     TS: list[int] = []
     TN: list[np.ndarray] = []
-    S_n, S_g, S_h, S_a, S_b = [], [], [], [], []
+    S_n, S_g, S_h, S_e, S_a, S_b = [], [], [], [], [], []
     nv = 0
     for bi, b in enumerate(buildings):
-        g, e = float(b["ground"]), float(b["eave"])
+        fr = frames[bi] if frames is not None else None
+        g, e = (fr["ground"], fr["eave"]) if fr else (float(b["ground"]), float(b["eave"]))
         if e - g < min_wall_h:
             e = g + min_wall_h
         rings = [ring_pts(b["ring"])] + [ring_pts(h) for h in b.get("holes", [])]
@@ -231,20 +268,59 @@ def build_scene(buildings: list[dict], min_wall_h: float = 0.3) -> Scene:
                 sid = len(sc.surfaces)
                 sc.surfaces.append(Surface(bi, "wall", ri, i))
                 sc.wall_of[(bi, ri, i)] = sid
-                S_n.append(nrm); S_g.append(g); S_h.append(e - g)
+                top, polys = e, []
+                if fr:
+                    ent = fr["edges"].get((ring_label(ri), i))
+                    if ent:
+                        top = max(float(ent["top"]), g + min_wall_h)
+                        # pieces that reach above the eave (the 0.1 mm slivers clipAbove leaves at the eave add nothing)
+                        polys = [q for q in wall_pieces_on(a, c, g, ent["pieces"]) if q[:, 1].max() > top - g + 0.01]
+                h_all = max([top - g] + [float(q[:, 1].max()) for q in polys])
+                S_n.append(nrm); S_g.append(g); S_h.append(h_all); S_e.append(top - g)
                 S_a.append(a); S_b.append(c)
-                V.append(np.array([[a[0], g, a[1]], [c[0], g, c[1]], [c[0], e, c[1]], [a[0], e, a[1]]]))
+                V.append(np.array([[a[0], g, a[1]], [c[0], g, c[1]], [c[0], top, c[1]], [a[0], top, a[1]]]))
                 T.append(np.array([[nv, nv + 1, nv + 2], [nv, nv + 2, nv + 3]]))
                 TS += [sid, sid]
                 TN += [nrm, nrm]
                 nv += 4
+                if polys:
+                    sc.surf_pieces[sid] = polys
+                    for q in polys:  # on the wall's own line, fanned (convex: a clipped triangle)
+                        V.append(np.array([[a[0] + (c[0] - a[0]) * u, g + h, a[1] + (c[1] - a[1]) * u] for u, h in q]))
+                        T.append(np.array([[nv, nv + k, nv + k + 1] for k in range(1, len(q) - 1)]))
+                        TS += [sid] * (len(q) - 2)
+                        TN += [nrm] * (len(q) - 2)
+                        nv += len(q)
+        if fr and fr["lod2"] and fr["roof"]:
+            # the roofer roof (and its inner step walls, both faces) as this building's roof surface
+            sid = len(sc.surfaces)
+            sc.surfaces.append(Surface(bi, "roof", 0, -1))
+            sc.roof_of[bi] = sid
+            S_n.append(np.array([0.0, 1.0, 0.0])); S_g.append(g); S_h.append(0.0); S_e.append(0.0)
+            S_a.append(rings[0][0]); S_b.append(rings[0][0])
+            tris = [np.asarray(t, float) for t in fr["roof"]]
+            for t in fr["inner"]:
+                t = np.asarray(t, float)
+                tris += [t, t[::-1]]
+            for t in tris:
+                n = np.cross(t[1] - t[0], t[2] - t[0])
+                ln = float(np.linalg.norm(n))
+                if ln < 1e-9:
+                    continue
+                n /= ln
+                V.append(t)
+                T.append(np.array([[nv, nv + 1, nv + 2]]))
+                TS.append(sid)
+                TN.append(n)
+                nv += 3
+            continue
         # roof at eave
         outer = rings[0]
         if len(outer) >= 3:
             sid = len(sc.surfaces)
             sc.surfaces.append(Surface(bi, "roof", 0, -1))
             sc.roof_of[bi] = sid
-            S_n.append(np.array([0.0, 1.0, 0.0])); S_g.append(g); S_h.append(0.0)
+            S_n.append(np.array([0.0, 1.0, 0.0])); S_g.append(g); S_h.append(0.0); S_e.append(0.0)
             S_a.append(outer[0]); S_b.append(outer[0])
             use_rings = [r for r in rings if len(r) >= 3]
             pts = np.vstack(use_rings)
@@ -261,6 +337,7 @@ def build_scene(buildings: list[dict], min_wall_h: float = 0.3) -> Scene:
     sc.surf_n = np.array(S_n)
     sc.surf_ground = np.array(S_g)
     sc.surf_height = np.array(S_h)
+    sc.surf_eave = np.array(S_e)
     sc.surf_a = np.array(S_a)
     sc.surf_b = np.array(S_b)
     sc.surf_len = np.hypot(*(sc.surf_b - sc.surf_a).T)
@@ -353,7 +430,79 @@ class Camera:
 # rasterizer
 
 
+try:  # optional JIT (uv run --with numba): same maths as the numpy loop below, ~100x faster on a citywide mesh
+    import numba as _nb
+
+    @_nb.njit(cache=True)
+    def _raster_nb(X, Y, Q, tris, ids, width, height, idbuf, qbuf):
+        for t in range(tris.shape[0]):
+            i0, i1, i2 = tris[t, 0], tris[t, 1], tris[t, 2]
+            x0, y0, x1, y1, x2, y2 = X[i0], Y[i0], X[i1], Y[i1], X[i2], Y[i2]
+            area = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
+            if abs(area) < 1e-9:
+                continue
+            minx = max(int(np.floor(min(x0, x1, x2))), 0)
+            maxx = min(int(np.floor(max(x0, x1, x2))), width - 1)
+            miny = max(int(np.floor(min(y0, y1, y2))), 0)
+            maxy = min(int(np.floor(max(y0, y1, y2))), height - 1)
+            if minx > maxx or miny > maxy:
+                continue
+            inv = 1.0 / area
+            q0, q1, q2 = Q[i0], Q[i1], Q[i2]
+            for yy in range(miny, maxy + 1):
+                ys = yy + 0.5
+                for xx in range(minx, maxx + 1):
+                    xs = xx + 0.5
+                    b0 = ((x1 - xs) * (y2 - ys) - (x2 - xs) * (y1 - ys)) * inv
+                    b1 = ((x2 - xs) * (y0 - ys) - (x0 - xs) * (y2 - ys)) * inv
+                    b2 = 1.0 - b0 - b1
+                    if b0 >= -1e-6 and b1 >= -1e-6 and b2 >= -1e-6:
+                        qq = b0 * q0 + b1 * q1 + b2 * q2
+                        if qq > qbuf[yy, xx]:
+                            qbuf[yy, xx] = qq
+                            idbuf[yy, xx] = ids[t]
+
+
+    @_nb.njit(cache=True)
+    def _march_nb(arr, x0, z_top, res, start, dirs, ds, tol, top, max_len, oz, blocked):
+        nr, nc = arr.shape
+        for k in range(start.shape[0]):
+            s = 0.0
+            while True:
+                s += ds[k]
+                px = start[k, 0] + dirs[k, 0] * s
+                py = start[k, 1] + dirs[k, 1] * s
+                pz = start[k, 2] + dirs[k, 2] * s
+                c = int(np.floor((px - x0) / res))
+                r = int(np.floor((pz - z_top) / res))
+                if c >= 0 and c < nc and r >= 0 and r < nr:
+                    h = np.float64(arr[r, c]) - oz
+                else:
+                    h = np.float64(np.float32(-50.0)) - oz
+                if h > py + tol:
+                    blocked[k] = True
+                    break
+                if py > top or s > max_len:
+                    break
+
+    HAVE_NUMBA = True
+except ImportError:  # pragma: no cover
+    HAVE_NUMBA = False
+
+
 def rasterize(px, py, q, tris, width, height, tri_ids=None):
+    if HAVE_NUMBA:
+        idbuf = np.full((height, width), -1, dtype=np.int32)
+        qbuf = np.full((height, width), -np.inf, dtype=np.float32)
+        ids = np.arange(len(tris), dtype=np.int64) if tri_ids is None else np.asarray(tri_ids, dtype=np.int64)
+        _raster_nb(np.ascontiguousarray(px, dtype=np.float64), np.ascontiguousarray(py, dtype=np.float64),
+                   np.ascontiguousarray(q, dtype=np.float64), np.ascontiguousarray(tris, dtype=np.int64), ids,
+                   width, height, idbuf, qbuf)
+        return idbuf, qbuf
+    return _rasterize_py(px, py, q, tris, width, height, tri_ids)
+
+
+def _rasterize_py(px, py, q, tris, width, height, tri_ids=None):
     """Z-buffer rasterization. q is linear in screen space, larger = nearer
     (use 1/z for perspective, distance-to-sun for orthographic).
     Returns (id_buffer int32 [-1 = empty], q_buffer float32)."""
@@ -565,6 +714,10 @@ def dsm_march(dsm: DSM, start: np.ndarray, dirs: np.ndarray, tol: float = 0.3, s
     hl = np.hypot(dirs[:, 0], dirs[:, 2])
     ds = np.minimum(step / np.maximum(hl, 1e-3), 0.5)  # 3D step per iteration
     ds = np.maximum(ds, 0.05)
+    if HAVE_NUMBA:
+        _march_nb(dsm.arr, dsm.x0, dsm.z_top, dsm.res, np.ascontiguousarray(start, dtype=np.float64),
+                  np.ascontiguousarray(dirs, dtype=np.float64), ds, tol, dsm.max - ORIGIN[2] + tol, max_len, ORIGIN[2], blocked)
+        return blocked
     active = np.arange(n)
     s = np.zeros(n)
     top = dsm.max - ORIGIN[2] + tol
@@ -1179,11 +1332,39 @@ def ring_label(ri: int):
     return 0 if ri == 0 else f"hole_{ri - 1}"
 
 
+def strip_size(scene: Scene, sid: int, texel: float) -> tuple[int, int]:
+    return max(2, int(round(float(scene.surf_len[sid]) / texel))), max(2, int(round(float(scene.surf_height[sid]) / texel)))
+
+
+def wall_shape(scene: Scene, sid: int, texel: float) -> np.ndarray | None:
+    """(h, w) bool: the texels of wall `sid`'s strip (row 0 = top) that lie on the wall the engine draws: below its eave, or inside
+    one of its gable / step pieces. None when the strip is a plain rectangle."""
+    polys = scene.surf_pieces.get(sid)
+    if not polys:
+        return None
+    nw, nh = strip_size(scene, sid, texel)
+    Hh = float(scene.surf_height[sid])
+    s = (np.arange(nw) + 0.5) / nw
+    h = Hh * (1 - (np.arange(nh) + 0.5) / nh)
+    S, Hg = np.meshgrid(s, h)
+    inside = Hg <= float(scene.surf_eave[sid]) + 1e-6
+    for q in polys:
+        n = len(q)
+        sign = np.sign(float(np.sum(q[:, 0] * np.roll(q[:, 1], -1) - np.roll(q[:, 0], -1) * q[:, 1])))
+        ok = np.ones_like(inside)
+        for k in range(n):
+            a, c = q[k], q[(k + 1) % n]
+            ok &= sign * ((c[0] - a[0]) * (Hg - a[1]) - (c[1] - a[1]) * (S - a[0])) >= -1e-9
+        inside |= ok
+    return inside
+
+
 def wall_texture(scene: Scene, sid: int, vb: ViewBuffer, full_img: np.ndarray, crop: dict, texel: float,
                  dsm: DSM | None = None, veg: bool = False):
-    """Rectified strip for one wall from one view. Returns (rgb uint8 (h,w,3), valid bool, tone_lin)."""
+    """Rectified strip for one wall from one view. Returns (rgb uint8 (h,w,3), valid bool). Texels off the wall's shape (above a
+    gable's roof line, see wall_shape) are never valid."""
     L, Hh = float(scene.surf_len[sid]), float(scene.surf_height[sid])
-    nw, nh = max(2, int(round(L / texel))), max(2, int(round(Hh / texel)))
+    nw, nh = strip_size(scene, sid, texel)
     s = (np.arange(nw) + 0.5) / nw
     t = (np.arange(nh) + 0.5) / nh
     A, B = scene.surf_a[sid], scene.surf_b[sid]
@@ -1222,11 +1403,16 @@ def wall_texture(scene: Scene, sid: int, vb: ViewBuffer, full_img: np.ndarray, c
         blk = dsm_march(dsm, Pc + d * s0[:, None], d).reshape(len(ii), len(jj))
         full_blk = np.repeat(np.repeat(blk, k, axis=0), k, axis=1)[:nh, :nw]
         valid = valid & ~full_blk.reshape(-1)
-    return px.reshape(nh, nw, 3), valid.reshape(nh, nw)
+    valid = valid.reshape(nh, nw)
+    shape = wall_shape(scene, sid, texel)
+    if shape is not None:
+        valid &= shape
+    return px.reshape(nh, nw, 3), valid
 
 
-def fill_texture(px: np.ndarray, valid: np.ndarray, texel: float):
-    """Fill invalid texels from the nearest valid one (<= 0.6 m), else the wall median."""
+def fill_texture(px: np.ndarray, valid: np.ndarray, texel: float, inside: np.ndarray | None = None):
+    """Fill invalid texels from the nearest valid one (<= 0.6 m), else the wall median. The filled share counts the texels of
+    `inside` (the wall's shape, default all)."""
     from scipy import ndimage as ndi
 
     if valid.sum() == 0:
@@ -1239,7 +1425,7 @@ def fill_texture(px: np.ndarray, valid: np.ndarray, texel: float):
         fillmask = ~valid
         out[fillmask & near] = px[ii, jj][fillmask & near]
         out[fillmask & ~near] = med
-    return np.clip(out, 0, 255).astype(np.uint8), float(1.0 - valid.mean())
+    return np.clip(out, 0, 255).astype(np.uint8), float(1.0 - (valid[inside].mean() if inside is not None and inside.any() else valid.mean()))
 
 
 def pack_atlas(strips: list[tuple[dict, np.ndarray]], max_w: int = 4096, max_h: int = 8192):

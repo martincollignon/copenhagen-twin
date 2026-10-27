@@ -220,7 +220,10 @@ async () => {
   // Static building regression: exercise the controller entry point against a real geodata footprint.
   try {
     const player = active('person');
-    const candidates = (twin.world.geo?.buildings || []).filter((b) => b.ring?.length >= 6);
+    // a streamed city's geo carries no buildings: its resident building colliders keep the footprint rings
+    const footprints = twin.world.geo?.buildings?.length ? twin.world.geo.buildings
+      : (twin.world.colliders || []).filter((c) => c.type === 'building');
+    const candidates = footprints.filter((b) => b.ring?.length >= 6);
     let fixture = null;
     for (const building of candidates) {
       const n = building.ring.length / 2;

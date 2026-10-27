@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseLod2Record, loadLod2, lod2EdgeTops, lod2WallPieces, clipAbove } from '../js/lod2-geometry.js';
 import { createAccumulator, addBuilding, cleanRing } from '../js/building-geometry.js';
+import { texturedWalls } from '../js/appearance.js';
 
 // Mirrors tools/lod2/convert.py pack_record: a 10 x 6 m gabled house, ground 5, eave 9, ridge 11 along x.
 const RING = [0, 0, 10, 0, 10, -6, 0, -6];
@@ -124,4 +125,36 @@ test('loadLod2 joins by building id, serves only measured records and degrades t
   assert.equal(await loadLod2('x', async () => ({ ok: false })), null);
   assert.equal(await loadLod2('x', async () => { throw new Error('offline'); }), null);
   assert.equal(await loadLod2('x', async () => ({ ok: true, json: async () => ({ version: 'other' }) })), null);
+});
+
+test('photo walls cover the roofer gable above the eave with the same strip (v metric from the ground)', () => {
+  const photoOf = (hM) => {
+    const b = building({ observed: { walls: [{ ring: 0, edge: 1, tone: [0.6, 0.5, 0.4], conf: 'observed' }],
+      atlas: { file: 'tex/gdk_1.jpg', size: [64, 64], walls: [{ ring: 0, edge: 1, len_m: 6, h_m: hM, eave_m: 4, filled_frac: 0, uv: [0, 0.2, 1, 0.8] }] } } });
+    const quads = [];
+    const added = addBuilding(createAccumulator(), b, { quads, lod2: record() });
+    assert.ok(quads.every((q) => Array.isArray(q.pieces)));
+    assert.ok(quads.some((q) => q.pieces.length), 'the gable pieces join their quad');
+    return texturedWalls(b, quads, added.mapping);
+  };
+  const w = photoOf(6); // the strip was cut from the ground (5) to the ridge (11): eave 9 at h 4, apex at h 6
+  assert.equal(w.count, 1);
+  const ys = w.position.filter((_, i) => i % 3 === 1);
+  assert.ok(Math.abs(Math.max(...ys) - 11) < 1e-6, 'the photo reaches the gable apex');
+  for (let i = 0; i < ys.length; i++) {
+    const v = w.uv[2 * i + 1];
+    assert.ok(Math.abs(v - (0.8 + (0.2 - 0.8) * (ys[i] - 5) / 6)) < 1e-6, 'v = h / h_m everywhere (wall and gable)');
+    assert.ok(Math.abs(w.wallUV[2 * i + 1] - (ys[i] - 5)) < 1e-6);
+  }
+  for (let k = 0; k < w.index.length; k += 3) { // the east wall faces +x, gable triangles included
+    const p = (i) => w.position.slice(3 * w.index[k + i], 3 * w.index[k + i] + 3);
+    const [a, c, d] = [p(0), p(1), p(2)];
+    const u = c.map((v, j) => v - a[j]);
+    const v = d.map((q, j) => q - a[j]);
+    assert.ok(u[1] * v[2] - u[2] * v[1] > 0, 'front face points out');
+  }
+  // an older strip that stops at h 5 (y 10): the gable is photographed up to there only, never stretched
+  const old = photoOf(5);
+  assert.ok(Math.abs(Math.max(...old.position.filter((_, i) => i % 3 === 1)) - 10) < 1e-6);
+  assert.ok(old.index.length > 6);
 });

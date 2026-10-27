@@ -1518,6 +1518,8 @@ class ThirdPersonControllerManager {
   // The colliders whose bounds come within `r` of (x, z), in their original order. They never move, so they are
   // bucketed once into 16 m cells (tens of thousands of buildings: testing them all every frame cost ~0.5 ms)
   nearColliders(x, z, r) {
+    // a streamed city hands over its tiled index (js/static-colliders.js createTiledStaticIndex): colliders come and go with the tiles
+    if (this.staticIndex) return this.staticIndex.query(x, z, r, (this._nearList ??= []));
     if (this._indexedColliders !== this.colliders || this._indexedColliderCount !== this.colliders.length) {
       this._indexedColliders = this.colliders;
       this._indexedColliderCount = this.colliders.length;

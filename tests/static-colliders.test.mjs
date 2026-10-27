@@ -195,3 +195,21 @@ test('real terrain collider bottoms match the rendered cleaned building wall ski
   assert.ok(Math.abs(collider.minY - renderedSkirtMinY) < 1e-9,
     `collider starts at ${collider.minY}; rendered cleaned wall starts at ${renderedSkirtMinY}`);
 });
+
+test('tiled static index: tile parts come and go, a query sees only the resident parts near it', async () => {
+  const { createTiledStaticIndex, buildStaticColliders } = await import('../js/static-colliders.js');
+  const square = (id, x, z) => ({ id, ring: [x - 5, z - 5, x + 5, z - 5, x + 5, z + 5, x - 5, z + 5], ground: 0, eave: 10, roof: 'flat' });
+  const index = createTiledStaticIndex();
+  index.set('b:A', buildStaticColliders({ buildings: [square('a', 0, 0), square('a2', 30, 0)] }));
+  index.set('b:B', buildStaticColliders({ buildings: [square('b', 600, 0)] }));
+  assert.equal(index.size, 3);
+  assert.deepEqual(index.all().map((c) => c.id), ['building:a', 'building:a2', 'building:b']);
+  assert.deepEqual(index.query(0, 0, 2).map((c) => c.id), ['building:a']);
+  assert.deepEqual(index.query(600, 0, 2).map((c) => c.id), ['building:b']);
+  index.remove('b:B');
+  assert.deepEqual(index.query(600, 0, 2), [], 'a tile that went away has no solids');
+  assert.equal(index.size, 2);
+  index.set('b:A', []);
+  assert.equal(index.parts, 0, 'an empty part is dropped');
+  assert.deepEqual(index.query(0, 0, 50), []);
+});

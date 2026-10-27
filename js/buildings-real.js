@@ -1,18 +1,23 @@
 import * as THREE from 'three/webgpu';
 import { createIrmaNeon } from './irma-neon.js';
+import { irmaNeonArtwork } from './irma-neon-art.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { Quadtree } from './quadtree.js';
 import { createPreWarBuildingMaterial, createCurtainWallMaterial } from './tsl-materials.js';
 import { attribute } from 'three/tsl';
-import { createAccumulator, addBuilding } from './building-geometry.js';
-import { describeAppearance, texturedWalls } from './appearance.js';
+import { createAccumulator, addBuilding, groundLow } from './building-geometry.js';
+import { buildingSteps, ringCentre, wallArrays as wallTyped, roofArrays as roofTyped } from './building-compute.js';
+import { describeAppearance, calibrationOn } from './appearance.js';
 import { createPhotoMaterial } from './facade-photo-material.js';
 import { WINDOW, FACADE_CORNER_PIER } from './facade-style.js';
-import { PHOTO, selectPhotoSet, texRequested, lookFile, estimateTextureBytes } from './facade-lod.js';
+import { texRequested, lookFile, estimateTextureBytes, createPhotoBudget } from './facade-lod.js';
 import { createContext as createGroundContext } from './groundfloor.js';
 import { createEntranceIndex, createDoorAccumulator, addDoors } from './entrances.js';
 import { CPH_FRAME, toLocal } from './city-config.js';
+import { disposeTree } from './dispose-tree.js';
+import { nextFrame } from './yield-frame.js';
+import { createHeroCache } from './hero-cache.js';
+import { dataUrl } from './data-config.js';
 import { batchBuildingCells, updateBuildingCellVisibility } from './building-batches.js';
 
 // js/buildings-real.js
@@ -23,24 +28,28 @@ import { batchBuildingCells, updateBuildingCellVisibility } from './building-bat
 
 const HEROES_DIR = './data/heroes';
 const STREAM_RADIUS = 2400; // cells further than this from the camera are hidden (the district is 1.5 km across)
-const LEAF_CAPACITY = 48;
-const LEAF_DEPTH = 5;
 const TEX_DIR = './data/tex';
 const GROUNDFLOOR_URL = './data/cph-groundfloor.json';
 const ENTRANCES_URL = './data/cph-entrances.json';
+let lookSeen = false; // some look atlas has loaded this session: a later 404 is one building's miss, not a missing folder
 const PHOTO_MAX_FAILURES = 3; // consecutive failed loads before photo mode switches itself off (no 404 spam)
 
-function toBufferGeometry(wall) {
+/** The geometry of a wall mesh: the typed arrays of building-compute.js (used as they are; the facade frame, or a colour for a lite wall). */
+function wallGeometry(wall) {
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(wall.position, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(wall.normal, 3));
-  g.setAttribute('facadeUV', new THREE.Float32BufferAttribute(wall.facadeUV, 2));
-  g.setAttribute('facadeWall', new THREE.Float32BufferAttribute(wall.facadeWall, 4));
-  g.setAttribute('facadeBldg', new THREE.Float32BufferAttribute(wall.facadeBldg, 4));
-  g.setAttribute('facadeTone', new THREE.Float32BufferAttribute(wall.facadeTone, 4));
-  g.setAttribute('facadeWindow', new THREE.Float32BufferAttribute(wall.facadeWindow, 4));
-  g.setAttribute('facadeTop', new THREE.Float32BufferAttribute(wall.facadeTop, 1));
-  g.setIndex(new THREE.BufferAttribute(new Uint32Array(wall.index), 1));
+  g.setAttribute('position', new THREE.BufferAttribute(wall.position, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(wall.normal, 3));
+  if (wall.color) {
+    g.setAttribute('color', new THREE.BufferAttribute(wall.color, 3));
+  } else {
+    g.setAttribute('facadeUV', new THREE.BufferAttribute(wall.facadeUV, 2));
+    g.setAttribute('facadeWall', new THREE.BufferAttribute(wall.facadeWall, 4));
+    g.setAttribute('facadeBldg', new THREE.BufferAttribute(wall.facadeBldg, 4));
+    g.setAttribute('facadeTone', new THREE.BufferAttribute(wall.facadeTone, 4));
+    g.setAttribute('facadeWindow', new THREE.BufferAttribute(wall.facadeWindow, 4));
+    g.setAttribute('facadeTop', new THREE.BufferAttribute(wall.facadeTop, 1));
+  }
+  g.setIndex(new THREE.BufferAttribute(wall.index, 1));
   g.computeBoundingSphere();
   return g;
 }
@@ -61,30 +70,13 @@ function makeDoorMesh(doorAcc, material) {
 
 function roofGeometry(roof) {
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(roof.position, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(roof.normal, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(roof.color, 3));
-  g.setAttribute('roofMat', new THREE.Float32BufferAttribute(roof.mat, 2)); // roughness, metalness by roof type hint
-  g.setIndex(new THREE.BufferAttribute(new Uint32Array(roof.index), 1));
+  g.setAttribute('position', new THREE.BufferAttribute(roof.position, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(roof.normal, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(roof.color, 3));
+  g.setAttribute('roofMat', new THREE.BufferAttribute(roof.mat, 2)); // roughness, metalness by roof type hint
+  g.setIndex(new THREE.BufferAttribute(roof.index, 1));
   g.computeBoundingSphere();
   return g;
-}
-
-function ringCentre(ring) {
-  let x = 0;
-  let z = 0;
-  const n = ring.length / 2;
-  for (let i = 0; i < ring.length; i += 2) { x += ring[i]; z += ring[i + 1]; }
-  return [x / n, z / n];
-}
-
-function collectLeaves(node, out = []) {
-  if (!node.divided) {
-    if (node.items.length) out.push(node);
-    return out;
-  }
-  for (const child of [node.nw, node.ne, node.sw, node.se]) collectLeaves(child, out);
-  return out;
 }
 
 /** Index ranges -> building id for a triangle hit. `ranges` are sorted by `start`. */
@@ -150,6 +142,11 @@ async function loadHero(hero, { fetchImpl = globalThis.fetch } = {}) {
   group.userData.hero = hero;
   return group;
 }
+
+// A hero glTF is parsed once and cloned for every build of its tile (js/hero-cache.js); the clones share its geometries, materials and
+// textures, which the cache owns (userData.cached)
+const heroCache = createHeroCache((hero) => loadHero(hero));
+const loadHeroCached = (hero) => heroCache.get(hero);
 
 function describeBuilding(b, lod2Info = null) {
   const metres = (v) => `${v.toFixed(1)} m`;
@@ -225,6 +222,11 @@ function createInfoPanel() {
   };
 }
 
+// One photo atlas is handed to the GPU per animation frame: several decoded together would all be uploaded (and get their mipmaps) by
+// the same render.
+let uploadChain = Promise.resolve();
+const uploadSlot = () => (uploadChain = uploadChain.then(nextFrame));
+
 /**
  * Lazy photo walls (default on, `?tex=0` disables). Per building one small mesh (photo quads of the usable atlas strips on
  * the extruded wall, depth-biased instead of lifted) with its own atlas texture and photo material. Residency is the LOD
@@ -234,18 +236,23 @@ function createInfoPanel() {
  * (data/tex-look, RGBA with window and unobserved masks) is read first, the raw JPEG atlas as fallback. If neither folder
  * is present (both are gitignored) photo mode turns itself off quietly.
  */
-function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {}) {
+function createTexManager(root, candidates, { fetchImpl = globalThis.fetch, budget = null } = {}) {
   const state = {
-    enabled: true, probed: false, failures: 0, resident: new Map(), loading: new Map(), failed: new Set(), failedTiers: new Map(),
-    desiredQuality: new Map(), lastRun: 0, loaded: 0, look: 0, raw: 0, peakReservedBytes: 0
+    enabled: true, disposed: false, probed: false, probing: false, failures: 0, resident: new Map(), loading: new Map(), failed: new Set(),
+    failedTiers: new Map(), desiredQuality: new Map(), loaded: 0, look: 0, raw: 0
   };
   const loader = typeof createImageBitmap === 'function';
   const byId = new Map(candidates.map((c) => [c.id, c]));
+  // The residency plan and the byte budget: a streamed city shares one over every tile (js/buildings-stream.js), a district has its own.
+  const shared = !!budget;
+  const pool = budget || createPhotoBudget();
+  // some look atlas has loaded (this session or this manager): a 404 is now one building's missing atlas, not a missing folder
+  const looksPresent = () => lookSeen || state.look > 0;
 
   async function fetchBlob(file, signal) {
-    const url = `./data/${file}`;
+    const url = dataUrl(file); // data/tex-look/<id>.webp, data/tex/<id>.jpg under the data base (js/data-config.js)
     const response = signal ? await fetchImpl(url, { signal }) : await fetchImpl(url);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
     return response.blob();
   }
 
@@ -265,6 +272,8 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
       return { bitmap: await createImageBitmap(blob, bitmapOptions), hasMask: true };
     } catch (error) {
       if (signal?.aborted) throw error;
+      // once look atlases have loaded, a missing one (the citywide atlases arrive piecemeal) is that building's miss alone: no second request
+      if (looksPresent() && error?.status === 404) throw error;
       const blob = await fetchBlob(c.walls.file, signal);
       return { bitmap: await createImageBitmap(blob, bitmapOptions), hasMask: false };
     }
@@ -303,6 +312,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
   function disposeResident(r, { disposeGeometry = true } = {}) {
     root.remove(r.mesh);
     if (disposeGeometry) r.mesh.geometry.dispose();
+    r.mesh.dispatchEvent({ type: 'dispose' }); // the WebGPU renderer lets go of the mesh's render objects (js/dispose-tree.js)
     r.material.dispose();
     r.texture.dispose();
     r.bitmap.close?.();
@@ -315,64 +325,23 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
     state.resident.delete(id);
   }
 
-  function usedBytes() {
-    let total = 0;
-    for (const r of state.resident.values()) total += r.bytes;
-    for (const job of state.loading.values()) total += job.bytes;
-    return total;
-  }
-
-  function memorySnapshot() {
-    let residentBytes = 0;
-    let pendingBytes = 0;
-    for (const r of state.resident.values()) residentBytes += r.bytes;
-    for (const job of state.loading.values()) pendingBytes += job.bytes;
-    return {
-      residentBytes,
-      pendingBytes,
-      reservedBytes: residentBytes + pendingBytes,
-      peakReservedBytes: state.peakReservedBytes,
-      budgetBytes: PHOTO.maxResidentBytes,
-      residentCount: state.resident.size,
-      pendingCount: state.loading.size
-    };
-  }
-
-  /** Free the farthest selected resident walls first before reserving a new GPU allocation. */
-  function makeRoom(bytes, protectedId, want) {
-    const order = new Map(want.map((id, index) => [id, index]));
-    const fartherFirst = [...state.resident.keys()]
-      .filter((id) => id !== protectedId)
-      .sort((a, b) => (order.get(b) ?? Infinity) - (order.get(a) ?? Infinity));
-    let total = usedBytes() + bytes;
-    const protectedBytes = state.resident.get(protectedId)?.bytes || 0;
-    let pendingBytes = 0;
-    for (const [id, job] of state.loading) if (id !== protectedId) pendingBytes += job.bytes;
-    // If the target and non-evictable in-flight requests alone cannot fit, preserve the current scene as-is.
-    if (protectedBytes + pendingBytes + bytes > PHOTO.maxResidentBytes) return false;
-    for (const id of fartherFirst) {
-      if (total <= PHOTO.maxResidentBytes) break;
-      const r = state.resident.get(id);
-      if (!r) continue;
-      evict(id);
-      total -= r.bytes;
-    }
-    return total <= PHOTO.maxResidentBytes;
-  }
-
   async function load(c, quality) {
     const job = {
       tier: quality.tier, width: quality.width, height: quality.height, bytes: quality.bytes,
       replacement: state.resident.has(c.id), controller: typeof AbortController === 'function' ? new AbortController() : null
     };
     state.loading.set(c.id, job);
-    state.peakReservedBytes = Math.max(state.peakReservedBytes, usedBytes());
+    pool.notePeak();
     let bitmap = null;
     try {
       const { bitmap: loadedBitmap, hasMask } = await atlasBitmap(c, quality.maxDimension, job.controller?.signal);
       bitmap = loadedBitmap;
+      if (hasMask) lookSeen = true;
+      await uploadSlot(); // one atlas reaches the GPU per frame: its upload and mipmaps are done by the render that first draws it
       const currentQuality = state.desiredQuality.get(c.id);
-      if (state.loading.get(c.id) !== job || !currentQuality || currentQuality.width !== job.width || currentQuality.height !== job.height || !state.enabled) {
+      if (state.disposed || !state.enabled || state.loading.get(c.id) !== job || !currentQuality
+        || currentQuality.width !== job.width || currentQuality.height !== job.height) {
+        // the tile went away, or camera movement made this request stale: the next plan schedules the selected tier
         bitmap.close?.();
         bitmap = null;
         return;
@@ -390,71 +359,65 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch } = {
       state.failures = 0;
     } catch (error) {
       bitmap?.close?.();
-      if (job.controller?.signal.aborted) {
-        // Camera movement made this request stale; the next update schedules the newly selected atlas tier.
+      if (job.controller?.signal.aborted || state.disposed) {
+        // Camera movement made this request stale (or the tile went away); the next plan schedules the selected atlas tier.
       } else if (!job.replacement) {
         state.failed.add(c.id);
-        if (++state.failures >= PHOTO_MAX_FAILURES) {
+        if (looksPresent() && error?.status === 404) {
+          // an atlas not produced yet: this building keeps its tone facade, the others keep loading
+        } else if (++state.failures >= PHOTO_MAX_FAILURES) {
           state.enabled = false;
           console.info('[cph] wall photos unavailable (data/tex missing or unreadable); keeping tone + procedural facades:', error?.message || error);
         }
       } else state.failedTiers.set(c.id, quality.tier);
     } finally {
       if (state.loading.get(c.id) === job) state.loading.delete(c.id);
+      state.probing = false; // the presence probe (the first atlas of this manager) has settled either way
     }
   }
 
-  /** Called every frame with the camera position; does its work at most every 350 ms. */
-  function update(x, z, now = performance.now()) {
-    if (!state.enabled || !loader || now - state.lastRun < 350) return;
-    state.lastRun = now;
-    const currentTiers = new Map([...state.resident].map(([id, r]) => [id, r.tier]));
-    for (const [id, job] of state.loading) if (!currentTiers.has(id)) currentTiers.set(id, job.tier);
-    const { want, qualityById } = selectPhotoSet(candidates, x, z, PHOTO, currentTiers);
+  /** Before a plan is carried out (js/facade-lod.js applyPhotoPlan): abort stale requests, evict what lost its slot, refresh tiers. */
+  function prune(wantSet, qualityById) {
     state.desiredQuality = qualityById;
     for (const [id, job] of state.loading) {
       const quality = qualityById.get(id);
       if (!quality || quality.width !== job.width || quality.height !== job.height) job.controller?.abort();
     }
-    const wantSet = new Set(want);
     for (const id of [...state.resident.keys()]) if (!wantSet.has(id)) evict(id);
-    for (const id of want) {
-      const resident = state.resident.get(id);
+    for (const [id, resident] of state.resident) {
       const quality = qualityById.get(id);
-      if (resident && quality && resident.width === quality.width && resident.height === quality.height) resident.tier = quality.tier;
-    }
-
-    // Keep one resident atlas visible while a quality replacement loads. If camera motion supersedes an in-flight
-    // request, load() discards its bitmap before installation.
-    const replacementId = want.find((id) => {
-      const resident = state.resident.get(id);
-      const quality = qualityById.get(id);
-      return resident && quality && (resident.width !== quality.width || resident.height !== quality.height) && state.failedTiers.get(id) !== quality.tier;
-    });
-    if (replacementId && state.loading.size === 0) {
-      const candidate = byId.get(replacementId);
-      const quality = qualityById.get(replacementId);
-      if (candidate && quality.width > 0 && quality.height > 0 && makeRoom(quality.bytes, replacementId, want)) void load(candidate, quality);
-      return;
-    }
-
-    // The first atlas doubles as the presence probe, preserving the existing quiet fallback when photo data is absent.
-    const todo = want.filter((id) => !state.resident.has(id) && !state.loading.has(id) && !state.failed.has(id));
-    if (!state.probed && todo.length) {
-      state.probed = true;
-      const id = todo[0];
-      const quality = qualityById.get(id);
-      if (quality && quality.width > 0 && quality.height > 0 && makeRoom(quality.bytes, id, want)) void load(byId.get(id), quality);
-      return;
-    }
-    for (const id of todo) {
-      if (state.loading.size >= PHOTO.concurrency) break;
-      const quality = qualityById.get(id);
-      if (quality && quality.width > 0 && quality.height > 0 && makeRoom(quality.bytes, id, want)) void load(byId.get(id), quality);
+      if (quality && resident.width === quality.width && resident.height === quality.height) resident.tier = quality.tier;
     }
   }
 
-  return { state, update, evict, get active() { return state.resident.size; }, get memory() { return memorySnapshot(); } };
+  function start(id, quality) {
+    const c = byId.get(id);
+    if (c && state.enabled && !state.disposed) void load(c, quality);
+  }
+
+  /** Called every frame with the camera position; plans at most every 350 ms. (A shared budget is driven by its owner instead.) */
+  function update(x, z, now = performance.now()) {
+    if (shared || !state.enabled || !loader) return;
+    pool.update(x, z, now);
+  }
+
+  /** Evicts every resident photo and aborts the requests in flight (a tile going away); the manager is dead afterwards. */
+  function dispose() {
+    state.enabled = false;
+    state.disposed = true;
+    for (const job of state.loading.values()) job.controller?.abort();
+    for (const id of [...state.resident.keys()]) evict(id);
+    pool.remove(manager);
+  }
+
+  const manager = {
+    state, candidates, loader, has: (id) => byId.has(id), prune, start, update, evict, dispose,
+    get active() { return state.resident.size; },
+    /** Texture estimate of the whole budget this manager belongs to (one district, or every streamed tile). */
+    get memory() { return pool.memory(); }
+  };
+  pool.add(manager);
+  return manager;
 }
 
 /** Venues (data/cph-groundfloor.json, tools/cph-geodata/groundfloor.py); the file is optional: without it only BBR trade use gives shops. */
@@ -479,7 +442,31 @@ async function loadEntrances(fetchImpl = globalThis.fetch) {
   }
 }
 
-async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoPanel = true, lod2 = null, tex = texRequested(), observed = true, terrain = null, venues = null, entrances = undefined } = {}) {
+/** The four materials every building cell shares (a streamed city builds them once, see buildRealBuildings `shared`). */
+function createBuildingMaterials() {
+  const masonry = createPreWarBuildingMaterial({ wallAttr: true, cornerPier: FACADE_CORNER_PIER, windowRatioY: WINDOW.ratioY, seed: 7.0 });
+  const glass = createCurtainWallMaterial({ wallAttr: true, seed: 3.0 });
+  const roofMaterial = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.88, metalness: 0.02 });
+  roofMaterial.name = 'cph-roof';
+  // Roughness / metalness by roof type hint (tagpap dark matte, tile, slate, metal, ...): per-vertex from the roof geometry
+  roofMaterial.roughnessNode = attribute('roofMat', 'vec2').x;
+  roofMaterial.metalnessNode = attribute('roofMat', 'vec2').y;
+  const doorMaterial = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.05 });
+  doorMaterial.name = 'cph-entrance-doors';
+  // the mid ring's walls: one tone per building, no facade shader (the roofs, LoD2 included, keep theirs)
+  const liteWall = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
+  liteWall.name = 'cph-wall-lite';
+  return { masonry, glass, roofMaterial, doorMaterial, liteWall };
+}
+
+/**
+ * @param {object} opts
+ *   shared    { masonry, glass, roofMaterial, doorMaterial } from createBuildingMaterials(): one set for all tiles of a streamed city
+ *   context   { buildings, roads }: the tile and its neighbours (party walls, street-facing walls); `geo.buildings` are the ones to build
+ *   doors     false: no entrance doors and no ground-floor venue / entrance data (the mid ring)
+ *   slice     `await slice()` between quadtree cells: lets a streamed build share the main thread with the render loop (js/yield-frame.js)
+ */
+async function buildRealBuildings(scene, geo, { heroLoader = loadHeroCached, withInfoPanel = true, lod2 = null, tex = texRequested(), observed = true, terrain = null, venues = null, entrances = undefined, shared = null, context = null, doors: wantDoors = true, slice = null, lite = false, compute = null, photoBudget = null } = {}) {
   const buildings = geo.buildings || [];
   const heroIds = new Set((geo.heroes || []).map((h) => h.building_id));
   const byId = new Map(buildings.map((b) => [b.id, b]));
@@ -488,96 +475,87 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
   root.name = 'CopenhagenBuildings';
   scene.add(root);
 
-  const [x0, z0, x1, z1] = CPH_FRAME.bbox;
-  const tree = new Quadtree({ minX: x0 - 50, maxX: x1 + 50, minZ: z0 - 50, maxZ: z1 + 50 }, LEAF_CAPACITY, LEAF_DEPTH);
-  for (const b of buildings) {
-    if (heroIds.has(b.id) || !b.ring || b.ring.length < 6) continue;
-    const [cx, cz] = ringCentre(b.ring);
-    tree.insert({ cx, cz, b });
-  }
-
-  const masonry = createPreWarBuildingMaterial({ wallAttr: true, cornerPier: FACADE_CORNER_PIER, windowRatioY: WINDOW.ratioY, seed: 7.0 });
-  const glass = createCurtainWallMaterial({ wallAttr: true, seed: 3.0 });
-  const roofMaterial = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.88, metalness: 0.02 });
-  roofMaterial.name = 'cph-roof';
-  // Roughness / metalness by roof type hint (tagpap dark matte, tile, slate, metal, ...): per-vertex from the roof geometry
-  roofMaterial.roughnessNode = attribute('roofMat', 'vec2').x;
-  roofMaterial.metalnessNode = attribute('roofMat', 'vec2').y;
-
-  // Ground-floor kinds per wall: street side from the road network, party walls from neighbouring footprints, shops from venue data
-  const entranceDoc = entrances === undefined ? await loadEntrances() : entrances;
-  const ground = createGroundContext({ roads: geo.roads || [], buildings, venues: venues ?? (await loadVenues()), entrances: entranceDoc ? createEntranceIndex(entranceDoc) : null });
-  let doorCount = 0;
-  const doorInfo = new Map(); // building id -> { source: 'dar' | 'heuristic' | 'none', count, conf } for the info panel
-  const doorMaterial = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.05 });
-  doorMaterial.name = 'cph-entrance-doors';
-  const leaves = [];
-  const pickables = [];
-  const glassAcc = createAccumulator();
-  let triangles = 0;
-  const texCandidates = [];
+  const { masonry, glass, roofMaterial, doorMaterial, liteWall } = shared || createBuildingMaterials();
+  const wallMaterial = lite ? liteWall : masonry;
 
   // LoD2 roofs (tools/lod2): every building with a measured roofer record gets its pitched roof; the rest keep the flat
   // extrusion. The join is by building id, so the geodata compiler never needs to know about LoD2.
   const lod2Records = new Map();
   if (lod2) {
-    await lod2.prefetch();
-    for (const b of buildings) {
-      if (heroIds.has(b.id) || b.footprintFix) continue; // a footprint the street layout clipped no longer matches its roofer edges
-      const rec = await lod2.ready(b.id);
-      if (rec) lod2Records.set(b.id, rec);
+    // Records are fetched per owning tile on first use (loadLod2: 1 km binaries, tile store: one lod2.bin per tile), all in parallel.
+    const wanted = buildings.filter((b) => !heroIds.has(b.id) && !b.footprintFix); // a footprint the street layout clipped no longer matches its roofer edges
+    const recs = await Promise.all(wanted.map((b) => lod2.ready(b.id)));
+    wanted.forEach((b, i) => { if (recs[i]) lod2Records.set(b.id, recs[i]); });
+  }
+
+  // The CPU half (quadtree cells, wall / roof arrays, placed doors, photo candidates) is pure data in, typed arrays out
+  // (js/building-compute.js): `compute` runs it in a Web Worker (js/building-pool.js); without one it runs here, a few buildings at a
+  // time between the `slice` waits.
+  const wantEntrances = !lite && wantDoors ? (entrances === undefined ? await loadEntrances() : entrances) : null;
+  const job = {
+    buildings, heroIds: [...heroIds], observed, doors: wantDoors && !lite, lite, wantQuads: !lite && !!tex, calibration: calibrationOn(),
+    // the neighbourhood the ground floor reads: footprints and the road lines only (the rest of a record stays here)
+    context: lite ? null : {
+      buildings: (context?.buildings || buildings).map((b) => ({ id: b.id, ring: b.ring, holes: b.holes })),
+      roads: (context?.roads || geo.roads || []).map((r) => ({ pts: r.pts, width: r.width, class: r.class, name: r.name }))
+    },
+    venues: !lite && wantDoors ? venues ?? (await loadVenues()) : [], entrances: wantEntrances, lod2: lod2Records,
+    lows: terrain && !terrain.flat ? new Map(buildings.map((b) => [b.id, groundLow(b, terrain)]).filter((e) => e[1] !== null)) : null
+  };
+  let result = compute ? await compute(job) : null;
+  if (!result) {
+    const gen = buildingSteps(job);
+    for (;;) {
+      const step = gen.next();
+      if (step.done) { result = step.value; break; }
+      if (slice) await slice();
     }
   }
 
-  const leafNodes = collectLeaves(tree);
-  for (const leaf of leafNodes) {
-    const acc = createAccumulator();
-    const doorAcc = createDoorAccumulator();
-    for (const { b } of leaf.items) {
-      const glassy = b.wall_material === 'glas';
-      const quads = tex && observed && !glassy && b.observed?.atlas?.walls?.length ? [] : null;
-      const added = addBuilding(acc, b, { ground, ...(glassy ? { wallAcc: glassAcc } : {}), ...(lod2Records.has(b.id) ? { lod2: lod2Records.get(b.id) } : {}), ...(quads ? { quads } : {}), ...(observed ? {} : { observed: false }), ...(terrain ? { terrain } : {}) });
-      if (added) triangles += added.wallTriangles + added.roofTriangles;
-      if (added?.doorInfo) doorInfo.set(b.id, added.doorInfo);
-      if (added?.doors?.length) doorCount += addDoors(doorAcc, added.doors, { ground: b.ground, heightAt: terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null });
-      if (added && quads) {
-        const walls = texturedWalls(b, quads, added.mapping);
-        if (walls) {
-          const [cx, cz] = ringCentre(b.ring);
-          texCandidates.push({ id: b.id, cx, cz, walls, tone: added.mapping.buildingTone, brick: added.style.mat === 0, layout: added.layout });
-        }
-      }
-    }
+  const doorInfo = new Map(result.doorInfo); // building id -> { source: 'dar' | 'heuristic' | 'none', count, conf } for the info panel
+  const texCandidates = result.texCandidates;
+  const leaves = [];
+  const pickables = [];
+  let doorCount = result.stats.doors;
+  let triangles = result.stats.triangles;
+  const heightAt = terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null;
+
+  for (const leaf of result.leaves) {
+    if (slice) await slice();
     const group = new THREE.Group();
     group.name = 'buildings-cell';
-    if (acc.wall.index.length) {
-      const wallMesh = new THREE.Mesh(toBufferGeometry(acc.wall), masonry);
-      wallMesh.userData.ranges = acc.wallRanges.filter((r) => r.end > r.start);
+    if (leaf.wall) {
+      const wallMesh = new THREE.Mesh(wallGeometry(leaf.wall), wallMaterial);
+      wallMesh.userData.ranges = leaf.wallRanges;
       wallMesh.castShadow = wallMesh.receiveShadow = true;
       wallMesh.name = 'walls';
       group.add(wallMesh);
       pickables.push(wallMesh);
     }
-    if (acc.roof.index.length) {
-      const roofMesh = new THREE.Mesh(roofGeometry(acc.roof), roofMaterial);
-      roofMesh.userData.ranges = acc.roofRanges.filter((r) => r.end > r.start);
-      roofMesh.userData.detailRanges = acc.detailParts;
+    if (leaf.roof) {
+      const roofMesh = new THREE.Mesh(roofGeometry(leaf.roof), roofMaterial);
+      roofMesh.userData.ranges = leaf.roofRanges;
+      roofMesh.userData.detailRanges = leaf.detailParts;
       roofMesh.castShadow = roofMesh.receiveShadow = true;
       roofMesh.name = 'roofs';
       group.add(roofMesh);
       pickables.push(roofMesh);
     }
-    const doorMesh = makeDoorMesh(doorAcc, doorMaterial);
-    if (doorMesh) group.add(doorMesh);
-    const bounds = leaf.bounds;
-    group.userData.centre = [(bounds.minX + bounds.maxX) / 2, (bounds.minZ + bounds.maxZ) / 2];
-    group.userData.radius = Math.hypot(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ) / 2;
+    if (leaf.doors.length) {
+      // doors stand on the terrain at the door (the compute step has none): built here, from the placed doors
+      const doorAcc = createDoorAccumulator();
+      for (const d of leaf.doors) addDoors(doorAcc, d.doors, { ground: d.ground, heightAt });
+      const doorMesh = makeDoorMesh(doorAcc, doorMaterial);
+      if (doorMesh) group.add(doorMesh);
+    }
+    group.userData.centre = leaf.centre;
+    group.userData.radius = leaf.radius;
     root.add(group);
     leaves.push(group);
   }
-  if (glassAcc.wall.index.length) {
-    const mesh = new THREE.Mesh(toBufferGeometry(glassAcc.wall), glass);
-    mesh.userData.ranges = glassAcc.wallRanges.filter((r) => r.end > r.start);
+  if (result.glass) {
+    const mesh = new THREE.Mesh(wallGeometry(result.glass.wall), glass);
+    mesh.userData.ranges = result.glass.wallRanges;
     mesh.castShadow = mesh.receiveShadow = true;
     mesh.name = 'glass-walls';
     root.add(mesh);
@@ -598,17 +576,18 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
       const b = byId.get(hero.building_id);
       if (b) heroIds.delete(hero.building_id);
       if (b) {
-        const acc = createAccumulator();
-        const added = addBuilding(acc, b, { ground, ...(terrain ? { terrain } : {}) });
+        const acc = createAccumulator({ lite });
+        const ground = lite ? null : createGroundContext({ roads: context?.roads || geo.roads || [], buildings: context?.buildings || buildings, venues: job.venues, entrances: wantEntrances ? createEntranceIndex(wantEntrances) : null });
+        const added = addBuilding(acc, b, { ...(lite ? { lite: true } : { ground }), ...(terrain ? { terrain } : {}), ...(observed ? {} : { observed: false }) });
         if (added?.doorInfo) doorInfo.set(b.id, added.doorInfo);
         const heroDoors = createDoorAccumulator();
-        if (added?.doors?.length) doorCount += addDoors(heroDoors, added.doors, { ground: b.ground, heightAt: terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null });
+        if (wantDoors && added?.doors?.length) doorCount += addDoors(heroDoors, added.doors, { ground: b.ground, heightAt: terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null });
         const group = new THREE.Group();
         const heroDoorMesh = makeDoorMesh(heroDoors, doorMaterial);
         if (heroDoorMesh) group.add(heroDoorMesh);
-        const wm = new THREE.Mesh(toBufferGeometry(acc.wall), masonry);
+        const wm = new THREE.Mesh(wallGeometry(wallTyped(acc.wall)), wallMaterial);
         wm.userData.ranges = acc.wallRanges;
-        const rm = new THREE.Mesh(roofGeometry(acc.roof), roofMaterial);
+        const rm = new THREE.Mesh(roofGeometry(roofTyped(acc.roof)), roofMaterial);
         rm.userData.ranges = acc.roofRanges;
         rm.userData.detailRanges = acc.detailParts;
         rm.name = 'roofs';
@@ -621,10 +600,12 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     }
   }));
 
+  // one BatchedMesh per material and mesh kind over the quadtree cells (js/building-batches.js); a streamed tile batches its own cells
   batchBuildingCells(root, leaves, pickables);
 
-  const neon = createIrmaNeon(root, byId, lod2Records);
-  const texManager = tex ? createTexManager(root, texCandidates) : null;
+  // the Irma sign only exists where its buildings are: a tile without them builds no neon materials
+  const neon = irmaNeonArtwork().some((art) => byId.has(art.buildingId)) ? createIrmaNeon(root, byId, lod2Records) : { group: null, panels: [], update() {}, stats: { panels: 0 } };
+  const texManager = tex ? createTexManager(root, texCandidates, { budget: photoBudget }) : null; // joins the shared budget itself
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   const panel = withInfoPanel && typeof document !== 'undefined' ? createInfoPanel() : null;
@@ -659,14 +640,43 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     return null;
   }
 
-  function showBuilding(id, isPinned = false, hit = null) {
+  /** What the info panel shows for a building of this instance (null when it is not one of ours). */
+  function infoFor(id, hit = null) {
     const b = byId.get(id);
-    if (!b || !panel) return null;
+    if (!b) return null;
     const info = describeBuilding(b, lod2?.entry(id));
     info.doors = doorInfo.get(id) || null;
     info.appearance = describeAppearance(b, hit?.surface || 'wall', hit?.point || null, { textured: !!texManager?.state.resident.has(id) });
-    panel.show(info, isPinned);
     return info;
+  }
+
+  function showBuilding(id, isPinned = false, hit = null) {
+    if (!panel) return null;
+    const info = infoFor(id, hit);
+    if (info) panel.show(info, isPinned);
+    return info;
+  }
+
+  /** Frees the GPU side of this instance: geometries, the photo textures and (when not shared) the materials. */
+  function dispose() {
+    photoBudget?.remove(texManager);
+    texManager?.dispose();
+    // hero glTFs own their materials and textures (loadHero builds them per load)
+    for (const g of heroGroups) {
+      if (g.userData.cached) continue; // the hero cache owns these
+      g.traverse((o) => {
+        const m = o.material;
+        if (!m) return;
+        for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap']) m[k]?.dispose?.();
+        m.dispose();
+      });
+    }
+    disposeTree(root);
+    if (!shared) for (const m of [masonry, glass, roofMaterial, doorMaterial]) m.dispose();
+    panel?.element.remove();
+    root.clear();
+    leaves.length = 0;
+    pickables.length = 0;
   }
 
   /** Wires hover (throttled) and click-to-pin on the canvas. Dragging (orbit) does not pin. */
@@ -702,7 +712,9 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHero, withInfoP
     meshes: meshCount
   };
 
-  return { group: root, leaves, update, pick, attach, showBuilding, stats, byId, heroGroups, heroStatus, texManager, neon };
+  const setCamera = (cam) => { camera = cam; };
+
+  return { group: root, leaves, update, pick, attach, setCamera, showBuilding, infoFor, dispose, stats, byId, heroGroups, heroStatus, texManager, neon };
 }
 
-export { buildRealBuildings, loadHero, describeBuilding, rangeAt, mergeByMaterial };
+export { buildRealBuildings, createBuildingMaterials, createInfoPanel, loadHero, loadHeroCached, heroCache, describeBuilding, rangeAt, mergeByMaterial };

@@ -89,12 +89,16 @@ def windows(lin, valid, texel):
     return out
 
 
-def process_strip(img8, texel, tone_cal):
+def process_strip(img8, texel, tone_cal, inside=None):
+    """`inside` (bool, the strip's shape: below the eave or inside a gable / step piece; None = all) limits everything to the wall:
+    texels outside are alpha 0 and do not count as unobserved."""
     srgb = img8.astype(np.float32) / 255.0
     lin = s2l(srgb)
     unobs = unobserved_mask(img8, texel)
-    valid = ~unobs
-    if valid.sum() < 40 or unobs.mean() > MAX_UNOBS:
+    if inside is None:
+        inside = np.ones(unobs.shape, bool)
+    valid = ~unobs & inside
+    if valid.sum() < 40 or unobs[inside].mean() > MAX_UNOBS:
         return None  # mostly fill: the whole strip stays procedural (alpha 0)
     L = lum(lin)
     # shadow division, two scales: large cast shadows (masked blur, thresholded against the lit level) and small ones such as
@@ -134,8 +138,17 @@ def process_strip(img8, texel, tone_cal):
     return rgb, a
 
 
+def fit_mask(mask, shape):
+    """A strip shape mask resized (nearest) to the strip as packed (pack_atlas narrows strips wider than the atlas)."""
+    if mask is None or mask.shape == tuple(shape):
+        return mask
+    return np.asarray(Image.fromarray(mask.astype(np.uint8) * 255).resize((shape[1], shape[0]), Image.NEAREST)) > 127
+
+
 def process_building(args):
-    b_id, atlas, walls_cal = args
+    """args = (id, atlas descriptor, {(ring, edge): tone_cal}[, {(ring, edge): shape mask}])."""
+    b_id, atlas, walls_cal = args[:3]
+    shapes = args[3] if len(args) > 3 else {}
     src = ROOT / "data" / atlas["file"]
     if not src.exists():
         return b_id, None
@@ -147,7 +160,7 @@ def process_building(args):
     for w in atlas["walls"]:
         x, y, pw, ph = w["px"]
         tone = walls_cal.get((w["ring"], w["edge"]))
-        res = process_strip(im[y:y + ph, x:x + pw], w.get("texel_m", 0.1), tone)
+        res = process_strip(im[y:y + ph, x:x + pw], w.get("texel_m", 0.1), tone, fit_mask(shapes.get((w["ring"], w["edge"])), (ph, pw)))
         if res is None:
             alpha[y:y + ph, x:x + pw] = 0
             continue

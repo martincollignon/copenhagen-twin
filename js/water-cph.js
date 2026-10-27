@@ -7,7 +7,8 @@ import { cityUniforms } from './tsl-materials.js';
 import { buildLakeArrays, groundWithHoles, shoreDistanceField, WATER } from './lakes-cph.js';
 import { buildTerrainMeshArrays } from './terrain-cph.js';
 import { applyGroundField } from './ground-shader-cph.js';
-import { lakeDistanceFrom } from './ground-field-cph.js';
+import { lakeDistanceFrom, groundField } from './ground-field-cph.js';
+import { getDataBbox } from './city-config.js';
 
 // js/water-cph.js
 // The Soerne as water: sunken lake surface with TSL ripples, fresnel sky/planar reflection and a soft shoreline, held by
@@ -18,6 +19,8 @@ import { lakeDistanceFrom } from './ground-field-cph.js';
 const BED = [0.038, 0.050, 0.042]; // linear equivalent of the observed sRGB (55, 63, 58) lake bed
 const DEEP = [0.012, 0.020, 0.013]; // darker olive water after depth absorption
 const WEED = [0.055, 0.066, 0.025]; // subdued yellow-green Elodea and algae mats
+const SEA_BED = [0.032, 0.052, 0.058]; // the harbour and the sound (the generic water, `waterTint` 1): bluer grey-green, no weed
+const SEA_DEEP = [0.009, 0.030, 0.043];
 const ALGAE = [0.014, 0.020, 0.009];
 
 const hash2D = Fn(([p]) => fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453)));
@@ -43,6 +46,7 @@ function toGeometry(a, { uv = false, kind = false } = {}) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(a.position, 3));
   if (a.normal) g.setAttribute('normal', new THREE.Float32BufferAttribute(a.normal, 3));
+  if (a.tint) g.setAttribute('waterTint', new THREE.Float32BufferAttribute(a.tint, 1));
   if (uv) g.setAttribute('wallUV', new THREE.Float32BufferAttribute(a.uv, 2));
   if (kind) g.setAttribute('wallKind', new THREE.Float32BufferAttribute(a.kind, 1));
   g.setIndex(a.index.length > 65535 ? new THREE.Uint32BufferAttribute(a.index, 1) : new THREE.Uint16BufferAttribute(a.index, 1));
@@ -89,7 +93,11 @@ function createLakeWallMaterial() {
     const grassC = mix(vec3(0.07, 0.12, 0.035), vec3(0.14, 0.2, 0.06), n1);
     const mud = mix(vec3(0.05, 0.04, 0.03), vec3(0.09, 0.075, 0.05), n1);
     const bank = mix(mud, grassC, smoothstep(-0.95, -0.35, v));
-    return mix(mix(mix(wallWet, cope, isCope), concrete, isConcrete), bank, isBank);
+    // beach (kind 4): pale sand, damp and darker at the water line
+    const isSand = step(3.5, kind);
+    const sandC = mix(vec3(0.46, 0.4, 0.28), vec3(0.58, 0.51, 0.37), n1);
+    const beach = mix(sandC.mul(0.55), sandC, smoothstep(-0.95, -0.55, v));
+    return mix(mix(mix(mix(wallWet, cope, isCope), concrete, isConcrete), bank, isBank), beach, isSand);
   })();
   return m;
 }
@@ -102,7 +110,12 @@ const skyColourAt = (r) => {
   return sky.add(cityUniforms.uSunColor.mul(sunAmount.mul(1.5)));
 };
 
-function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
+/**
+ * `window` (the streamed city's generic water, js/water-stream.js): { origin: uniform vec2, size: uniform float, reflLevel: uniform float, reflOn: uniform float }. The
+ * shore-distance texture then covers a window that follows the camera instead of the district `bbox`, and the planar reflection (one plane at a
+ * time, y = reflLevel) only paints water at that level; water at any other level reflects the sky.
+ */
+function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY, window = null }) {
   const material = new THREE.MeshStandardNodeMaterial({ roughness: 0.045, metalness: 0, envMapIntensity: 0 });
   material.name = 'cph-water';
   const wp = positionWorld;
@@ -111,9 +124,15 @@ function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
   const V = toCam.div(max(dist, 0.001));
 
   // distance to the nearest wall: smooths the ripples and drives the shore colour
-  const [x0, z0, x1, z1] = bbox;
-  const sdfUv = vec2(wp.x.sub(x0).div(x1 - x0), wp.z.sub(z0).div(z1 - z0));
-  const shore = texture(sdf, sdfUv).r.mul(WATER.shoreMax);
+  let shore;
+  if (window) {
+    const wuv = vec2(wp.x.sub(window.origin.x), wp.z.sub(window.origin.y)).div(window.size);
+    const inWindow = step(0.0, wuv.x).mul(step(wuv.x, 1.0)).mul(step(0.0, wuv.y)).mul(step(wuv.y, 1.0));
+    shore = mix(float(WATER.shoreMax), texture(sdf, wuv).r.mul(WATER.shoreMax), inWindow); // beyond the window: open water
+  } else {
+    const [x0, z0, x1, z1] = bbox;
+    shore = texture(sdf, vec2(wp.x.sub(x0).div(x1 - x0), wp.z.sub(z0).div(z1 - z0))).r.mul(WATER.shoreMax);
+  }
   const calm = smoothstep(0.0, 3.0, shore).mul(0.7).add(0.3);
 
   // analytic wave slopes (sum of sines), fading out with distance so the far water does not shimmer
@@ -143,9 +162,12 @@ function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
   const depth = mix(float(0.25), float(2.4), smoothstep(1.0, 10.0, shore));
   const attenuation = float(1).sub(exp(depth.div(-1.2)));
   let body = mix(vec3(...BED), vec3(...DEEP), attenuation);
+  // the streamed city's water carries `waterTint`: 1 at the sea level (harbour basins, canals, the sound), 0 for lakes and ponds
+  const tint = window ? attribute('waterTint', 'float') : float(0);
+  if (window) body = mix(body, mix(vec3(...SEA_BED), vec3(...SEA_DEEP), attenuation), tint);
   const weedField = noise2D(wp.xz.mul(0.035)).mul(0.7).add(noise2D(wp.xz.mul(0.11)).mul(0.3));
   const nearBank = float(1).sub(smoothstep(6.0, 18.0, shore));
-  const weedMask = smoothstep(0.60, 0.76, weedField).mul(nearBank).mul(0.5);
+  const weedMask = smoothstep(0.60, 0.76, weedField).mul(nearBank).mul(0.5).mul(float(1).sub(tint));
   body = mix(body, vec3(...WEED), weedMask);
   const nightDim = smoothstep(0.35, 1.55, cityUniforms.uInteriorGlow);
   const bodyLight = mix(float(1), float(0.22), nightDim);
@@ -162,6 +184,11 @@ function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
     reflectorNode.target.position.y = level;
     reflectorNode.uvNode = reflectorNode.uvNode.add(vec2(sx, sz).mul(0.06));
     reflection = reflectorNode.rgb;
+    if (window) {
+      const r = reflect(V.negate(), N);
+      const sky = skyColourAt(normalize(vec3(r.x, max(r.y, 0.01), r.z)));
+      reflection = mix(sky, reflection, float(1).sub(smoothstep(0.3, 0.9, wp.y.sub(window.reflLevel).abs())).mul(window.reflOn));
+    }
   } else {
     const r = reflect(V.negate(), N);
     reflection = skyColourAt(normalize(vec3(r.x, max(r.y, 0.01), r.z)));
@@ -175,25 +202,76 @@ function createWaterMaterial({ sdf, bbox, planar, level = WATER.surfaceY }) {
   return { material, reflectorNode };
 }
 
+
+/**
+ * The planar pass renders the scene from inside the main pass without the main pass' MRT: it must not re-render the shadow maps (they are
+ * already current), and materials that only write MRT attachments (contact shadows, flares, steam: `mrtNode`) would compile to empty
+ * fragment outputs, so they are hidden from the reflection. `hide()` lists the meshes (the lake walls) that are hidden during it too.
+ */
+function patchPlanarReflector(reflectorNode, scene, hide) {
+  const base = reflectorNode.reflector;
+  const original = base.updateBefore.bind(base);
+  let shadows = [];
+  let mrtOnly = [];
+  let frame = 0;
+  base.updateBefore = (f) => {
+    if (frame++ % 90 === 0) {
+      shadows = [];
+      mrtOnly = [];
+      scene.traverse((o) => {
+        if (o.isLight && o.shadow) shadows.push(o.shadow);
+        const m = o.isMesh || o.isSprite ? o.material : null;
+        if (m && (Array.isArray(m) ? m.some((material) => material.mrtNode) : m.mrtNode)) mrtOnly.push(o);
+      });
+    }
+    const saved = shadows.map((sh) => sh.autoUpdate);
+    const visible = mrtOnly.map((o) => o.visible);
+    shadows.forEach((sh) => { sh.autoUpdate = false; });
+    mrtOnly.forEach((o) => { o.visible = false; });
+    // The reflector's oblique near-plane clip assumes a conventional depth buffer: with reversed depth it clips the whole
+    // scene away. Render without the clip (the only geometry below the water line is the lake walls, hidden here).
+    const renderer = f.renderer;
+    const mainProj = f.camera.projectionMatrix.elements;
+    const hidden = hide().filter(Boolean);
+    const wallVis = hidden.map((o) => o.visible);
+    hidden.forEach((o) => { o.visible = false; });
+    const render = renderer.render;
+    renderer.render = function patched(sc, cam) {
+      if (cam !== f.camera) for (const k of [2, 6, 10, 14]) cam.projectionMatrix.elements[k] = mainProj[k];
+      return render.call(this, sc, cam);
+    };
+    try { original(f); } finally {
+      renderer.render = render;
+      hidden.forEach((o, i) => { o.visible = wallVis[i]; });
+      shadows.forEach((sh, i) => { sh.autoUpdate = saved[i]; });
+      mrtOnly.forEach((o, i) => { o.visible = visible[i]; });
+    }
+  };
+}
+
 /**
  * Builds the lakes into `scene`. Returns { group, ground, water, material, stats, update, attach, setPlanar }.
  * `ground` is the cut ground mesh (replaces the plain plane); `update(x, z)` gates the planar reflection pass.
  */
-function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -750, 750, 750], planar = true, terrain = null, parks = null, modelBridge = () => false } = {}) {
+function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = getDataBbox(), planar = true, terrain = null, parks = null, modelBridge = () => false, skipGround = false, lakeField = false, hideDuringReflection = () => [] } = {}) {
   const arrays = buildLakeArrays(doc, { bbox, terrain, modelBridge });
   const group = new THREE.Group();
   group.name = 'CopenhagenLakes';
 
   // ground plane with the lakes cut out
   // (with terrain: the terrain mesh, whose cut cells follow the lake outlines; otherwise the flat plane)
-  const g = terrain && !terrain.flat ? buildTerrainMeshArrays(terrain, { uvSize: size }) : groundWithHoles(size, arrays.cutRings, arrays.islands);
+  // (`skipGround`: the streamed city cuts the ground into tiles itself, js/ground-stream.js; this still applies the ground shader)
+  const g = skipGround ? null : terrain && !terrain.flat ? buildTerrainMeshArrays(terrain, { uvSize: size }) : groundWithHoles(size, arrays.cutRings, arrays.islands);
   const groundGeometry = new THREE.BufferGeometry();
-  groundGeometry.setAttribute('position', new THREE.Float32BufferAttribute(g.position, 3));
-  groundGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
-  groundGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(g.normal || Array.from(g.position, (_, i) => (i % 3 === 1 ? 1 : 0)), 3));
-  groundGeometry.setIndex(new THREE.Uint32BufferAttribute(g.index, 1));
+  if (g) {
+    groundGeometry.setAttribute('position', new THREE.Float32BufferAttribute(g.position, 3));
+    groundGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
+    groundGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(g.normal || Array.from(g.position, (_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+    groundGeometry.setIndex(new THREE.Uint32BufferAttribute(g.index, 1));
+  }
   // fine-gravel lake path + grass (js/ground-shader-cph.js); the same raster answers `lakeDistance` (tree species context)
-  const groundFieldInfo = parks ? applyGroundField(groundMaterial, doc, parks, { bbox }) : null;
+  // (`lakeField`: the streamed city paints its ground with a window raster, js/water-stream.js; only the lake distance is made here)
+  const groundFieldInfo = parks ? applyGroundField(groundMaterial, doc, parks, { bbox }) : lakeField ? { field: groundField(doc, [], { bbox }) } : null;
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.name = 'CopenhagenGround';
   ground.receiveShadow = true;
@@ -217,46 +295,7 @@ function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -75
   let lakeWalls = null;
   if (reflectorNode) {
     group.add(reflectorNode.target);
-    // The planar pass renders the scene from inside the main pass without the main pass' MRT: it must not re-render the
-    // shadow maps (they are already current), and materials that only write MRT attachments (contact shadows, flares,
-    // steam: `mrtNode`) would compile to empty fragment outputs, so they are hidden from the reflection.
-    const base = reflectorNode.reflector;
-    const original = base.updateBefore.bind(base);
-    let shadows = [];
-    let mrtOnly = [];
-    let frame = 0;
-    base.updateBefore = (f) => {
-      if (frame++ % 90 === 0) {
-        shadows = [];
-        mrtOnly = [];
-        scene.traverse((o) => {
-          if (o.isLight && o.shadow) shadows.push(o.shadow);
-          const m = o.isMesh || o.isSprite ? o.material : null;
-          if (m && (Array.isArray(m) ? m.some((material) => material.mrtNode) : m.mrtNode)) mrtOnly.push(o);
-        });
-      }
-      const saved = shadows.map((sh) => sh.autoUpdate);
-      const visible = mrtOnly.map((o) => o.visible);
-      shadows.forEach((sh) => { sh.autoUpdate = false; });
-      mrtOnly.forEach((o) => { o.visible = false; });
-      // The reflector's oblique near-plane clip assumes a conventional depth buffer: with reversed depth it clips the whole
-      // scene away. Render without the clip (the only geometry below the water line is the lake walls, hidden here).
-      const renderer = f.renderer;
-      const mainProj = f.camera.projectionMatrix.elements;
-      const wallVis = lakeWalls.visible;
-      lakeWalls.visible = false;
-      const render = renderer.render;
-      renderer.render = function patched(sc, cam) {
-        if (cam !== f.camera) for (const k of [2, 6, 10, 14]) cam.projectionMatrix.elements[k] = mainProj[k];
-        return render.call(this, sc, cam);
-      };
-      try { original(f); } finally {
-        renderer.render = render;
-        lakeWalls.visible = wallVis;
-        shadows.forEach((sh, i) => { sh.autoUpdate = saved[i]; });
-        mrtOnly.forEach((o, i) => { o.visible = visible[i]; });
-      }
-    };
+    patchPlanarReflector(reflectorNode, scene, () => [lakeWalls, ...hideDuringReflection()]);
   }
   const wallMaterial = createLakeWallMaterial();
   const walls = new THREE.Mesh(toGeometry(arrays.walls, { uv: true, kind: true }), wallMaterial);
@@ -282,7 +321,7 @@ function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -75
   return {
     group, ground, water, material, walls, field, state, setPlanar,
     lakeDistance: groundFieldInfo ? lakeDistanceFrom(groundFieldInfo.field) : null,
-    stats: { ...arrays.stats, surfaceTriangles: arrays.surface.index.length / 3, groundTriangles: g.index.length / 3 },
+    stats: { ...arrays.stats, surfaceTriangles: arrays.surface.index.length / 3, groundTriangles: g ? g.index.length / 3 : 0 },
     level: arrays.level,
     attach: ({ camera: cam }) => { camera = cam; },
     // the reflection pass renders the whole scene again: skip it from high above or far from the lakes
@@ -290,4 +329,4 @@ function buildLakes(scene, doc, { groundMaterial, size = 8000, bbox = [-750, -75
   };
 }
 
-export { buildLakes, createWaterMaterial, createLakeWallMaterial };
+export { buildLakes, createWaterMaterial, createLakeWallMaterial, patchPlanarReflector, toGeometry };

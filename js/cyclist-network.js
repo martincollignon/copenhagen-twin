@@ -241,6 +241,33 @@ export function buildCyclistNetwork(geo, signalNodes = []) {
   // Free ends (a track that stops short of the one it meets: a T junction, or a corner where two ways' offsets don't
   // meet) attach to the nearest lane within ATTACH metres, splitting it there
   const ATTACH = 9;
+  // lanes by the cells their bounding box touches: the free ends look for the nearest lane among the few around them, not all of them
+  const LCELL = 32;
+  const laneGrid = new Map();
+  const gridLane = (m) => {
+    let x0 = Infinity; let z0 = Infinity; let x1 = -Infinity; let z1 = -Infinity;
+    for (let i = 0; i + 1 < m.pts.length; i += 2) {
+      if (m.pts[i] < x0) x0 = m.pts[i];
+      if (m.pts[i] > x1) x1 = m.pts[i];
+      if (m.pts[i + 1] < z0) z0 = m.pts[i + 1];
+      if (m.pts[i + 1] > z1) z1 = m.pts[i + 1];
+    }
+    for (let ix = Math.floor(x0 / LCELL); ix <= Math.floor(x1 / LCELL); ix++) {
+      for (let iz = Math.floor(z0 / LCELL); iz <= Math.floor(z1 / LCELL); iz++) {
+        const k = `${ix}:${iz}`;
+        const list = laneGrid.get(k);
+        if (list) list.push(m); else laneGrid.set(k, [m]);
+      }
+    }
+  };
+  for (const m of lanes) gridLane(m);
+  const lanesNear = (x, z, r) => {
+    const out = new Set();
+    for (let ix = Math.floor((x - r) / LCELL); ix <= Math.floor((x + r) / LCELL); ix++) {
+      for (let iz = Math.floor((z - r) / LCELL); iz <= Math.floor((z + r) / LCELL); iz++) for (const m of laneGrid.get(`${ix}:${iz}`) || []) out.add(m);
+    }
+    return [...out].sort((a, b) => a.id - b.id); // creation order, as a scan over `lanes` would meet them
+  };
   const lenOf = (pts) => {
     let len = 0;
     for (let i = 2; i < pts.length; i += 2) len += Math.hypot(pts[i] - pts[i - 2], pts[i + 1] - pts[i - 1]);
@@ -256,7 +283,7 @@ export function buildCyclistNetwork(geo, signalNodes = []) {
       if (n.in.length + n.out.length > 2 && onward.length + arriving.length === 0) continue;
       let best = null;
       let bd = ATTACH;
-      for (const m of lanes) {
+      for (const m of lanesNear(n.x, n.z, ATTACH)) {
         if (m.from === n || m.to === n) continue;
         for (let i = 0; i + 3 < m.pts.length; i += 2) {
           const dx = m.pts[i + 2] - m.pts[i];
@@ -287,6 +314,7 @@ export function buildCyclistNetwork(geo, signalNodes = []) {
         target.in.push(m);
         target.out.push(tail);
         lanes.push(tail);
+        gridLane(tail);
       }
       // n becomes target
       for (const l of n.in) {
@@ -454,9 +482,9 @@ export function lanePoint(lane, s, out = { x: 0, z: 0, dx: 0, dz: 1 }) {
 
 // ---- cyclists -----------------------------------------------------------------------------------------------------
 export function createCyclists(network, { count = 60, random = Math.random } = {}) {
-  const { lanes } = network;
-  const usable = lanes.filter((l) => l.len > 12);
-  const totalLen = usable.reduce((s, l) => s + l.len, 0);
+  let lanes = network.lanes;
+  let usable = lanes.filter((l) => l.len > 12);
+  let totalLen = usable.reduce((s, l) => s + l.len, 0);
   const riders = [];
   let clock = 0;
 
@@ -469,7 +497,16 @@ export function createCyclists(network, { count = 60, random = Math.random } = {
     });
   }
 
+  /** Swaps the lane graph (streamed city: the region around the camera): every rider is placed afresh on it. */
+  function setNetwork(next) {
+    lanes = next.lanes;
+    usable = lanes.filter((l) => l.len > 12);
+    totalLen = usable.reduce((s, l) => s + l.len, 0);
+    for (const c of riders) { c.placed = false; c.lane = null; c.next = null; c.stuck = false; }
+  }
+
   function pickLane() {
+    if (!usable.length) return null;
     let r = random() * totalLen;
     for (const l of usable) {
       r -= l.len;
@@ -614,6 +651,7 @@ export function createCyclists(network, { count = 60, random = Math.random } = {
       budget--;
       for (let attempt = 0; attempt < 10; attempt++) {
         const lane = pickLane();
+        if (!lane) break;
         const s = random() * lane.len;
         lanePoint(lane, s, pt);
         if (focus && Math.hypot(pt.x - focus.x, pt.z - focus.z) > radius * 0.9) continue;
@@ -641,5 +679,5 @@ export function createCyclists(network, { count = 60, random = Math.random } = {
     c.lane.occ.push({ c, s: c.s });
   }
 
-  return { riders, update, get clock() { return clock; } };
+  return { riders, update, setNetwork, get clock() { return clock; } };
 }

@@ -730,13 +730,14 @@ try:
             body = page.inner_text('body').replace('Based on Slop New York by mrdoob (MIT)', '')
             check('no NYC strings in the HUD', not any(k in body for k in ('mph', 'NYC', 'New York', 'Manhattan', 'Taxi', 'Empire', 'Times Square')))
             check('vehicle label', page.text_content('#hud-active-mode') == 'Car', page.text_content('#hud-active-mode'))
-            check('teleports', page.eval_on_selector_all('.tp-btn', 'els => els.map(e => e.querySelector(".pop-name").textContent)') == ['Nørre Søgade 37', 'Dronning Louises Bro', 'Peblinge Sø', 'Nørrebrogade', 'Blågårds Plads'])
+            tp = page.eval_on_selector_all('.tp-btn:not([hidden])', 'els => els.map(e => e.querySelector(".pop-name").textContent)')
+            check('teleports', tp[:5] == ['Nørre Søgade 37', 'Dronning Louises Bro', 'Peblinge Sø', 'Nørrebrogade', 'Blågårds Plads'], str(tp))  # the district presets first; citywide ones follow where the tiles cover them
             info = page.evaluate("""() => { const t = globalThis.__twin; const ts = t.trafficSystem;
               return { buildings: t.world.buildings && t.world.buildings.stats, cars: ts.cars.filter((c) => c.edge).length, buses: ts.buses.filter((c) => c.edge).length,
                        cyclists: (ts.cyclists || []).length, drawCalls: t.renderer.info.render.drawCalls, location: document.querySelector('#hud-location').textContent }; }""")
             print(json.dumps(info, default=str))
             check('buildings render', bool(info['buildings']) and info['buildings'].get('buildings', 0) > 100)
-            names = page.evaluate("() => globalThis.__twin.world.roadSurfaces.group.children.map((m) => m.name)")
+            names = page.evaluate("() => { const n = new Set(); globalThis.__twin.world.roadSurfaces.group.traverse((o) => { if (o.isMesh) n.add(o.name); }); return [...n]; }")  # streamed city: one child group per tile
             check('M4 ground surfaces built', all(n in names for n in ('ground-kbh_fortov', 'road-kerb', 'road-cycle', 'road-blue', 'road-paint')), ','.join(names))
             check('cars on the road', info['cars'] > 10, str(info['cars']))
             check('buses on the road', info['buses'] > 0, str(info['buses']))

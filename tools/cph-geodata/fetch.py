@@ -9,18 +9,29 @@ from pathlib import Path
 
 import requests
 
-from frame import ORIGIN
+import frame
 
 ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data" / "raw"
 UA = "cph-twin-geodata/0.1 (+https://github.com/ ; open-data compiler)"
 KK_WFS = "https://wfs-kbhkort.kk.dk/k101/ows"
 OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]
-MARGIN = 60.0  # metres beyond the district bbox so edge geometry is complete
+MARGIN = frame.FETCH_MARGIN  # metres beyond the area so edge geometry is complete
 
 
 def utm_bbox(margin: float = MARGIN):
-    return (ORIGIN[0] - 750 - margin, ORIGIN[1] - 750 - margin, ORIGIN[0] + 750 + margin, ORIGIN[1] + 750 + margin)
+    """The active area (frame.area_utm(): the district unless --bbox / --tile was given) grown by margin."""
+    e0, n0, e1, n1 = frame.area_utm()
+    return (e0 - margin, n0 - margin, e1 + margin, n1 + margin)
+
+
+def cache_dir() -> Path:
+    """data/raw for the district; a per-area folder (data/raw/areas/<E0>_<N0>_<E1>_<N1>) for any other area, so a
+    --bbox / --tile run never reads or overwrites the district cache."""
+    if frame.is_district():
+        return RAW
+    e0, n0, e1, n1 = frame.area_utm()
+    return RAW / "areas" / f"{e0:.0f}_{n0:.0f}_{e1:.0f}_{n1:.0f}"
 
 
 def wgs_bbox(margin: float = MARGIN):
@@ -39,7 +50,7 @@ def _log(*a):
 
 def kk_layer(name: str, refresh: bool = False):
     """GeoJSON FeatureCollection (EPSG:25832) for a KK WFS layer in the bbox, or raises."""
-    path = RAW / f"kk_{name}.json"
+    path = cache_dir() / f"kk_{name}.json"
     if path.exists() and not refresh:
         return json.loads(path.read_text())
     x0, y0, x1, y1 = utm_bbox()
@@ -64,14 +75,14 @@ def kk_layer(name: str, refresh: bool = False):
             break
         start += page
     fc = {"type": "FeatureCollection", "features": feats}
-    RAW.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(fc, ensure_ascii=False))
     _log(f"[fetch] kk:{name}: {len(feats)} features")
     return fc
 
 
 def overpass(key: str, query_body: str, refresh: bool = False):
-    path = RAW / f"osm_{key}.json"
+    path = cache_dir() / f"osm_{key}.json"
     if path.exists() and not refresh:
         return json.loads(path.read_text())
     s, w, n, e = wgs_bbox()
@@ -83,7 +94,7 @@ def overpass(key: str, query_body: str, refresh: bool = False):
                 r = requests.post(url, data={"data": q}, headers={"User-Agent": UA}, timeout=180)
                 r.raise_for_status()
                 data = r.json()
-                RAW.mkdir(parents=True, exist_ok=True)
+                path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(json.dumps(data, ensure_ascii=False))
                 _log(f"[fetch] osm:{key}: {len(data.get('elements', []))} elements")
                 return data

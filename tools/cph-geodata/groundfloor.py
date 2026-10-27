@@ -16,7 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fetch import kk_layer, overpass  # noqa: E402
-from frame import LOCAL_BBOX, to_local  # noqa: E402
+import frame  # noqa: E402
+from frame import area_local, to_local  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "data" / "cph-groundfloor.json"
@@ -47,7 +48,15 @@ def kind_of(tags: dict) -> str:
 
 
 def main() -> None:
-    x0, z0, x1, z1 = LOCAL_BBOX
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default=None)
+    frame.add_area_args(ap)
+    args = ap.parse_args()
+    frame.apply_area_args(args)
+    out_path = frame.resolve_out(args, OUT)
+    x0, z0, x1, z1 = area_local()
     out, seen = [], set()
     from pyproj import Transformer
 
@@ -85,8 +94,8 @@ def main() -> None:
     doc = {"version": "cph-groundfloor/1", "frame": "cph-geodata local (x east, z south)",
            "attribution": ["© OpenStreetMap contributors (ODbL)", "Københavns Kommune, bevillinger (open data)"],
            "venues": out}
-    OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
-    print(f"venues: {len(out)} (osm {n_osm}, kk {len(out) - n_osm}) -> {OUT}")
+    out_path.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
+    print(f"venues: {len(out)} (osm {n_osm}, kk {len(out) - n_osm}) -> {out_path}")
 
 
 if __name__ == "__main__":

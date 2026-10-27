@@ -8,6 +8,7 @@
 import { carriagewayWidth, cycleStrips, rightNormals, slicePts, movingHalfWidth, KERB_W } from './road-width-cph.js';
 import { mouthLayouts } from './road-surfaces-cph.js';
 import { densifyPts } from './terrain-cph.js';
+import { getDataBbox } from './city-config.js';
 
 export const Z = Object.freeze({
   BUILDING: 1, // inside a footprint
@@ -25,7 +26,7 @@ const PAVED = new Set(['kbh_fortov', 'raadhus', 'cobbles', 'setts', 'gravel', 'a
  * @param {{ geo: object, lakes?: object|null, surfaces?: object|null, bbox?: number[], cell?: number }} src geo = geodata with the
  *   street layout applied (js/layout-cph.js)
  */
-export function createZoneMap({ geo, lakes = null, surfaces = null, bbox = [-770, -770, 770, 770], cell = 0.5 }) {
+export function createZoneMap({ geo, lakes = null, surfaces = null, bbox = getDataBbox().map((v, i) => v + (i < 2 ? -20 : 20)), cell = 0.5 }) {
   const [x0, z0, x1, z1] = bbox;
   const w = Math.ceil((x1 - x0) / cell);
   const h = Math.ceil((z1 - z0) / cell);

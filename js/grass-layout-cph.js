@@ -5,6 +5,7 @@
 // A tuft is (x, y, z, seed); seed < 0 marks an unused instance (hidden by the shader). Frame: x east, z south.
 
 import { createHeightGrid } from './ground-height-cph.js';
+import { getDataBbox } from './city-config.js';
 
 export const TILE = 8; // m
 export const SPAN = 7; // tiles per side of the torus: 56 m, the fade radius is (SPAN - 2) / 2 tiles
@@ -22,7 +23,7 @@ const hash = (a, b, c) => {
 };
 
 /** 1 m lawn coverage grid from the vegetation surfaces ({ ring, holes }). Returns { has(x, z), cells(x0, z0, x1, z1) }. */
-export function createLawnMask(surfaces, bbox = [-770, -770, 770, 770]) {
+export function createLawnMask(surfaces, bbox = getDataBbox().map((v, i) => v + (i < 2 ? -20 : 20))) {
   const grid = createHeightGrid({ bbox, cell: 1 });
   for (const s of surfaces || []) if (s.ring?.length >= 6) grid.polygon(s.ring, 0.001, s.holes || []);
   const [x0, z0] = bbox;
@@ -34,6 +35,27 @@ export function createLawnMask(surfaces, bbox = [-770, -770, 770, 770]) {
     return i >= 0 && j >= 0 && i < w && j < h && grid.data[j * w + i] > 0;
   };
   return { has };
+}
+
+/**
+ * The lawn mask as per-tile chunks (1 m cells over the tile): `addTile(id, surfaces, bounds)` rasterises the lawn polygons that
+ * reach the tile (its neighbours' too), `removeTile(id)` frees it. `tileOf(x, z)` = js/tile-grid.js tileOfLocal. Outside a
+ * resident chunk there is no lawn.
+ */
+export function createTiledLawnMask(tileOf) {
+  const chunks = new Map();
+  return {
+    has(x, z) {
+      const c = chunks.get(tileOf(x, z));
+      return !!c && c.has(x, z);
+    },
+    addTile(id, surfaces, bounds) {
+      chunks.set(id, createLawnMask(surfaces, [...bounds]));
+    },
+    removeTile: (id) => chunks.delete(id),
+    hasTile: (id) => chunks.has(id),
+    get size() { return chunks.size; }
+  };
 }
 
 /** Writes the tufts of tile (tx, tz) into out[offset ...] (PER_TILE * 4 floats); returns how many are in use. */
@@ -103,5 +125,10 @@ export function createGrassField({ mask, terrain = null }) {
     return done;
   }
 
-  return { data, update, get tufts() { return tufts; }, count: slots * PER_TILE };
+  /** The lawn mask changed (a tile came or went): every slot is refilled as the camera's frames allow. */
+  function invalidate() {
+    owner.fill(0x7fffffff);
+  }
+
+  return { data, update, invalidate, get tufts() { return tufts; }, count: slots * PER_TILE };
 }

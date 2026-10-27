@@ -4,8 +4,8 @@
 // constants for its per-fragment crossfade, so CPU residency and the shader fade agree.
 
 const PHOTO = {
-  close0: 14, // m: nearer than this the facade is fully procedural (the photo is 10 cm/px: crisp brick, windows and reveals win)
-  close1: 40, // m: the photo is fully in from here (smoothstep between close0 and close1)
+  close0: 45, // m: nearer than this the facade is fully procedural (Skraafoto is 10-13 cm/px: a window is ~9 px and reads as a smudge up close)
+  close1: 80, // m: the photo is fully in from here (smoothstep between close0 and close1)
   near: 115, // m: fully photographic up to here
   far: 150, // m: fully procedural from here (smoothstep crossfade in between)
   residency: 165, // m: buildings inside this radius may hold an atlas (a little beyond `far` so nothing pops in mid-fade)
@@ -123,4 +123,143 @@ function selectPhotoSet(candidates, x, z, p = PHOTO, currentTiers = new Map()) {
 /** Atlas file the photo walls are read from: the processed RGBA look atlas (tools/cph-geodata/facade_look.py) first. */
 const lookFile = (file) => file.replace(/^tex\//, 'tex-look/').replace(/\.jpe?g$/i, '.webp');
 
-export { PHOTO, photoFade, texRequested, selectPhotoSet, lookFile, estimateTextureBytes, scaledTextureSize };
+const bytesOf = (entry) => entry?.bytes || 0;
+
+/** Every manager's resident and in-flight atlas reservation (managers: createTexManager in js/buildings-real.js). */
+function photoReservation(managers) {
+  let residentBytes = 0;
+  let pendingBytes = 0;
+  let residentCount = 0;
+  let pendingCount = 0;
+  for (const m of managers) {
+    for (const r of m.state.resident.values()) residentBytes += bytesOf(r);
+    for (const job of m.state.loading.values()) pendingBytes += bytesOf(job);
+    residentCount += m.state.resident.size;
+    pendingCount += m.state.loading.size;
+  }
+  return { residentBytes, pendingBytes, reservedBytes: residentBytes + pendingBytes, residentCount, pendingCount };
+}
+
+/**
+ * Frees the farthest resident atlases (by their rank in `want`, unwanted first) over every manager until `bytes` more fit in
+ * `maxBytes`. The resident atlas of `protectedId` stays (a quality replacement keeps it visible until the new one is in), and when that
+ * atlas plus the in-flight requests alone cannot fit nothing is evicted.
+ */
+function makePhotoRoom(managers, bytes, protectedId, want, maxBytes = PHOTO.maxResidentBytes) {
+  const order = new Map(want.map((id, index) => [id, index]));
+  const rank = (id) => order.get(id) ?? Infinity;
+  const residents = [];
+  let total = bytes;
+  let protectedBytes = 0;
+  let pendingBytes = 0;
+  for (const m of managers) {
+    for (const [id, r] of m.state.resident) {
+      total += bytesOf(r);
+      if (id === protectedId) protectedBytes += bytesOf(r);
+      else residents.push([id, m, bytesOf(r)]);
+    }
+    for (const [id, job] of m.state.loading) {
+      total += bytesOf(job);
+      if (id !== protectedId) pendingBytes += bytesOf(job);
+    }
+  }
+  if (protectedBytes + pendingBytes + bytes > maxBytes) return false;
+  residents.sort((a, b) => { const ra = rank(a[0]); const rb = rank(b[0]); return ra === rb ? 0 : rb > ra ? 1 : -1; }); // farther first
+  for (const [id, m, held] of residents) {
+    if (total <= maxBytes) break;
+    m.evict(id);
+    total -= held;
+  }
+  return total <= maxBytes;
+}
+
+/**
+ * Carries out one residency plan (selectPhotoSet over the candidates of `managers`) on those managers. A manager is
+ * { state: { enabled, resident: Map id -> { bytes, width, height, tier }, loading: Map id -> { bytes, width, height, tier }, failed: Set,
+ * failedTiers: Map, probed, probing }, has(id), prune(wantSet, qualityById), evict(id), start(id, quality) }.
+ * Unwanted residents go first; then one quality replacement at a time (the old atlas stays visible meanwhile), else new atlases nearest
+ * first within `p.concurrency` in-flight loads and `p.maxResidentBytes`. The first atlas of a manager is its presence probe: nothing else
+ * of that manager starts until it is settled.
+ */
+function applyPhotoPlan(managers, plan, p = PHOTO) {
+  const { want, qualityById } = plan;
+  const wantSet = new Set(want);
+  for (const m of managers) m.prune(wantSet, qualityById);
+  const owner = new Map();
+  for (const id of want) {
+    for (const m of managers) if (m.has(id)) { owner.set(id, m); break; }
+  }
+  const loading = () => { let n = 0; for (const m of managers) n += m.state.loading.size; return n; };
+  const usable = (q) => q && q.width > 0 && q.height > 0;
+  const room = (q, id) => makePhotoRoom(managers, q.bytes, id, want, p.maxResidentBytes ?? Infinity);
+
+  const replacementId = want.find((id) => {
+    const m = owner.get(id);
+    const resident = m?.state.resident.get(id);
+    const q = qualityById.get(id);
+    return resident && q && (resident.width !== q.width || resident.height !== q.height) && m.state.failedTiers.get(id) !== q.tier;
+  });
+  if (replacementId && loading() === 0) {
+    const q = qualityById.get(replacementId);
+    if (usable(q) && room(q, replacementId)) owner.get(replacementId).start(replacementId, q);
+    return;
+  }
+
+  for (const id of want) {
+    if (loading() >= p.concurrency) break;
+    const m = owner.get(id);
+    const s = m?.state;
+    if (!s || !s.enabled || s.probing || s.resident.has(id) || s.loading.has(id) || s.failed.has(id)) continue;
+    const q = qualityById.get(id);
+    if (!usable(q) || !room(q, id)) continue;
+    if (!s.probed) s.probed = s.probing = true; // cleared by the manager once its probe settles
+    m.start(id, q);
+  }
+}
+
+/**
+ * One photo budget over every manager it holds: one district (createTexManager makes its own) or every tile of a streamed city
+ * (js/buildings-stream.js), so the PHOTO.budget count cap and the PHOTO.maxResidentBytes texture budget hold for the whole scene instead
+ * of once per tile. Each update plans over the candidates of all managers at once (nearest first, quality tiers by distance with the
+ * resident tier as hysteresis) and evicts across managers to make room.
+ */
+function createPhotoBudget({ interval = 350, select = selectPhotoSet, p = PHOTO } = {}) {
+  const managers = new Set();
+  let lastRun = -Infinity;
+  let peakReservedBytes = 0;
+  const sum = (f) => { let n = 0; for (const m of managers) n += f(m.state); return n; };
+  return {
+    managers,
+    add(manager) { if (manager) managers.add(manager); },
+    remove(manager) { managers.delete(manager); },
+    held: () => sum((s) => s.resident.size + s.loading.size),
+    loading: () => sum((s) => s.loading.size),
+    /** Records the current reservation as a peak candidate (a manager calls it when it reserves a load). */
+    notePeak() { peakReservedBytes = Math.max(peakReservedBytes, photoReservation(managers).reservedBytes); },
+    /** Resident and in-flight texture estimate over every manager, against the byte budget. */
+    memory() {
+      const r = photoReservation(managers);
+      return {
+        residentBytes: r.residentBytes, pendingBytes: r.pendingBytes, reservedBytes: r.reservedBytes, peakReservedBytes,
+        budgetBytes: p.maxResidentBytes, residentCount: r.residentCount, pendingCount: r.pendingCount
+      };
+    },
+    /** Called every frame with the camera position; plans at most every `interval` ms. */
+    update(x, z, now = performance.now()) {
+      if (now - lastRun < interval) return false;
+      lastRun = now;
+      const live = [...managers].filter((m) => m.state.enabled && m.loader);
+      if (!live.length) return true;
+      const currentTiers = new Map();
+      for (const m of live) {
+        for (const [id, r] of m.state.resident) currentTiers.set(id, r.tier);
+        for (const [id, job] of m.state.loading) if (!currentTiers.has(id)) currentTiers.set(id, job.tier);
+      }
+      const plan = select(live.flatMap((m) => m.candidates), x, z, p, currentTiers);
+      applyPhotoPlan([...managers], plan, p); // every manager: a disabled one still frees what it holds outside the plan
+      return true;
+    }
+  };
+}
+
+export { PHOTO, photoFade, texRequested, selectPhotoSet, createPhotoBudget, applyPhotoPlan, makePhotoRoom, photoReservation, lookFile, estimateTextureBytes, scaledTextureSize };

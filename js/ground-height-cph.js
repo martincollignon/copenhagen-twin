@@ -5,11 +5,11 @@
 // they see. `composeHeightField` adds the terrain (js/terrain-cph.js, the one ground model of the scene).
 // Frame: x east, z south. heightAt() is bilinear, so a kerb is a ~0.5 m ramp instead of a one-frame jump.
 
-export function createHeightGrid({ bbox, cell = 0.5 }) {
+export function createHeightGrid({ bbox, cell = 0.5, data: given = null }) {
   const [x0, z0, x1, z1] = bbox;
   const w = Math.ceil((x1 - x0) / cell);
   const h = Math.ceil((z1 - z0) / cell);
-  const data = new Uint8Array(w * h); // millimetres, 0..255
+  const data = given || new Uint8Array(w * h); // millimetres, 0..255 (a grid built elsewhere, e.g. in a worker, arrives as `data`)
   const mm = (y) => Math.max(0, Math.min(255, Math.round(y * 1000)));
 
   // even-odd scanline fill of a flat ring at the cell centres; `value(xc, zc)` gives the height of a covered cell
@@ -109,4 +109,33 @@ export function composeHeightField(terrain, offsets) {
     terrainAt: (x, z) => (t ? t.heightAt(x, z) : 0),
     heightAt: (x, z) => (t ? t.heightAt(x, z) : 0) + offsets.heightAt(x, z)
   };
+}
+
+/**
+ * composeHeightField over per-tile offset grids: `addTile(id, grid, bounds)` / `removeTile(id)` as the streamer brings tiles in
+ * and out. A point reads the grid of the tile it lies in (the grids reach 20 m past their tile, so the bilinear lookup never
+ * runs off a grid inside its own tile); a tile without a grid has offset 0, i.e. bare terrain.
+ * @param {{ heightAt: Function, flat?: boolean }|null} terrain the streamed terrain (js/terrain-cph.js createStreamTerrain)
+ * @param {(x: number, z: number) => string} tileOf tile id of a local point (js/tile-grid.js tileOfLocal)
+ */
+export function createTiledHeightField(terrain, tileOf) {
+  const grids = new Map();
+  let lastId = null;
+  let last = null;
+  const offsets = {
+    heightAt(x, z) {
+      const id = tileOf(x, z);
+      if (id !== lastId) { lastId = id; last = grids.get(id) || null; }
+      return last ? last.heightAt(x, z) : 0;
+    }
+  };
+  const field = composeHeightField(terrain, offsets);
+  Object.assign(field, {
+    stream: true,
+    addTile(id, grid) { grids.set(id, grid); lastId = null; },
+    removeTile(id) { const had = grids.delete(id); lastId = null; return had; },
+    hasTile: (id) => grids.has(id)
+  });
+  Object.defineProperty(field, 'tileCount', { get: () => grids.size, enumerable: true });
+  return field;
 }

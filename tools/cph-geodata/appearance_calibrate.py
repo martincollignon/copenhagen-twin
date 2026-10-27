@@ -162,11 +162,15 @@ def global_transfer(offsets):
     return float(alpha1), float(beta1), dab
 
 
-def calibrate(geo: dict) -> dict:
-    """Adds tone_cal / cal / cal_brick to every observed wall entry of `geo` in place; returns statistics."""
+def calibrate(geo: dict, offsets: dict | None = None, transfer: tuple | None = None) -> dict:
+    """Adds tone_cal / cal / cal_brick to every observed wall entry of `geo` in place; returns statistics.
+
+    `offsets` / `transfer` (default: derived from `geo` itself) let a citywide run pass the sunlit-vs-shadow offsets of the
+    buildings around a cell (neighbours across the cell border) and the citywide global transfer."""
     buildings = geo["buildings"]
-    offsets = building_offsets(buildings)
-    alpha, beta, dab = global_transfer(offsets)
+    if offsets is None:
+        offsets = building_offsets(buildings)
+    alpha, beta, dab = transfer if transfer is not None else global_transfer(offsets)
     ids = list(offsets)
     cents = np.array([offsets[i][1] for i in ids]) if ids else np.zeros((0, 2))
     offs = np.array([offsets[i][0] for i in ids]) if ids else np.zeros((0, 3))

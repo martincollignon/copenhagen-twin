@@ -12,7 +12,7 @@
 // the outward normal of the wall p0 -> p1 (direction d) is (-d.z, 0, d.x) and u grows along d.
 // With a LoD2 record (opts.lod2, js/lod2-geometry.js) the roof is the roofer mesh and each wall ends at its roofer eave.
 import { lod2EdgeTops, lod2RoofTriangles, lod2WallPieces } from './lod2-geometry.js';
-import { mapObservedEdges, roofSurface, observedToneSrgb } from './appearance.js';
+import { mapObservedEdges, roofSurface, observedToneSrgb, buildingTone as observedBuildingTone } from './appearance.js';
 import { facadeStyle, windowStyle } from './facade-style.js';
 import { classifyWalls, doorSummary } from './groundfloor.js';
 import { appendBuildingDetails, selectDetailEdges } from './building-details.js';
@@ -188,8 +188,13 @@ function pointInRing(x, y, ring) {
 // ---------------------------------------------------------------------------------------------------------------
 // Accumulator: wall and roof arrays shared by every building of a streaming cell.
 // ---------------------------------------------------------------------------------------------------------------
-function createAccumulator() {
-  const wall = { position: [], normal: [], facadeUV: [], facadeWall: [], facadeBldg: [], facadeTone: [], facadeTop: [], facadeWindow: [], index: [] };
+/**
+ * `lite`: the walls carry a colour (one tone per building) instead of the facade frame the facade shaders read: the mid ring's
+ * tone-only buildings (see addBuilding `opts.lite`).
+ */
+function createAccumulator({ lite = false } = {}) {
+  const wall = lite ? { position: [], normal: [], color: [], index: [] }
+    : { position: [], normal: [], facadeUV: [], facadeWall: [], facadeBldg: [], facadeTone: [], facadeTop: [], facadeWindow: [], index: [] };
   const roof = { position: [], normal: [], color: [], mat: [], index: [] };
   return { wall, roof, wallRanges: [], roofRanges: [], detailParts: [] };
 }
@@ -200,7 +205,8 @@ function createAccumulator() {
  */
 function roofColourFor(b, useObserved = true, pitched = false) {
   const seen = useObserved ? b.observed?.roof : null;
-  let rgb = seen?.conf === 'observed' && Array.isArray(seen.tone) && seen.tone.length === 3 ? seen.tone : (ROOF_COLOURS[b.roof_material] || ROOF_DEFAULT);
+  const summary = useObserved ? b.observed?.summary?.roof : null;
+  let rgb = seen?.conf === 'observed' && Array.isArray(seen.tone) && seen.tone.length === 3 ? seen.tone : Array.isArray(summary) && summary.length === 3 ? summary : (ROOF_COLOURS[b.roof_material] || ROOF_DEFAULT);
   const { rough, metal, hint } = roofSurface(useObserved ? b : { ...b, observed: null });
   // Dark pitched roof photographs contain reflected sky; preserve hue and leave metals / flat decks alone.
   if (pitched && ['slate', 'fibre-cement', 'tagpap'].includes(hint)) {
@@ -216,8 +222,22 @@ function roofColourFor(b, useObserved = true, pitched = false) {
  * `opts.lod2` (a parsed record, see lod2-geometry.js) swaps the flat roof for the roofer LoD2.2 roof and ends each wall at
  * its roofer eave. Hero buildings are skipped by the caller. Returns the numbers of triangles added.
  */
+/**
+ * The lowest ground under a building's outline (`opts.terrain`, as addBuilding uses it): lets a build that cannot reach the terrain
+ * (a worker) take it as `opts.low`. Null when the footprint is degenerate.
+ */
+function groundLow(b, terrain) {
+  const outerPts = cleanRing(b.ring, true);
+  if (!outerPts) return null;
+  const holePts = (b.holes || []).map((h) => cleanRing(h, false)).filter(Boolean);
+  let low = b.ground;
+  for (const ring of [outerPts, ...holePts]) for (const p of ring) low = Math.min(low, terrain.heightAt(p[0], p[1]));
+  return low;
+}
+
 function addBuilding(acc, b, opts = {}) {
   const wallAcc = opts.wallAcc || acc;
+  const lite = !!opts.lite;
   const outerPts = cleanRing(b.ring, true);
   if (!outerPts) return null;
   const holePts = (b.holes || []).map((h) => cleanRing(h, false)).filter(Boolean);
@@ -226,7 +246,9 @@ function addBuilding(acc, b, opts = {}) {
   // The wall stands on the terrain (js/terrain-cph.js, the one ground model): its skirt reaches 0.25 m under the lowest
   // ground along the outline, so a sloping street never shows a gap. Without terrain: the flat plane at y = 0.
   let bottom = Math.min(ground, 0) - 0.1;
-  if (opts.terrain && !opts.terrain.flat) {
+  if (opts.low !== undefined && opts.low !== null) {
+    bottom = opts.low - 0.25;
+  } else if (opts.terrain && !opts.terrain.flat) {
     let low = ground;
     for (const ring of [outerPts, ...holePts]) for (const p of ring) low = Math.min(low, opts.terrain.heightAt(p[0], p[1]));
     bottom = low - 0.25;
@@ -244,9 +266,9 @@ function addBuilding(acc, b, opts = {}) {
   const idHash = hashString(String(b.id));
   const kind = WALL_KIND[f.ground_type] ?? 1;
   // facadeBldg.z carries the style code (js/facade-style.js: material + era), not the old inferred flag
-  const style = facadeStyle(b, observedToneSrgb(b) || (f.tone || null));
+  const style = lite ? { code: 0, mat: 0 } : facadeStyle(b, observedToneSrgb(b) || (f.tone || null));
   const styleCode = style.code;
-  const windows = windowStyle(b);
+  const windows = lite ? null : windowStyle(b);
 
   const wallStart = wallAcc.wall.index.length;
   const roofStart = acc.roof.index.length;
@@ -254,8 +276,8 @@ function addBuilding(acc, b, opts = {}) {
 
   const rings = [outerPts, ...holePts];
   // Ground-floor treatment per wall (street side + venue data, js/groundfloor.js); without a context the preset kind is used
-  const wallKinds = opts.wallKinds || (opts.ground ? classifyWalls(b, rings, opts.ground) : null);
-  const doors = opts.ground?.entrances?.has(b.id) ? placeDoors(b, rings, opts.ground.entrances.get(b.id)) : [];
+  const wallKinds = lite ? null : opts.wallKinds || (opts.ground ? classifyWalls(b, rings, opts.ground) : null);
+  const doors = !lite && opts.ground?.entrances?.has(b.id) ? placeDoors(b, rings, opts.ground.entrances.get(b.id)) : [];
   const lod2 = opts.lod2 || null;
   const lod = lod2 ? lod2EdgeTops(lod2, b, rings, eave, ground + 1.0) : null;
   const roofTriangles = lod2 ? lod2RoofTriangles(lod2) : [];
@@ -268,9 +290,10 @@ function addBuilding(acc, b, opts = {}) {
   const roofColour = roofColourFor(b, opts.observed !== false, pitched);
   const edgeVertices = [];
   // Observed wall tone per cleaned edge (ring/edge keyed in the data, matched by geometry); `opts.observed === false` keeps the preset
-  const mapping = opts.observed === false ? null : mapObservedEdges(b, rings);
-  const buildingTone = mapping?.hasObserved ? mapping.buildingTone : tone;
+  const mapping = lite || opts.observed === false ? null : mapObservedEdges(b, rings);
+  const buildingTone = lite ? (opts.observed === false ? tone : observedBuildingTone(b)) : mapping?.hasObserved ? mapping.buildingTone : tone;
   const edgeTone = (k) => (mapping?.hasObserved ? mapping.edges[k].tone : tone);
+  const quadOf = []; // cleaned edge -> its opts.quads entry (the roofer pieces above its eave join it)
   let edgeNo = -1;
   for (const ring of rings) {
     for (let i = 0; i < ring.length; i++) {
@@ -289,10 +312,19 @@ function addBuilding(acc, b, opts = {}) {
       const wt = edgeTone(edgeNo);
       // +0.25 marks a wall whose heuristic shader door is off (real entrance data: tsl-materials.js facadeCell reads fract(kind))
       const wallKind = (wallKinds?.[edgeNo]?.kind ?? kind) + (wallKinds?.[edgeNo]?.doorless ? 0.25 : 0);
-      if (opts.quads) opts.quads.push({ edgeNo, p0, p1, top, ground });
+      if (opts.quads) opts.quads.push(quadOf[edgeNo] = { edgeNo, p0, p1, top, ground, pieces: [] });
       const v0 = bottom - ground;
       const v1 = top - ground;
       const corners = [[p0, 0, bottom, v0], [p1, len, bottom, v0], [p1, len, top, v1], [p0, 0, top, v1]];
+      if (lite) {
+        for (const [p, , y] of corners) {
+          w.position.push(p[0], y, p[1]);
+          w.normal.push(nx, 0, nz);
+          w.color.push(buildingTone[0], buildingTone[1], buildingTone[2]);
+        }
+        w.index.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        continue;
+      }
       for (const [p, u, y, v] of corners) {
         w.position.push(p[0], y, p[1]);
         w.normal.push(nx, 0, nz);
@@ -312,6 +344,7 @@ function addBuilding(acc, b, opts = {}) {
     const edgeFrames = [];
     rings.forEach((ring) => ring.forEach((p, i) => { const q = ring[(i + 1) % ring.length]; edgeFrames.push([p, q]); }));
     for (const { edge, tri } of lod2WallPieces(lod2, lod)) {
+      if (edge >= 0) quadOf[edge]?.pieces.push(tri); // the photo wall covers them too (js/appearance.js texturedWalls)
       const [e0, e1] = edge >= 0 ? edgeFrames[edge] : [null, null];
       let dxw, dzw;
       if (e0) { dxw = e1[0] - e0[0]; dzw = e1[1] - e0[1]; } else {
@@ -329,6 +362,15 @@ function addBuilding(acc, b, opts = {}) {
       const fl = Math.hypot(fx, fy, fz) || 1;
       fx /= fl; fy /= fl; fz /= fl;
       const base = w.position.length / 3;
+      if (lite) {
+        for (const q of tri) {
+          w.position.push(q[0], q[1], q[2]);
+          w.normal.push(fx, fy, fz);
+          w.color.push(buildingTone[0], buildingTone[1], buildingTone[2]);
+        }
+        w.index.push(base, base + 1, base + 2);
+        continue;
+      }
       for (const q of tri) {
         w.position.push(q[0], q[1], q[2]);
         w.normal.push(fx, fy, fz);
@@ -344,14 +386,14 @@ function addBuilding(acc, b, opts = {}) {
     }
     addLod2Roof(acc.roof, lod2, roofColour, roofTriangles);
   } else {
-    addRoof(acc.roof, b, outerPts, holePts, eave, roofColour);
+    addRoof(acc.roof, b, outerPts, holePts, eave, roofColour, lite);
   }
 
   // Details share the existing roof material, buffers, shadows, culling and picking range: zero extra draws.
   // Without street context, callers can explicitly supply an edge mask for isolated geometry work.
   const detailStart = acc.roof.index.length;
   const partStart = acc.detailParts.length;
-  if (opts.details !== false && (wallKinds || opts.streetEdges || opts.details === true)) {
+  if (!lite && opts.details !== false && (wallKinds || opts.streetEdges || opts.details === true)) {
     const selected = opts.streetEdges || selectDetailEdges(rings, wallKinds);
     appendBuildingDetails(acc.roof, acc.detailParts, b, rings,
       lod?.tops || Array(rings.reduce((n, r) => n + r.length, 0)).fill(eave), selected, roofTriangles, buildingTone,
@@ -412,7 +454,18 @@ function insetRing(ring, t) {
   });
 }
 
-function addRoof(r, b, outer, holes, eave, colour) {
+function addRoof(r, b, outer, holes, eave, colour, lite = false) {
+  if (lite) {
+    // the mid ring: a flat deck at the eave, no parapet ring (a hipped cap of a plain quad stays as it is)
+    const hippedLite = holes.length === 0 && outer.length === 4 && b.roof !== 'flat' && b.ridge > eave + 1.5;
+    if (!hippedLite) {
+      const tri = triangulate(outer.map(([x, z]) => [x, -z]), holes.map((h) => h.map(([x, z]) => [x, -z])));
+      const base = r.position.length / 3;
+      for (const [x, n] of tri.points) pushRoofVertex(r, x, eave, -n, 0, 1, 0, colour);
+      for (const k of tri.indices) r.index.push(base + k);
+      return;
+    }
+  }
   const hipped = holes.length === 0 && outer.length === 4 && b.roof !== 'flat' && b.ridge > eave + 1.5;
   if (hipped) {
     addHippedRoof(r, outer, eave, Math.min(b.ridge - eave, 6.5), colour);
@@ -494,5 +547,5 @@ function addHippedRoof(r, ring, eave, rise, colour) {
 
 export {
   PARAPET_H, WALL_KIND, ROOF_COLOURS,
-  hashString, ringArea, cleanRing, triangulate, roofColourFor, createAccumulator, addBuilding, insetRing
+  hashString, ringArea, cleanRing, triangulate, roofColourFor, createAccumulator, addBuilding, insetRing, groundLow
 };

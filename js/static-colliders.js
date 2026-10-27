@@ -277,3 +277,48 @@ export function createStaticIndex(colliders) {
     }
   };
 }
+
+/**
+ * The static index of a streamed city: one createStaticIndex per tile part (a tile's buildings, its placed furniture), set when the
+ * part streams in and dropped when it goes, behind the same query(). Parts are skipped by their bounds first, so a query costs one
+ * bounds test per resident part plus the grid lookups of the parts it touches.
+ */
+export function createTiledStaticIndex() {
+  const parts = new Map(); // key -> { index, colliders, minX, minZ, maxX, maxZ, count }
+  const scratch = [];
+  let colliderCount = 0;
+  return {
+    set(key, colliders) {
+      this.remove(key);
+      if (!colliders?.length) return;
+      let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+      for (const c of colliders) {
+        if (c.minX < minX) minX = c.minX;
+        if (c.minZ < minZ) minZ = c.minZ;
+        if (c.maxX > maxX) maxX = c.maxX;
+        if (c.maxZ > maxZ) maxZ = c.maxZ;
+      }
+      parts.set(key, { index: createStaticIndex(colliders), colliders, minX, minZ, maxX, maxZ, count: colliders.length });
+      colliderCount += colliders.length;
+    },
+    remove(key) {
+      const part = parts.get(key);
+      if (!part) return;
+      colliderCount -= part.count;
+      parts.delete(key);
+    },
+    query(x, z, radius, out = []) {
+      out.length = 0;
+      for (const part of parts.values()) {
+        if (part.maxX < x - radius || part.minX > x + radius || part.maxZ < z - radius || part.minZ > z + radius) continue;
+        part.index.query(x, z, radius, scratch);
+        for (let i = 0; i < scratch.length; i++) out.push(scratch[i]);
+      }
+      return out;
+    },
+    /** Every resident collider (a fresh array: for tools and checks, not per frame). */
+    all() { return [...parts.values()].flatMap((part) => part.colliders); },
+    get parts() { return parts.size; },
+    get size() { return colliderCount; }
+  };
+}

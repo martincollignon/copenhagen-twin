@@ -692,7 +692,6 @@ def road_strip_polygons(items, cycles):
 def clean_sidewalks(geo, carriage, strips, ctx):
     """KK pavement polygons minus carriageways, cycle strips, building footprints and water."""
     cutters = [g for g in carriage.values()] + [p for _, _, p in strips] + ctx.bpolys + ([ctx.water_poly] if not ctx.water_poly.is_empty else [])
-    union = unary_union(cutters)
     tree = STRtree(cutters)
     out = []
     dropped = 0
