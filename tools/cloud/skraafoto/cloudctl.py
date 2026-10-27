@@ -2,7 +2,7 @@
 """Operate the cph-skraafoto Cloud Run Job (REST + ADC, like tools/cloud/roofer/cloudctl.py, whose helpers and infra it reuses unmodified).
 
     python3 tools/cloud/skraafoto/cloudctl.py build                       # stage -> Cloud Build -> image digest
-    python3 tools/cloud/skraafoto/cloudctl.py inputs                      # data/tiles/*/buildings.json + index.json + data/cph-geodata.json -> gs://.../skraafoto/input
+    python3 tools/cloud/skraafoto/cloudctl.py inputs                      # data/tiles/*/{buildings,terrain,streets,lod2}.json + lod2.bin + index.json + data/cph-geodata.json -> gs://.../skraafoto/input
     python3 tools/cloud/skraafoto/cloudctl.py deploy [--digest ...] [--parallelism N]
     python3 tools/cloud/skraafoto/cloudctl.py run MODE [--cells 723_6176 ...] [--factor 2]   # MODE: tones | finalize | atlas | attach
     python3 tools/cloud/skraafoto/cloudctl.py status | cancel
@@ -77,16 +77,34 @@ def cmd_build(a):
     print("DIGEST", b["results"]["images"][0]["digest"])
 
 
+def tile_inputs(tiles: Path, t: str) -> list[tuple[str, bytes, str]]:
+    """The per-tile inputs: buildings.json, and what the atlas needs for the engine's wall frame (tools/cph-geodata/engine_walls.py):
+    the terrain layer's building grounds, the street layout's footprint fixes, the LoD2 index + records."""
+    d, out = tiles / t, []
+    if (d / "buildings.json").exists():
+        out.append(("buildings.json", (d / "buildings.json").read_bytes(), "application/json"))
+    if (d / "terrain.json").exists():
+        doc = json.loads((d / "terrain.json").read_text())
+        out.append(("terrain.json", json.dumps({"tile": doc.get("tile"), "buildings": doc.get("buildings") or {}}, separators=(",", ":")).encode(), "application/json"))
+    if (d / "streets.json").exists():
+        doc = json.loads((d / "streets.json").read_text())
+        out.append(("streets.json", json.dumps({"tile": doc.get("tile"), "buildings": doc.get("buildings") or {}}, separators=(",", ":")).encode(), "application/json"))
+    for n, ct in (("lod2.json", "application/json"), ("lod2.bin", "application/octet-stream")):
+        if (d / n).exists():
+            out.append((n, (d / n).read_bytes(), ct))
+    return out
+
+
 def cmd_inputs(a):
     tiles = ROOT / "data" / "tiles"
     idx = json.loads((tiles / "index.json").read_text())
-    jobs = [("input/index.json", tiles / "index.json")]
-    jobs += [(f"input/tiles/{t}/buildings.json", tiles / t / "buildings.json") for t in idx["tiles"] if (tiles / t / "buildings.json").exists()]
+    jobs = [("input/index.json", (tiles / "index.json").read_bytes(), "application/json")]
+    jobs += [(f"input/tiles/{t}/{n}", data, ct) for t in idx["tiles"] for n, data, ct in tile_inputs(tiles, t)]
     geo = ROOT / "data" / "cph-geodata.json"
     if geo.exists():
-        jobs.append(("input/cph-geodata.json", geo))
+        jobs.append(("input/cph-geodata.json", geo.read_bytes(), "application/json"))
     with cf.ThreadPoolExecutor(8) as ex:
-        list(ex.map(lambda j: R.gcs_put(P + j[0], j[1].read_bytes(), "application/json"), jobs))
+        list(ex.map(lambda j: R.gcs_put(P + j[0], j[1], j[2]), jobs))
     sys.path.insert(0, str(ROOT / "tools/cph-geodata"))
     import appearance_city as C
     from appearance_city_atlas import cell_priority

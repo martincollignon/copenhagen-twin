@@ -171,10 +171,34 @@ function usableStrip(entry, wall) {
 }
 
 /**
- * Photo quads for one building. `quads` come from addBuilding (`opts.quads`): { edgeNo, p0, p1, bottom, top, ground }
- * with the cleaned edge's endpoints; `mapping` is mapObservedEdges' result. Each quad spans the part of the cleaned edge
- * covered by the raw edge whose strip is used. Returns flat arrays { position, normal, uv, index } (uv in texture
- * space, v down as in the JPEG) and the number of quads, or null when no strip is usable.
+ * The part of polygon `poly` ([[t, h], ...]) with lo <= t <= hi and h <= hMax (Sutherland-Hodgman against three lines).
+ */
+function clipPolygon(poly, lo, hi, hMax) {
+  const cut = (pts, inside, at) => {
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      if (inside(a)) out.push(a);
+      if (inside(a) !== inside(b)) out.push(at(a, b));
+    }
+    return out;
+  };
+  const lerpAt = (k, v) => (a, b) => { const f = (v - a[k]) / (b[k] - a[k]); return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; };
+  let out = cut(poly, (p) => p[0] >= lo, lerpAt(0, lo));
+  if (out.length) out = cut(out, (p) => p[0] <= hi, lerpAt(0, hi));
+  if (out.length) out = cut(out, (p) => p[1] <= hMax, lerpAt(1, hMax));
+  return out.length >= 3 ? out : [];
+}
+
+/**
+ * Photo quads for one building. `quads` come from addBuilding (`opts.quads`): { edgeNo, p0, p1, top, ground, pieces } with the
+ * cleaned edge's endpoints, its eave and the roofer wall triangles above that eave (gables, steps); `mapping` is mapObservedEdges'
+ * result. Each quad spans the part of the cleaned edge covered by the raw edge whose strip is used, from the ground to the eave; the
+ * pieces on that span get the same strip (the strip is cut from the ground up to `h_m`, which covers the gables since the atlases are
+ * cut in the engine's wall frame: tools/cph-geodata/engine_walls.py; a piece above `h_m` is clipped there). Returns flat arrays
+ * { position, normal, uv, wallUV, index } (uv in texture space, v down as in the JPEG) and the number of quads, or null when no strip is
+ * usable.
  */
 function texturedWalls(b, quads, mapping) {
   const strips = atlasWalls(b);
@@ -206,16 +230,39 @@ function texturedWalls(b, quads, mapping) {
     const top = Math.min(q.top, q.ground + strip.h_m);
     const hTop = top - q.ground;
     const vAt = (h) => v1 + (v0 - v1) * Math.min(h / strip.h_m, 1);
-    const base = position.length / 3;
-    for (const [t, u, y, h] of [[ta, u0, q.ground, 0], [tb, u1, q.ground, 0], [tb, u1, top, hTop], [ta, u0, top, hTop]]) {
-      position.push(q.p0[0] + dx * t + nx * TEX_LIFT, y, q.p0[1] + dz * t + nz * TEX_LIFT);
+    const uAt = (t) => u0 + (u1 - u0) * (t - ta) / (tb - ta);
+    const vertex = (t, h) => {
+      position.push(q.p0[0] + dx * t + nx * TEX_LIFT, q.ground + h, q.p0[1] + dz * t + nz * TEX_LIFT);
       normal.push(nx, 0, nz);
-      uv.push(u, vAt(h));
-      wallUV.push(t * len, y - q.ground);
-    }
-    // quad corners run raw-start -> raw-end; the outward normal needs the CCW order seen from outside
+      uv.push(uAt(t), vAt(h));
+      wallUV.push(t * len, h);
+      return position.length / 3 - 1;
+    };
+    // the quad corners run raw-start -> raw-end; the outward normal needs the CCW order seen from outside, i.e. counter-clockwise
+    // in (t along the cleaned edge, h)
+    const base = position.length / 3;
+    for (const [t, h] of [[ta, 0], [tb, 0], [tb, hTop], [ta, hTop]]) vertex(t, h);
     if (tb > ta) index.push(base, base + 1, base + 2, base, base + 2, base + 3);
     else index.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    // gables and steps above the eave, on the raw edge's span of this wall and below the strip's top
+    for (const tri of q.pieces || []) {
+      const poly = clipPolygon(tri.map(([x, y, z]) => [((x - q.p0[0]) * dx + (z - q.p0[1]) * dz) / l2, y - q.ground]),
+        Math.min(ta, tb), Math.max(ta, tb), strip.h_m);
+      if (!poly.length) continue;
+      let area = 0;
+      for (let i = 0; i < poly.length; i++) {
+        const a = poly[i];
+        const c = poly[(i + 1) % poly.length];
+        area += a[0] * c[1] - c[0] * a[1];
+      }
+      if (Math.abs(area) * len < 1e-4) continue;
+      const ids = poly.map(([t, h]) => vertex(t, h));
+      const flip = area < 0;
+      for (let i = 1; i < ids.length - 1; i++) {
+        if (flip) index.push(ids[0], ids[i + 1], ids[i]);
+        else index.push(ids[0], ids[i], ids[i + 1]);
+      }
+    }
     count++;
   }
   return count ? { position, normal, uv, wallUV, index, count, file: b.observed.atlas.file, size: b.observed.atlas.size } : null;

@@ -211,6 +211,14 @@ def coverage() -> str:
                        ("grazing", "texture view at more than ~70 degrees to the wall normal"), ("low_res", "texture view coarser than 0.16 m per photo pixel")):
             L.append(f"| {why} | {gs.get(k, 0):,} |")
         L.append("")
+    framed = [d for d in descs if "ground" in d]
+    nw = sum(len(d["walls"]) for d in descs)
+    gable = sum(1 for d in descs for w in d["walls"] if "eave_m" in w)
+    L += ["## Atlas wall frame", "",
+          f"{len(framed):,} of {len(descs):,} atlases were cut in the wall frame the engine draws (`tools/cph-geodata/engine_walls.py`: engine ground, "
+          "roofer LoD2 eave per edge, the DSM/BBR eave for buildings without LoD2); "
+          f"{gable:,} of {nw:,} photo walls ({pct(gable, nw)}) run on above their eave over the roofer gable / step pieces (`eave_m` < `h_m`). "
+          "`node tools/audit/engine_wall_tops.mjs` dumps the engine's frame to check a run against.", ""]
     L += ["## Where the atlases live and how the engine gets them", "",
           "- Produced by the Cloud Run job `cph-skraafoto` (`tools/cloud/skraafoto/`, mode `atlas`, then `attach`) into `gs://lun-integrations-dev-cph-twin/skraafoto/tex-look/<gdk_id>.webp`; tile layers (`skraafoto/tiles/<tile>/appearance.json`) next to them, `skraafoto/attach.done` once the descriptors are merged.",
           "- `python3 tools/cloud/skraafoto/cloudctl.py sync` copies the tile layers into `data/tiles/<tile>/appearance.json` (refused while attach is older than the atlas run) and up to `--atlas-cap-gb` of inner-city atlases into `data/tex-look/`.",

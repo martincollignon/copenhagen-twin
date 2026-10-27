@@ -124,6 +124,7 @@ def load_cell_buildings(cell: str, idx: dict, ring_m: float = RING_M):
         for b in jload(TILES / tid / "buildings.json")["buildings"]:
             if len(b.get("ring", [])) < 6:
                 continue
+            b["_tile"] = tid  # the tile whose layers (terrain ground, LoD2, street fixes) give its engine wall frame
             if tid in own:
                 B.append(b); owned.append(True)
             else:

@@ -14,8 +14,14 @@ window and unobserved masks, normalisation to tone_cal) and written ONLY as data
 with a fine enough source sampling, a not-too-grazing view and a mostly observed look strip; a building whose strips all fail gets
 no descriptor and keeps its tone facade. The JPEG intermediate and
 the raw images are deleted at the end of the cell. The atlas descriptors go into data/tiles/<tile>/appearance.json
-(`buildings[id].atlas = { file, size, walls[] }`, `file` keeps the district's "tex/<id>.jpg" naming; the engine swaps tex/ -> tex-look/ and
+(`buildings[id].atlas = { file, size, ground, walls[] }`, `file` keeps the district's "tex/<id>.jpg" naming; the engine swaps tex/ -> tex-look/ and
 .jpg -> .webp, so the .jpg itself does not exist for city buildings).
+
+Walls are cut in the frame the engine draws them in (engine_walls.py, a port of js/building-geometry.js + js/lod2-geometry.js): from the
+engine ground (terrain layer) up to the roofer LoD2 eave of the wall's edge, plus the roofer wall pieces above that eave (gables, steps;
+the strip then runs up to the highest piece, `eave_m` < `h_m`, and the texels above the roof line are alpha 0); buildings without a
+LoD2 record (and footprints the street layout clipped) keep the DSM/BBR eave, as in the engine. Needs data/tiles/<t>/{terrain.json,
+streets.json, lod2.json, lod2.bin} next to buildings.json.
 
 District buildings keep their existing atlases (data/tex, data/tex-look are never overwritten).
 
@@ -43,6 +49,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import appearance as A  # noqa: E402
 import appearance_city as C  # noqa: E402
 import appearance_city_final as F  # noqa: E402
+import engine_walls as EW  # noqa: E402
 import skraafoto_city as SC  # noqa: E402
 
 CENTRE_UTM = (724378.0, 6175783.0)  # Raadhuspladsen: "inner city first" is measured from here
@@ -109,8 +116,9 @@ def texture_view(obs_list: list[dict], wall: dict, res_of, area: float, factor: 
     return (best[1], best[2]) if best else (None, None)
 
 
-def strip_gate(meta: dict, rgba: np.ndarray) -> list[str]:
-    """Reasons a finished look strip (RGBA of its atlas rectangle) fails the gate; empty = keep it."""
+def strip_gate(meta: dict, rgba: np.ndarray, inside: np.ndarray | None = None) -> list[str]:
+    """Reasons a finished look strip (RGBA of its atlas rectangle) fails the gate; empty = keep it. `inside` = the strip's wall shape
+    (gable / step strips: the texels above the roof line are not wall and do not count)."""
     why = []
     if meta.get("h_m", GATE_MIN_H) < GATE_MIN_H:
         why.append("low_wall")
@@ -118,7 +126,10 @@ def strip_gate(meta: dict, rgba: np.ndarray) -> list[str]:
         why.append("low_res")
     if meta.get("cos") is not None and meta["cos"] < GATE_MIN_COS:
         why.append("grazing")
-    if rgba.size == 0 or float((rgba[..., 3] > 0).mean()) < GATE_MIN_OBSERVED:
+    seen = rgba[..., 3] > 0 if rgba.size else rgba
+    if inside is not None and rgba.size and inside.shape == seen.shape and inside.any():
+        seen = seen[inside]
+    if rgba.size == 0 or float(seen.mean()) < GATE_MIN_OBSERVED:
         why.append("unobserved")
     return why
 
@@ -177,7 +188,11 @@ def process_atlas(cell: str, texel: float = 0.10, force: bool = False) -> dict:
         return cams[vid]
     # the walls to texture, grouped by their texture view: view id -> [(surface id, wall entry, observation, (along, up))]
     by_view: dict[str, list[tuple]] = {}
-    scene = A.build_scene(B)
+    # the wall frame the engine draws (engine ground, roofer eave per edge + gable / step pieces, roofer roofs as occluders): a strip
+    # is cut exactly where js/appearance.js texturedWalls puts it
+    tf = EW.TileFrames(C.TILES)
+    frames = [tf.frame(b, b.get("_tile")) for b in B]
+    scene = A.build_scene(B, frames=frames)
     for bid, obs in final["observed"].items():
         if bid in skip or (TEX_LOOK / (bid.replace(":", "_") + ".webp")).exists() and not force:
             continue
@@ -208,6 +223,7 @@ def process_atlas(cell: str, texel: float = 0.10, force: bool = False) -> dict:
     raw = C.WORK / "raw_atlas" / cell
     raw.mkdir(parents=True, exist_ok=True)
     strips: dict[int, list] = {}
+    shapes: dict[int, dict] = {}  # building -> {(ring, edge): wall shape mask} of the strips with gable / step pieces
     filled_all = []
     nbytes = 0
     for vid, items in by_view.items():
@@ -230,7 +246,8 @@ def process_atlas(cell: str, texel: float = 0.10, force: bool = False) -> dict:
             S = scene.surfaces[sid]
             tx = max(texel, scene.surf_len[sid] / 4096)
             px, valid = A.wall_texture(scene, sid, vb, full, rec["crop"], tx, dsm=dsm, veg=False)
-            img, fill = A.fill_texture(px, valid, tx)
+            shape = A.wall_shape(scene, sid, tx)
+            img, fill = A.fill_texture(px, valid, tx, shape)
             if img is None:
                 continue
             mult = None
@@ -243,9 +260,13 @@ def process_atlas(cell: str, texel: float = 0.10, force: bool = False) -> dict:
                 lin = A.srgb2lin(img.astype(np.float64) / 255.0) * mult
                 img = np.clip(np.round(A.lin2srgb(lin) * 255), 0, 255).astype(np.uint8)
             filled_all.append(fill)
+            meta_shape = {}
+            if shape is not None:
+                shapes.setdefault(S.bid, {})[(A.ring_label(S.ring), S.edge)] = shape
+                meta_shape = {"eave_m": round(float(scene.surf_eave[sid]), 2)}  # the strip runs on above the eave (gable / step)
             strips.setdefault(S.bid, []).append((
                 {"edge": S.edge, "ring": A.ring_label(S.ring), "len_m": round(float(scene.surf_len[sid]), 2),
-                 "h_m": round(float(scene.surf_height[sid]), 2), "texel_m": round(float(tx), 3), "filled_frac": round(fill, 2),
+                 "h_m": round(float(scene.surf_height[sid]), 2), **meta_shape, "texel_m": round(float(tx), 3), "filled_frac": round(fill, 2),
                  "sunlit": bool(c["sunlit"]) if same else bool(o.get("shadow_frac", 1) < 0.5), "year": int(o["year"]) if o else c["year"],
                  "wb_applied": mult is not None, "src_m": round(float(max(res)), 3), "cos": round(float(o["cos"]), 3) if o else None}, img))
         del full, vb
@@ -267,7 +288,8 @@ def process_atlas(cell: str, texel: float = 0.10, force: bool = False) -> dict:
         Image.fromarray(atlas_img).save(tmp / "data" / "tex" / name, quality=85)
         atlas = {"file": f"tex/{name}", "size": [atlas_img.shape[1], atlas_img.shape[0]], "walls": metas}
         cal = {(w["ring"], w["edge"]): (w.get("tone_cal") or w.get("tone")) for w in final["observed"][bid]["walls"] if w["conf"] != "inferred"}
-        _, st = FL.process_building((bid, atlas, cal))
+        shp = shapes.get(bi, {})
+        _, st = FL.process_building((bid, atlas, cal, shp))
         (tmp / "data" / "tex" / name).unlink(missing_ok=True)
         look = TEX_LOOK / (Path(name).stem + ".webp")
         if st and look.exists():
@@ -275,7 +297,7 @@ def process_atlas(cell: str, texel: float = 0.10, force: bool = False) -> dict:
             keep = []
             for m in metas:
                 x, y, w_, h_ = m["px"]
-                why = strip_gate(m, rgba[y:y + h_, x:x + w_])
+                why = strip_gate(m, rgba[y:y + h_, x:x + w_], FL.fit_mask(shp.get((m["ring"], m["edge"])), (h_, w_)))
                 for r_ in why:
                     gate[r_] = gate.get(r_, 0) + 1
                 if not why:
@@ -289,8 +311,10 @@ def process_atlas(cell: str, texel: float = 0.10, force: bool = False) -> dict:
             nweb += 1
             webp_bytes += look.stat().st_size
             area += st["area"]; win += st["win"]; unobs += st["unobs"]
-            atlases[bid] = {"file": atlas["file"], "size": atlas["size"], "walls": [
-                {k: m[k] for k in ("edge", "ring", "len_m", "h_m", "texel_m", "filled_frac", "uv", "px") if k in m} for m in keep]}
+            # `ground`: the engine ground the strips start from (h_m / eave_m are above it), for audits; the engine does not read it
+            atlases[bid] = {"file": atlas["file"], "size": atlas["size"], **({"ground": round(frames[bi]["ground"], 2)} if frames[bi] else {}),
+                            "walls": [{k: m[k] for k in ("edge", "ring", "len_m", "h_m", "eave_m", "texel_m", "filled_frac", "uv", "px") if k in m}
+                                      for m in keep]}
     shutil.rmtree(raw, ignore_errors=True)
     shutil.rmtree(tmp, ignore_errors=True)
     C.save_pkl(cd / "atlas.pkl.gz", atlases)

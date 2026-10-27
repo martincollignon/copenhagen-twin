@@ -11,7 +11,9 @@ MODE (env, per execution)
   attach    ONE task: sets every tile layer's citywide atlas descriptors to exactly what the cells' atlas.pkl.gz hold (stale ones from an
             earlier atlas run are removed; the district's own atlases are kept), then writes skraafoto/attach.done, which
             `cloudctl.py sync` requires to be newer than every atlas.pkl.gz
-Store: gs://$BUCKET/skraafoto/. Inputs: input/index.json, input/tiles/<tile>/buildings.json, input/cph-geodata.json (uploaded by cloudctl.py inputs).
+Store: gs://$BUCKET/skraafoto/. Inputs: input/index.json, input/tiles/<tile>/buildings.json, input/cph-geodata.json, and for the atlas the
+engine's wall frame per tile: input/tiles/<tile>/{terrain.json (ground only), streets.json (footprint fixes only), lod2.json, lod2.bin}
+(uploaded by cloudctl.py inputs).
 Token: GSEARCH_TOKEN comes from Secret Manager (secretKeyRef on the job) and is never printed.
 """
 from __future__ import annotations
@@ -60,11 +62,15 @@ def listing(prefix: str) -> list[str]:
     return [b.name[len(P):] for b in bkt.list_blobs(prefix=P + prefix)]
 
 
-def fetch_tiles(tids: list[str]) -> None:
-    def one(t):
-        get(f"input/tiles/{t}/buildings.json", DATA / "tiles" / t / "buildings.json")
+TILE_INPUTS = ("buildings.json", "terrain.json", "streets.json", "lod2.json", "lod2.bin")  # the last four: the engine's wall frame
+
+
+def fetch_tiles(tids: list[str], names=("buildings.json",)) -> None:
+    def one(job):
+        t, n = job
+        get(f"input/tiles/{t}/{n}", DATA / "tiles" / t / n)
     with cf.ThreadPoolExecutor(8) as ex:
-        list(ex.map(one, tids))
+        list(ex.map(one, [(t, n) for t in tids for n in names]))
 
 
 def cell_list() -> list[str]:
@@ -89,7 +95,7 @@ def main() -> int:
         bx0, bz0, bx1, bz1 = C.cell_bbox_local(cell)
         r = C.RING_M
         need = [t for t, i in idx.items() if not (i["local"][2] < bx0 - r or i["local"][0] > bx1 + r or i["local"][3] < bz0 - r or i["local"][1] > bz1 + r)]
-        fetch_tiles(need)
+        fetch_tiles(need, TILE_INPUTS if mode == "atlas" else ("buildings.json",))
         cd = C.cell_dir(cell)
         # DHM block cache shared through the bucket
         cx, cy = map(int, cell.split("_"))

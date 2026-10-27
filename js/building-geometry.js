@@ -293,6 +293,7 @@ function addBuilding(acc, b, opts = {}) {
   const mapping = lite || opts.observed === false ? null : mapObservedEdges(b, rings);
   const buildingTone = lite ? (opts.observed === false ? tone : observedBuildingTone(b)) : mapping?.hasObserved ? mapping.buildingTone : tone;
   const edgeTone = (k) => (mapping?.hasObserved ? mapping.edges[k].tone : tone);
+  const quadOf = []; // cleaned edge -> its opts.quads entry (the roofer pieces above its eave join it)
   let edgeNo = -1;
   for (const ring of rings) {
     for (let i = 0; i < ring.length; i++) {
@@ -311,7 +312,7 @@ function addBuilding(acc, b, opts = {}) {
       const wt = edgeTone(edgeNo);
       // +0.25 marks a wall whose heuristic shader door is off (real entrance data: tsl-materials.js facadeCell reads fract(kind))
       const wallKind = (wallKinds?.[edgeNo]?.kind ?? kind) + (wallKinds?.[edgeNo]?.doorless ? 0.25 : 0);
-      if (opts.quads) opts.quads.push({ edgeNo, p0, p1, top, ground });
+      if (opts.quads) opts.quads.push(quadOf[edgeNo] = { edgeNo, p0, p1, top, ground, pieces: [] });
       const v0 = bottom - ground;
       const v1 = top - ground;
       const corners = [[p0, 0, bottom, v0], [p1, len, bottom, v0], [p1, len, top, v1], [p0, 0, top, v1]];
@@ -343,6 +344,7 @@ function addBuilding(acc, b, opts = {}) {
     const edgeFrames = [];
     rings.forEach((ring) => ring.forEach((p, i) => { const q = ring[(i + 1) % ring.length]; edgeFrames.push([p, q]); }));
     for (const { edge, tri } of lod2WallPieces(lod2, lod)) {
+      if (edge >= 0) quadOf[edge]?.pieces.push(tri); // the photo wall covers them too (js/appearance.js texturedWalls)
       const [e0, e1] = edge >= 0 ? edgeFrames[edge] : [null, null];
       let dxw, dzw;
       if (e0) { dxw = e1[0] - e0[0]; dzw = e1[1] - e0[1]; } else {
