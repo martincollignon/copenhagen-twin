@@ -23,7 +23,8 @@ tools/hosting/ingest-worker (R2 binding, secret INGEST_KEY). Its URL and key liv
 ({"worker_url", "ingest_key", "public_url"}), never in the repo. GCS is read with an Application Default Credentials access token
 (`gcloud auth application-default print-access-token`) which is handed to the Worker per batch; the gcloud CLI is used for nothing else.
 """
-import argparse, base64, concurrent.futures as cf, gzip, hashlib, json, os, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
+import argparse
+import glob, base64, concurrent.futures as cf, gzip, hashlib, json, os, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CFG = os.path.expanduser(os.environ.get('CPH_R2_CONFIG', '~/.config/cph-twin/r2-ingest.json'))
@@ -169,10 +170,24 @@ def gcs_list(token):
             return items
 
 
+def described_atlases():
+    out = set()
+    for p in glob.glob(os.path.join(ROOT, 'data/tiles/*/appearance.json')):
+        for bid, b in json.load(open(p))['buildings'].items():
+            if b.get('atlas'):
+                out.add(bid.replace(':', '_') + '.webp')
+    return out
+
+
 def sync_texlook(version, workers, dry, batch):
     token, t_token = adc_token(), time.time()
     log('listing gs://%s/%s ...' % (GCS_BUCKET, GCS_PREFIX))
     src = gcs_list(token)
+    # only atlases a tile's appearance.json describes: the bucket keeps stale ones the quality gate dropped
+    wanted = described_atlases()
+    n_all = len(src)
+    src = [o for o in src if o['name'][len(GCS_PREFIX):] in wanted]
+    log(f'tex-look: {len(src)} of {n_all} GCS atlases are described in data/tiles/*/appearance.json')
     remote = list_remote(f'{version}/tex-look/')
     todo = []
     for o in src:
@@ -192,7 +207,7 @@ def sync_texlook(version, workers, dry, batch):
     extra = []
     if os.path.isdir(local_dir):
         for fn in sorted(os.listdir(local_dir)):
-            if fn.endswith('.webp') and fn not in gcs_names:
+            if fn.endswith('.webp') and fn in wanted and fn not in gcs_names:
                 p = os.path.join(local_dir, fn)
                 body = open(p, 'rb').read()
                 if remote.get(f'{version}/tex-look/{fn}') != (len(body), hashlib.md5(body).hexdigest()):
