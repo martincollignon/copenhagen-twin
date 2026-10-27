@@ -20,8 +20,14 @@ const PHOTO = {
   densities: Array.from({ length: 17 }, (_, i) => +(2 ** (-i / 8)).toFixed(3)), // 1 .. 0.25 in steps of 2^(-1/8) (9 %)
   nativeTexelM: 0.1, // m/texel of the atlases (docs/cph-geodata-schema.md, about 10 cm/px) when a candidate does not say
   qualitySteps: Array.from({ length: 25 }, (_, i) => +(2 ** (-i / 8)).toFixed(3)), // atlas scales (the tier): 1 .. 0.125, 2^(-i/8)
-  qualityHoldSteps: 2, // the resident tier is kept while it is this many steps from the planned one (and fits): no churn at boundaries
+  // Hysteresis, so that a still camera settles and a moving one reloads in proportion to the distance it covers:
+  qualityHoldSteps: 3, // a coarser resident tier is kept while it is this many steps from the planned one (2^(-3/8): 77 % of the texels)
+  downgradeHoldSteps: 24, // a finer resident tier is kept up to this many steps (24: any) while the bytes allow: a receding building
+  // is not re-decoded every few metres, only when its bytes are needed (and then the farthest go first)
+  densityHeadroom: 0.94, // the previous plan's density stays while it fits; a finer one is only taken once it fits with this share of
+  // the budget (the one global density otherwise flips with every step of the camera that adds or frees bytes, re-planning every tier)
   closeMargin: 10, // m: a building whose photo walls are all nearer than close0 - closeMargin draws no photo and holds no atlas
+  residencyHold: 12, // m: a building that holds its atlas keeps it until it is this much beyond either edge (no evict / reload at it)
   maxResidentBytes: 48 * 1024 * 1024, // estimated RGBA8+mipmap budget, also reserved for in-flight uploads
   concurrency: 2
 };
@@ -149,20 +155,28 @@ const atlasBytes = (size, step) => {
 /**
  * Residency plan for one camera position (x, y, z; `y` undefined plans in plan view): `candidates` [{ id, cx, cz, walls }].
  * A building is wanted while its nearest photo wall (wallDistance) is within PHOTO.residency and its farthest one reaches past
- * close0 - closeMargin (all of it nearer than that draws no photo), nearest first, at most `budget`. Its tier is the atlas scale
- * its walls need on screen (densityScale) at the finest density of p.densities at which every wanted building fits
- * p.maxResidentBytes; the resident tier is held within p.qualityHoldSteps while the bytes allow. Only when even the coarsest density
- * does not fit are the farthest buildings coarsened further, then dropped. Returns { want, qualityById (tier, size, bytes per id),
- * residentBytes, density, inRange: every id within the residency radius }.
+ * close0 - closeMargin (all of it nearer than that draws no photo), nearest first, at most `budget`; one that holds an atlas
+ * (`currentTiers`, id -> resident tier) stays wanted p.residencyHold beyond either edge. Its tier is the atlas scale its walls need on
+ * screen (densityScale) at one density of p.densities for all: the finest at which every wanted building fits p.maxResidentBytes, or
+ * `previousDensity` (the last plan's) while that still fits and a finer one would not fit with p.densityHeadroom of the budget. A resident
+ * tier is held while the bytes allow: a coarser one within p.qualityHoldSteps, a finer one within p.downgradeHoldSteps. Only when even the
+ * coarsest density does not fit are the farthest buildings coarsened further, then dropped. Returns { want, qualityById (tier, size,
+ * bytes per id), residentBytes, density, inRange: every id within the residency radius }.
  */
-function selectPhotoSet(candidates, x, z, p = PHOTO, currentTiers = new Map(), y = undefined) {
+function selectPhotoSet(candidates, x, z, p = PHOTO, currentTiers = new Map(), y = undefined, previousDensity = undefined) {
   const near = [];
   const reach = p.residency + 400; // cheap centre prefilter: no building's walls reach 400 m from its centre
   const closeLimit = p.close0 - (p.closeMargin ?? 10);
+  const hold = p.residencyHold ?? 0; // a held atlas (in currentTiers) stays wanted this far past either edge
+  const inRange = new Set();
   for (const c of candidates) {
-    if (Math.abs(c.cx - x) > reach || Math.abs(c.cz - z) > reach) continue;
+    if (Math.abs(c.cx - x) > reach + hold || Math.abs(c.cz - z) > reach + hold) continue;
     const d = wallDistance(c, x, y, z);
-    if (d.near < p.residency && d.far >= closeLimit) near.push({ distance: d.near, far: d.far, c });
+    const held = currentTiers.has(c.id) ? hold : 0;
+    if (d.near < p.residency + held && d.far >= closeLimit - held) {
+      near.push({ distance: d.near, far: d.far, c });
+      if (d.near < p.residency && d.far >= closeLimit) inRange.add(c.id);
+    }
   }
   near.sort((a, b) => a.distance - b.distance);
   const chosen = near.slice(0, p.budget);
@@ -175,24 +189,33 @@ function selectPhotoSet(candidates, x, z, p = PHOTO, currentTiers = new Map(), y
   for (const e of chosen) e.need = (nativeOf(e.c) * peakFadePerMetre(e.distance, e.far, p)) / pixelMetres(1, p); // scale at k = 1, unclamped
   const stepsAt = (k) => chosen.map((e) => quantiseStep(Math.min(1, k * e.need), p));
   const total = (list) => list.reduce((n, step, i) => n + atlasBytes(sizeOf(chosen[i].c), step).bytes, 0);
-  let density = densities.at(-1);
-  let planned = stepsAt(density);
-  for (const k of densities) {
-    const list = stepsAt(k);
-    if (total(list) <= maxResidentBytes) { density = k; planned = list; break; }
+  // the finest density that fits (fit) and the finest that fits with p.densityHeadroom to spare (safe, never finer than fit)
+  const headroom = (p.densityHeadroom ?? 1) * maxResidentBytes;
+  let fit = densities.length - 1;
+  let safe = densities.length - 1;
+  for (let i = 0; i < densities.length; i++) {
+    const bytes = total(stepsAt(densities[i]));
+    if (bytes <= maxResidentBytes && fit === densities.length - 1) fit = i;
+    if (bytes <= headroom) { safe = i; break; }
   }
+  safe = Math.max(safe, fit);
+  // hysteresis: keep the previous density while it fits and is no coarser than `safe`; a first plan takes the finest that fits
+  const previous = densities.indexOf(previousDensity);
+  const pick = previous < 0 || previous < fit ? fit : previous > safe ? safe : previous;
+  const density = densities[pick];
+  const planned = stepsAt(density);
 
-  // hold resident tiers near the plan (fewer reloads while the camera moves); a finer held tier only while the bytes allow
-  const hold = p.qualityHoldSteps ?? 0;
+  // hold resident tiers near the plan (no reload at a step boundary); a finer held tier only while the bytes allow, nearest first
+  const holdSteps = p.qualityHoldSteps ?? 0;
   let bytes = total(planned);
   const tiers = planned.map((step, i) => {
     const current = currentTiers.get(chosen[i].c.id);
     const ci = steps.indexOf(current);
     const pi = steps.indexOf(step);
-    if (ci < 0 || ci === pi || Math.abs(ci - pi) > hold) return step;
     const size = sizeOf(chosen[i].c);
+    if (ci < 0 || ci === pi || (ci > pi ? ci - pi > holdSteps : pi - ci > (p.downgradeHoldSteps ?? holdSteps))) return step;
     const extra = atlasBytes(size, current).bytes - atlasBytes(size, step).bytes;
-    if (bytes + extra > maxResidentBytes) return step;
+    if (extra > 0 && bytes + extra > maxResidentBytes) return step;
     bytes += extra;
     return current;
   });
@@ -212,7 +235,7 @@ function selectPhotoSet(candidates, x, z, p = PHOTO, currentTiers = new Map(), y
       break;
     }
   });
-  return { want, qualityById, residentBytes, density, inRange: new Set(near.map((e) => e.c.id)) };
+  return { want, qualityById, residentBytes, density, inRange };
 }
 
 /** Atlas file the photo walls are read from: the processed RGBA look atlas (tools/cph-geodata/facade_look.py) first. */
@@ -237,12 +260,14 @@ function photoReservation(managers) {
 
 /**
  * Frees the farthest resident atlases (by their rank in `want`, unwanted first) over every manager until `bytes` more fit in
- * `maxBytes`. The resident atlas of `protectedId` stays (a quality replacement keeps it visible until the new one is in), and when that
- * atlas plus the in-flight requests alone cannot fit nothing is evicted.
+ * `maxBytes`. Only residents ranked after `rankLimit` may go (default: after `protectedId`, never a nearer wanted atlas; applyPhotoPlan
+ * passes want.length, unwanted ones only). The resident atlas of `protectedId` stays (a quality replacement keeps it visible until the new
+ * one is in), and when what may not be evicted plus the in-flight requests cannot fit nothing is evicted.
  */
-function makePhotoRoom(managers, bytes, protectedId, want, maxBytes = PHOTO.maxResidentBytes) {
+function makePhotoRoom(managers, bytes, protectedId, want, maxBytes = PHOTO.maxResidentBytes, onEvict = null, rankLimit = undefined) {
   const order = new Map(want.map((id, index) => [id, index]));
   const rank = (id) => order.get(id) ?? Infinity;
+  const limit = rankLimit ?? rank(protectedId);
   const residents = [];
   let total = bytes;
   let protectedBytes = 0;
@@ -250,7 +275,7 @@ function makePhotoRoom(managers, bytes, protectedId, want, maxBytes = PHOTO.maxR
   for (const m of managers) {
     for (const [id, r] of m.state.resident) {
       total += bytesOf(r);
-      if (id === protectedId) protectedBytes += bytesOf(r);
+      if (id === protectedId || !(rank(id) > limit)) protectedBytes += bytesOf(r);
       else residents.push([id, m, bytesOf(r)]);
     }
     for (const [id, job] of m.state.loading) {
@@ -262,6 +287,7 @@ function makePhotoRoom(managers, bytes, protectedId, want, maxBytes = PHOTO.maxR
   residents.sort((a, b) => { const ra = rank(a[0]); const rb = rank(b[0]); return ra === rb ? 0 : rb > ra ? 1 : -1; }); // farther first
   for (const [id, m, held] of residents) {
     if (total <= maxBytes) break;
+    onEvict?.(id, held, rank(id));
     m.evict(id);
     total -= held;
   }
@@ -272,11 +298,15 @@ function makePhotoRoom(managers, bytes, protectedId, want, maxBytes = PHOTO.maxR
  * Carries out one residency plan (selectPhotoSet over the candidates of `managers`) on those managers. A manager is
  * { state: { enabled, resident: Map id -> { bytes, width, height, tier }, loading: Map id -> { bytes, width, height, tier }, failed: Set,
  * failedTiers: Map, probed, probing }, has(id), prune(wantSet, qualityById), evict(id), start(id, quality) }.
- * Unwanted residents go first; then new atlases nearest first within `p.concurrency` in-flight loads and `p.maxResidentBytes`; when
- * nothing is in flight, one quality replacement (downgrades first; the old atlas stays visible meanwhile). The first atlas of a manager
- * is its presence probe: nothing else of that manager starts until it is settled.
+ * Unwanted residents go first; then new atlases nearest first within `p.concurrency` in-flight loads and `p.maxResidentBytes`; then
+ * downgrades in the free slots; then, with nothing in flight, upgrades (a replacement keeps the old atlas visible meanwhile). No wanted
+ * atlas is evicted to make room: the plan fits the budget, so what holds more than it is a resident still finer than its planned tier,
+ * and its downgrade gives the bytes back. (Evicting instead made the farthest wanted atlases evict each other in turn, reloading
+ * hundreds of times a minute, while the downgrades waited for a moment with nothing in flight that never came.) `stats`
+ * (createPhotoStats) counts what is started. The first atlas of a manager is its presence probe: nothing else of that manager starts
+ * until it is settled.
  */
-function applyPhotoPlan(managers, plan, p = PHOTO) {
+function applyPhotoPlan(managers, plan, p = PHOTO, stats = null) {
   const { want, qualityById } = plan;
   const wantSet = new Set(want);
   for (const m of managers) m.prune(wantSet, qualityById);
@@ -286,36 +316,106 @@ function applyPhotoPlan(managers, plan, p = PHOTO) {
   }
   const loading = () => { let n = 0; for (const m of managers) n += m.state.loading.size; return n; };
   const usable = (q) => q && q.width > 0 && q.height > 0;
-  const room = (q, id) => makePhotoRoom(managers, q.bytes, id, want, p.maxResidentBytes ?? Infinity);
+  const onEvict = stats ? (forId) => (id, held, rank) => { stats.evictions++; logPhoto(stats, { e: 'evict', id, for: forId, bytes: held, rank: rank === Infinity ? -1 : rank }); } : () => null;
+  // room for an atlas: only unwanted residents may go (see above)
+  const room = (q, id, rankLimit = want.length) => makePhotoRoom(managers, q.bytes, id, want, p.maxResidentBytes ?? Infinity, onEvict(id), rankLimit);
 
   // new atlases first (a building without its photo is the bigger miss), nearest first within the in-flight cap
+  let waiting = false; // a new atlas not started yet
   for (const id of want) {
-    if (loading() >= p.concurrency) break;
     const m = owner.get(id);
     const s = m?.state;
-    if (!s || !s.enabled || s.probing || s.resident.has(id) || s.loading.has(id) || s.failed.has(id)) continue;
+    if (!s || !s.enabled || s.resident.has(id) || s.loading.has(id) || s.failed.has(id)) continue;
+    waiting = true;
+    if (loading() >= p.concurrency || s.probing) continue;
     const q = qualityById.get(id);
     if (!usable(q) || !room(q, id)) continue;
+    waiting = false;
     if (!s.probed) s.probed = s.probing = true; // cleared by the manager once its probe settles
+    if (stats) {
+      stats.newLoads++;
+      logPhoto(stats, { e: 'new', id, tier: q.tier, w: q.width, d: +q.distance?.toFixed(1), k: plan.density, reserved: photoReservation(managers).reservedBytes });
+    }
     m.start(id, q);
   }
-  // still to do after this pass: a wanted atlas not resident, in flight or failed (createPhotoBudget re-applies the plan between plans)
-  const backlog = want.some((id) => { const s = owner.get(id)?.state; return s && s.enabled && !s.resident.has(id) && !s.loading.has(id) && !s.failed.has(id); });
-  if (loading() > 0) return backlog;
-
-  // then one quality replacement at a time (the old atlas stays visible meanwhile): downgrades first, they give bytes back
+  // quality replacements (the old atlas stays visible meanwhile)
   const stale = want.filter((id) => {
     const m = owner.get(id);
     const resident = m?.state.resident.get(id);
     const q = qualityById.get(id);
-    return resident && usable(q) && (resident.width !== q.width || resident.height !== q.height) && m.state.failedTiers.get(id) !== q.tier;
+    return resident && !m.state.loading.has(id) && usable(q) && (resident.width !== q.width || resident.height !== q.height) && m.state.failedTiers.get(id) !== q.tier;
   });
   const smaller = (id) => qualityById.get(id).bytes < bytesOf(owner.get(id).state.resident.get(id));
-  for (const id of [...stale.filter(smaller), ...stale.filter((id) => !smaller(id))]) {
+  // downgrades in any free slot, even while new atlases load: they give back the bytes the plan counts on (a resident finer than its
+  // planned tier holds more than the plan, and new atlases wait for that room)
+  const downgrades = stale.filter(smaller);
+  for (const id of downgrades) {
+    if (loading() >= p.concurrency) break;
     const q = qualityById.get(id);
-    if (room(q, id)) { owner.get(id).start(id, q); return true; }
+    if (owner.get(id).state.resident.has(id) && room(q, id)) {
+      if (stats) {
+        const r = owner.get(id).state.resident.get(id);
+        stats.replacements++;
+        stats.downgrades++;
+        logPhoto(stats, { e: 'replace', id, from: r.tier, fromW: r.width, to: q.tier, toW: q.width, d: +q.distance?.toFixed(1), k: plan.density });
+      }
+      owner.get(id).start(id, q);
+    }
   }
-  return backlog;
+  // nothing in flight and no downgrade fits next to its old atlas: the farthest one swaps in place (its old atlas goes first), rather than
+  // evicting a wanted atlas that would then reload
+  if (loading() === 0) {
+    const swap = downgrades.filter((id) => owner.get(id).state.resident.has(id)).at(-1);
+    if (swap !== undefined) {
+      const q = qualityById.get(swap);
+      const m = owner.get(swap);
+      if (stats) {
+        const r = m.state.resident.get(swap);
+        stats.replacements++;
+        stats.downgrades++;
+        logPhoto(stats, { e: 'swap', id: swap, from: r.tier, fromW: r.width, to: q.tier, toW: q.width, d: +q.distance?.toFixed(1), k: plan.density });
+      }
+      m.evict(swap);
+      if (room(q, swap)) m.start(swap, q);
+    }
+  }
+  // upgrades last, once nothing else is in flight (a building without its photo, or a downgrade that gives bytes back, comes first), the
+  // one furthest below its planned tier first
+  const residentOf = (id) => owner.get(id).state.resident.get(id);
+  const upgrades = waiting || loading() > 0 ? [] : stale.filter((id) => residentOf(id) && !owner.get(id).state.loading.has(id) && !smaller(id));
+  const gap = (id) => qualityById.get(id).tier / (residentOf(id).tier || 1);
+  const order = new Map(want.map((id, index) => [id, index]));
+  upgrades.sort((a, b) => gap(b) - gap(a) || order.get(a) - order.get(b));
+  for (const id of upgrades) {
+    if (loading() >= p.concurrency) break;
+    const q = qualityById.get(id);
+    if (!room(q, id)) continue;
+    if (stats) {
+      const r = owner.get(id).state.resident.get(id);
+      stats.replacements++;
+      stats.upgrades++;
+      logPhoto(stats, { e: 'replace', id, from: r.tier, fromW: r.width, to: q.tier, toW: q.width, d: +q.distance?.toFixed(1), k: plan.density });
+    }
+    owner.get(id).start(id, q);
+  }
+  // still to do after this pass (createPhotoBudget re-applies the plan between plans while a slot frees up): a wanted atlas or a downgrade
+  // not started (an upgrade waits for the next plan)
+  return waiting || downgrades.some((id) => !owner.get(id).state.loading.has(id));
+}
+
+/** Churn counters of one photo budget (createPhotoBudget().stats): plans, loads by kind, decodes, GPU uploads, tier flips. */
+function createPhotoStats(logSize = 400) {
+  return {
+    plans: 0, newLoads: 0, replacements: 0, upgrades: 0, downgrades: 0, decodes: 0, uploads: 0, discarded: 0, aborted: 0,
+    densityChanges: 0, tierFlips: 0, evictions: 0, logSize, log: []
+  };
+}
+
+/** Appends one event to the bounded churn log (oldest dropped). */
+function logPhoto(stats, event) {
+  if (!stats.logSize) return;
+  stats.log.push({ t: Math.round(typeof performance === 'undefined' ? 0 : performance.now()), ...event });
+  if (stats.log.length > stats.logSize) stats.log.splice(0, stats.log.length - stats.logSize);
 }
 
 /**
@@ -331,9 +431,12 @@ function createPhotoBudget({ interval = 350, select = selectPhotoSet, p = PHOTO 
   let lastPlan = null;
   let planned = null; // the last plan, re-applied between plans while it has a backlog
   let backlog = false;
+  let lastTiers = new Map(); // id -> tier of the previous plan (churn counters)
+  const stats = createPhotoStats();
   const sum = (f) => { let n = 0; for (const m of managers) n += f(m.state); return n; };
   return {
     managers,
+    stats,
     add(manager) { if (manager) managers.add(manager); },
     remove(manager) { managers.delete(manager); },
     held: () => sum((s) => s.resident.size + s.loading.size),
@@ -367,11 +470,13 @@ function createPhotoBudget({ interval = 350, select = selectPhotoSet, p = PHOTO 
         wanted: lastPlan?.wanted ?? null, density: lastPlan?.density ?? null
       };
     },
+    /** The last residency plan (selectPhotoSet), for the headless checks. */
+    get lastPlan() { return planned; },
     /** Called every frame with the camera position (`y` its height: distances are 3D); plans at most every `interval` ms. */
     update(x, z, now = performance.now(), y = undefined) {
       if (now - lastRun < interval) {
         // between plans, keep the loads flowing: a settled load frees its in-flight slot for the next atlas of the same plan
-        if (planned && backlog && sum((s) => s.loading.size) < p.concurrency) backlog = applyPhotoPlan([...managers], planned, p);
+        if (planned && backlog && sum((s) => s.loading.size) < p.concurrency) backlog = applyPhotoPlan([...managers], planned, p, stats);
         return false;
       }
       lastRun = now;
@@ -382,13 +487,28 @@ function createPhotoBudget({ interval = 350, select = selectPhotoSet, p = PHOTO 
         for (const [id, r] of m.state.resident) currentTiers.set(id, r.tier);
         for (const [id, job] of m.state.loading) if (!currentTiers.has(id)) currentTiers.set(id, job.tier);
       }
-      const plan = select(live.flatMap((m) => m.candidates), x, z, p, currentTiers, y);
+      const plan = select(live.flatMap((m) => m.candidates), x, z, p, currentTiers, y, lastPlan?.density);
+      stats.plans++;
+      if (lastPlan && lastPlan.density !== plan.density) {
+        stats.densityChanges++;
+        logPhoto(stats, { e: 'density', from: lastPlan.density, to: plan.density, want: plan.want.length });
+      }
+      const tiers = new Map();
+      for (const [id, q] of plan.qualityById) {
+        tiers.set(id, q.tier);
+        const before = lastTiers.get(id);
+        if (before !== undefined && before !== q.tier) {
+          stats.tierFlips++;
+          logPhoto(stats, { e: 'tier', id, from: before, to: q.tier, held: currentTiers.get(id), d: +q.distance.toFixed(1), k: plan.density });
+        }
+      }
+      lastTiers = tiers;
       lastPlan = { density: plan.density, wanted: plan.want.length };
       planned = plan;
-      backlog = applyPhotoPlan([...managers], plan, p); // every manager: a disabled one still frees what it holds outside the plan
+      backlog = applyPhotoPlan([...managers], plan, p, stats); // every manager: a disabled one still frees what it holds outside the plan
       return true;
     }
   };
 }
 
-export { PHOTO, photoFade, texRequested, selectPhotoSet, wallDistance, densityScale, quantiseStep, pixelMetres, createPhotoBudget, applyPhotoPlan, makePhotoRoom, photoReservation, lookFile, estimateTextureBytes, scaledTextureSize };
+export { PHOTO, photoFade, texRequested, selectPhotoSet, wallDistance, densityScale, quantiseStep, pixelMetres, createPhotoBudget, applyPhotoPlan, makePhotoRoom, createPhotoStats, logPhoto, photoReservation, lookFile, estimateTextureBytes, scaledTextureSize };
