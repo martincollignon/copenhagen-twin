@@ -17,7 +17,7 @@ import { CPH_FRAME, toLocal } from './city-config.js';
 import { disposeTree } from './dispose-tree.js';
 import { nextFrame } from './yield-frame.js';
 import { createHeroCache } from './hero-cache.js';
-import { dataUrl } from './data-config.js';
+import { dataUrl, heroesEnabled } from './data-config.js';
 import { batchBuildingCells, updateBuildingCellVisibility } from './building-batches.js';
 
 // js/buildings-real.js
@@ -120,7 +120,9 @@ function mergeByMaterial(root) {
 }
 
 /** Loads one hero glb and places it in the Copenhagen frame from its building.json `frame.origin` (EPSG:25832 + DVR90). */
-async function loadHero(hero, { fetchImpl = globalThis.fetch } = {}) {
+async function loadHero(hero, { fetchImpl = globalThis.fetch, enabled = heroesEnabled() } = {}) {
+  // published builds carry no hero models (js/data-config.js heroesEnabled): extrude without asking for files that are not there
+  if (!enabled) throw Object.assign(new Error(`hero ${hero.building_id}: hero models are local-only (not published)`), { code: 'hero-disabled' });
   const dir = `${HEROES_DIR}/${String(hero.building_id).replace(/[^\w.-]+/g, '_')}`;
   let origin = null;
   try {
@@ -231,7 +233,7 @@ const uploadSlot = () => (uploadChain = uploadChain.then(nextFrame));
  * Lazy photo walls (default on, `?tex=0` disables). Per building one small mesh (photo quads of the usable atlas strips on
  * the extruded wall, depth-biased instead of lifted) with its own atlas texture and photo material. Residency is the LOD
  * policy of js/facade-lod.js: the nearest buildings within PHOTO.residency metres, bounded by both count and decoded
- * texture bytes; texture resolution follows camera distance. The material fades each photo into the tone + procedural
+ * texture bytes; texture resolution follows the on-screen texel density where the photo shows. The material fades each photo into the tone + procedural
  * facade between PHOTO.near and PHOTO.far. The processed look atlas
  * (data/tex-look, RGBA with window and unobserved masks) is read first, the raw JPEG atlas as fallback. If neither folder
  * is present (both are gitignored) photo mode turns itself off quietly.
@@ -395,10 +397,10 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch, budg
     if (c && state.enabled && !state.disposed) void load(c, quality);
   }
 
-  /** Called every frame with the camera position; plans at most every 350 ms. (A shared budget is driven by its owner instead.) */
-  function update(x, z, now = performance.now()) {
+  /** Called every frame with the camera position (`y` its height); plans at most every 350 ms. (A shared budget is driven by its owner.) */
+  function update(x, z, now = performance.now(), y = undefined) {
     if (shared || !state.enabled || !loader) return;
-    pool.update(x, z, now);
+    pool.update(x, z, now, y);
   }
 
   /** Evicts every resident photo and aborts the requests in flight (a tile going away); the manager is dead afterwards. */
@@ -571,7 +573,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHeroCached, wit
       heroGroups.push(group);
       heroStatus.push({ id: hero.building_id, loaded: true, position: group.position.toArray() });
     } catch (error) {
-      console.warn(`[cph] hero ${hero.building_id} not loaded (run tools/link-heroes.sh); extruding its footprint instead:`, error?.message || error);
+      if (error?.code !== 'hero-disabled') console.warn(`[cph] hero ${hero.building_id} not loaded (run tools/link-heroes.sh); extruding its footprint instead:`, error?.message || error);
       heroStatus.push({ id: hero.building_id, loaded: false, error: String(error?.message || error) });
       const b = byId.get(hero.building_id);
       if (b) heroIds.delete(hero.building_id);
@@ -615,7 +617,7 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHeroCached, wit
   /** Hides cells beyond STREAM_RADIUS (cheap: a few dozen cells). Called every frame with the camera position. */
   function update(x, z, nightFactor = 0) {
     neon.update(nightFactor);
-    if (texManager) texManager.update(camera ? camera.position.x : x, camera ? camera.position.z : z);
+    if (texManager) texManager.update(camera ? camera.position.x : x, camera ? camera.position.z : z, performance.now(), camera?.position.y);
     for (const g of leaves) {
       const dx = g.userData.centre[0] - x;
       const dz = g.userData.centre[1] - z;

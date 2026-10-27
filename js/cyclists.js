@@ -5,6 +5,7 @@ import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { buildCyclistNetwork, createCyclists } from './cyclist-network.js';
 import { signalOffset } from './signal-plan.js';
 import { cyclistAppearance } from './cyclist-appearance.js';
+import { createCollisionActor } from './city-collisions.js';
 import { buildBike, buildBikeProxy } from './street-furniture-geometry.js';
 
 // Cyclist simulation and rider animation keep running independently of the instanced bike batches.
@@ -174,7 +175,7 @@ export function createCyclistSystem(scene, geo, signalNodes = [], { groundHeight
 
   const collisionActors = sim.riders.map((rider, index) => {
     const bike = bikes[index];
-    const actor = {
+    const actor = createCollisionActor({
       entity: rider,
       kind: 'cyclist',
       mode: bike.look.cargo ? 'cargobike' : 'cyclist',
@@ -202,7 +203,7 @@ export function createCyclistSystem(scene, geo, signalNodes = [], { groundHeight
         rider.z += dz;
         return rider;
       }
-    };
+    });
     return actor;
   });
 

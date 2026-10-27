@@ -84,7 +84,7 @@ export function createBuildingsLayer(scene, { terrain = null, lod2 = null, obser
 
     update(x, z, night = 0) {
       for (const { instance } of tiles.values()) instance?.update(x, z, night);
-      photoBudget?.update(camera ? camera.position.x : x, camera ? camera.position.z : z);
+      photoBudget?.update(camera ? camera.position.x : x, camera ? camera.position.z : z, performance.now(), camera?.position.y);
     },
 
     /** Nearest building under a normalised-device point over all tiles. */

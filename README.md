@@ -76,7 +76,7 @@ Add `--perf` for paired CPU timings with the collision stage enabled and disable
 
 ## Performance budget check
 
-Every pull request runs the required `texture-memory-budget` check. It replays the committed camera route against the real facade-atlas dimensions and fails if the selected facade textures exceed 48 MiB or 56 residents:
+Every pull request runs the required `texture-memory-budget` check. It replays the committed camera route against the real facade-atlas dimensions and fails if the selected facade textures exceed 48 MiB or 224 residents, if any building in the photo band (a photo wall nearer than 150 m and one beyond 45 m) is left without its atlas, or if atlases stay resident from the air. The atlas resolution follows the on-screen texel density where each photo is seen (`js/facade-lod.js`): every plan picks the highest density at which the whole band fits the 48 MiB:
 
 ```sh
 node --test tests/texture-memory-budget.test.mjs
@@ -207,4 +207,4 @@ The map and facade sources are credited in the loading screen and their data fil
 
 ## Building reconstruction skill
 
-`.claude/skills/building-case-to-3d/` (also `.agents/skills/` for Codex) rebuilds a single building as LoD3 from its Filarkiv/byggesag drawings, reconciled against 2025 Skråfoto. Subagents: `drawing-archivist`, `skraafoto-registrar`, `twin-validator` (`.claude/agents/`, `.codex/agents/`). Output heroes (e.g. Nørre Søgade 37) are referenced by building ID in `data/cph-geodata.json` `heroes[]` and linked with `tools/link-heroes.sh`. The script reads the model build from `CPH_HERO_DIR` (default: `~/.local/share/building-case-3d/noerre-soegade-37/build`). Drawings and models stay outside git.
+`.claude/skills/building-case-to-3d/` (also `.agents/skills/` for Codex) rebuilds a single building as LoD3 from its Filarkiv/byggesag drawings, reconciled against 2025 Skråfoto. Subagents: `drawing-archivist`, `skraafoto-registrar`, `twin-validator` (`.claude/agents/`, `.codex/agents/`). Output heroes (e.g. Nørre Søgade 37) are referenced by building ID in `data/cph-geodata.json` `heroes[]` and linked with `tools/link-heroes.sh`. The script reads the model build from `CPH_HERO_DIR` (default: `~/.local/share/building-case-3d/noerre-soegade-37/build`). Drawings and models stay outside git. Hero models are derived from third-party building-case drawings and are not published: the Pages build (an http(s) `BUILD_DATA_BASE`) never requests them and extrudes the footprint instead; a local checkout loads them (`?heroes=0` / `?heroes=1` override, `js/data-config.js` `heroesEnabled`).

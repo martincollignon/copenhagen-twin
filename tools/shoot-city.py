@@ -35,6 +35,7 @@ SNAP = '''() => { const t = globalThis.__twin; const s = t.stream && t.stream.sn
     agents: (() => { const ts = t.trafficSystem; return ts && ts.cars ? { cars: ts.cars.filter((c) => c.edge).length, buses: ts.buses.filter((c) => c.edge).length, peds: ts.peds.filter((p) => p.placed).length, cyclists: (ts.cyclists || []).filter((c) => c.placed).length } : null; })(), facadeMemory: t.world.buildings && t.world.buildings.texManager ? t.world.buildings.texManager.memory || null : null,
     colliders: t.world.staticIndex ? { parts: t.world.staticIndex.parts, size: t.world.staticIndex.size } : null,
     collisions: t.world.collisions ? { ...t.world.collisions.stats } : null,
+    photoBand: (() => { const b = t.world.buildings && t.world.buildings.photoBudget; const c = t.cameraSystem.camera.position; return b && b.band ? b.band(c.x, c.y, c.z) : null; })(),
     geometries: r.memory.geometries, textures: r.memory.textures, calls: r.render.drawCalls, triangles: r.render.triangles }; }'''
 
 # frame times over ~2 s of animation frames (headless: relative numbers only)
@@ -88,6 +89,12 @@ try:
                 if st is None or (st['fetching'] == 0 and st['building'] == 0): quiet += 1
                 else: quiet = 0
                 if quiet >= 4: break
+            # then the photo atlases: until nothing is in flight for 3 polls (at most 40 s)
+            t2 = time.time(); calm = 0
+            while time.time() - t2 < 40 and calm < 3:
+                page.wait_for_timeout(500)
+                busy = page.evaluate('() => { const b = globalThis.__twin.world.buildings && globalThis.__twin.world.buildings.photoBudget; return b ? b.loading() : 0; }')
+                calm = calm + 1 if busy == 0 else 0
             page.wait_for_timeout(1200)
             sn = page.evaluate(SNAP)
             sn['frames'] = page.evaluate(FPS)

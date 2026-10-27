@@ -83,7 +83,7 @@ test('building underside follows terrain elevations and the extrusion skirt clea
 test('furniture colliders use placed coordinates, solid trunks, thin poles, and accurate parked-car bodies', () => {
   const furniturePlan = {
     trees: [{ x: 1, y: 2, z: 3, height: 20, crown: { base: 7, rx: 12 } }],
-    lamps: [{ x: 10, y: 1, z: 4, mount: 'mast', pole: 'tube', poleH: 5 }, { x: 20, y: 0, z: 4, mount: 'wire' }],
+    lamps: [{ x: 10, y: 1, z: 4, mount: 'mast', pole: 'tube', poleH: 5 }, { x: 20, y: 0, z: 4, mount: 'wire', wire: { pts: [] } }],
     cars: [{ x: 30, y: 0.3, z: 40, yaw: Math.PI / 2, body: 'estate' }],
     bollards: [{ x: 50, y: 0, z: 50 }], benches: [], bins: [], glass: [], meters: [], stands: [], hoops: [], bikes: [], freeBikes: []
   };
@@ -92,6 +92,11 @@ test('furniture colliders use placed coordinates, solid trunks, thin poles, and 
     carSpecs: { estate: { width: 1.9, length: 4.8, height: 1.6 } }
   });
   assert.equal(colliders.length, 4, 'wire mounted luminaires do not invent a street-level pole');
+  // a wire lamp without wire geometry is drawn on a tube pole (js/street-furniture-cph.js): that pole is solid
+  const bracket = buildStaticColliders({}, { furniturePlan: { ...furniturePlan, lamps: [{ x: 20, y: 0, z: 4, mount: 'wire', wire: null, bracket: true }], cars: [], bollards: [], trees: [] } });
+  assert.equal(bracket.length, 1);
+  assert.equal(bracket[0].type, 'lamp');
+  assert.equal(bracket[0].maxY, 6.2);
   const tree = colliders.find((item) => item.type === 'tree');
   assert.ok(tree.maxX - tree.minX < 1.1, 'tree crown spread is not used as a solid footprint');
   assert.equal(tree.shape, 'circle');

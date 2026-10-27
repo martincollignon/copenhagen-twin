@@ -735,6 +735,7 @@ function buildRoadNetwork(signalIntersections = [], options = {}) {
   return {
     nodes, edges, paintEdges, connector, curvePoint, stats,
     extraOffset: options.extraOffset || null,
+    obstruction: options.obstruction || null,
     walkable: options.walkable,
     onSidewalk: options.onSidewalk,
     isRoadClear: () => true
@@ -1006,4 +1007,34 @@ function curvePoint(c, s, out) {
   return out;
 }
 
-export { buildRoadNetwork, CROSSWALK, cphCentrelines };
+/**
+ * The road graph without the service links whose driven strip runs through a building: a gateway, a covered yard lane or a passage
+ * narrower than its lanes, which the footprints close
+ * (the twin draws the building solid there), so a vehicle on it would stand in the walls and its collision body would push against
+ * them forever. `inBuilding(x, z)` is js/walk-space-cph.js's footprint test. Streets of the other classes are kept as they are.
+ */
+function dropCoveredServiceLinks(rg, inBuilding) {
+  if (!rg || typeof inBuilding !== 'function') return rg;
+  const service = rg.classes.indexOf('service');
+  if (service < 0) return rg;
+  // the strip a car sweeps on the link: a one-way lane is centred (0.95 m half car + 0.1), two-way lanes sit 1.5 m either side
+  const through = (l) => {
+    const ax = rg.nodes[2 * l[0]], az = rg.nodes[2 * l[0] + 1], bx = rg.nodes[2 * l[1]], bz = rg.nodes[2 * l[1] + 1];
+    const len = Math.hypot(bx - ax, bz - az);
+    if (!(len > 0)) return false;
+    const half = l[2] > 0 && l[3] > 0 ? CPH_LANE / 2 + 1.05 : 1.05;
+    const rx = -(bz - az) / len, rz = (bx - ax) / len;
+    let run = 0;
+    for (let s = 0; s <= len; s += 0.5) {
+      const x = ax + (bx - ax) * s / len, z = az + (bz - az) * s / len;
+      const walled = inBuilding(x, z) || inBuilding(x + rx * half, z + rz * half) || inBuilding(x - rx * half, z - rz * half);
+      run = walled ? run + 0.5 : 0;
+      if (run >= 1) return true;
+    }
+    return false;
+  };
+  const links = rg.links.filter((l) => l[7] !== service || !through(l));
+  return links.length === rg.links.length ? rg : { ...rg, links };
+}
+
+export { buildRoadNetwork, CROSSWALK, cphCentrelines, dropCoveredServiceLinks };

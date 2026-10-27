@@ -1,7 +1,9 @@
 {
   "maxBytes": 50331648,
-  "maxResidentAtlases": 56,
+  "maxResidentAtlases": 224,
   "sampleEveryMetres": 35,
+  "cameraHeight": 12,
+  "aerialHeight": 420,
   "cameraRoute": [
     [-600, 600],
     [-420, 380],

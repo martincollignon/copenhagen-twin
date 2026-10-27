@@ -108,7 +108,9 @@ function createPedestrianSystem(initialNetwork, { player, nearEdges, nearSignals
   }
 
   // Who is at (or just past) the curbs of each intersection's crosswalks, for whoever comes up behind to queue
-  const QUEUE_GAP = 0.62; // m from one person standing in a queue to the next
+  // m from one person standing in a queue to the next: the two collision bodies (js/traffic.js, 0.31 m each) plus a few cm, so a
+  // queue stands close without its people touching (and the shared contact pass pushing them apart every frame)
+  const QUEUE_GAP = 0.66;
   const curbNodes = [];
   const curbProgress = (p) => (p.dir > 0 ? p.t : p.len - p.t); // m along its way over (the curb it waits at is KERB)
   function atCurb(p) {
@@ -294,6 +296,63 @@ function createPedestrianSystem(initialNetwork, { player, nearEdges, nearSignals
     p.socialTime = Math.max(p.socialTime, clock + 5);
   }
 
+  // People on the same walking line (a sidewalk track): who walks behind whom, and who meets whom head-on. Built per frame.
+  const FOLLOW_GAP = 0.8; // m kept behind someone slower (or standing) on the same line
+  const PASS_LOOK = 3; // m ahead a head-on meeting starts a sidestep
+  const PASS_SIDE = 0.36; // m each of two people meeting head-on steps right (the bodies need 0.62 m between them)
+  const PASS_STANDING = 0.7; // m to the right to walk round someone standing on the line
+  const PASS_RATE = 0.9; // m/s of sideways step
+  const RELAX_RATE = 0.3; // m/s a person drifts back onto the line after a push or a pass
+  const onLine = new Map(); // track -> pedestrians on it
+  const linePool = [];
+  function gatherLines() {
+    for (const list of onLine.values()) { list.length = 0; linePool.push(list); }
+    onLine.clear();
+    for (const p of peds) {
+      if (!p.placed || p.node || !p.route) continue;
+      let list = onLine.get(p.route);
+      if (!list) onLine.set(p.route, (list = linePool.pop() || []));
+      list.push(p);
+    }
+  }
+  /** The room p has on its line behind someone slower ahead (Infinity when nobody), and how far right to step to pass someone. */
+  const lineAhead = { room: Infinity, side: 0, standing: Infinity };
+  function scanLine(p) {
+    lineAhead.room = Infinity;
+    lineAhead.side = 0;
+    lineAhead.standing = Infinity;
+    const list = !p.node && p.route ? onLine.get(p.route) : null;
+    if (!list) return lineAhead;
+    for (const q of list) {
+      if (q === p) continue;
+      const forward = (q.t - p.t) * p.dir;
+      if (forward <= 0 || forward > PASS_LOOK + FOLLOW_GAP) continue;
+      if (forward > PASS_LOOK) { if (q.dir === p.dir && q.v > 0.05 && q.v < p.v) lineAhead.room = Math.min(lineAhead.room, forward - FOLLOW_GAP); continue; }
+      if (q.v <= 0.05) { // resting, turning or talking: walk round (or wait behind when there is no way round)
+        lineAhead.side = Math.max(lineAhead.side, PASS_STANDING);
+        lineAhead.standing = Math.min(lineAhead.standing, Math.max(0, forward - FOLLOW_GAP));
+      }
+      else if (q.dir !== p.dir) lineAhead.side = Math.max(lineAhead.side, PASS_SIDE); // coming the other way: both keep right
+      else if (q.v < p.v + 0.05) lineAhead.room = Math.min(lineAhead.room, Math.max(0, forward - FOLLOW_GAP)); // slower: follow
+    }
+    return lineAhead;
+  }
+  /** Sidestep to the right of the line for a head-on meeting; otherwise ease the contact offset back onto the line. */
+  function steerOffset(p, dt, side) {
+    if (side > 0) {
+      const rx = p.uz * p.dir, rz = -p.ux * p.dir;
+      const lateral = p.contactX * rx + p.contactZ * rz;
+      const step = Math.min(PASS_RATE * dt, side - lateral);
+      if (step > 0) { p.contactX += rx * step; p.contactZ += rz * step; }
+      return;
+    }
+    const size = Math.hypot(p.contactX, p.contactZ);
+    if (size <= 0 || p.v <= 0.05) return;
+    const keep = Math.max(0, size - RELAX_RATE * dt) / size;
+    p.contactX *= keep;
+    p.contactZ *= keep;
+  }
+
   const walkedNodes = [];
   function walk(p, dt) {
     const avoiding = clock < p.avoidUntil;
@@ -367,6 +426,14 @@ function createPedestrianSystem(initialNetwork, { player, nearEdges, nearSignals
       }
     }
     if (avoiding) room = Math.min(room, Math.max(0, (p.avoidT - p.t) * p.dir));
+    const line = scanLine(p);
+    room = Math.min(room, line.room);
+    // a solid pushed this person in the last second (js/traffic.js counts its static contacts): no sidestep into it and no drifting
+    // back into it; wait behind someone standing instead of walking round
+    if (p.staticContacts !== p.seenStaticContacts) { p.seenStaticContacts = p.staticContacts; p.blockedUntil = clock + 1; }
+    const blocked = clock < (p.blockedUntil || 0);
+    if (blocked) room = Math.min(room, line.standing);
+    else steerOffset(p, dt, p.v > 0.05 ? line.side : 0);
     vMax = Math.min(vMax, Math.sqrt(2 * brake * room));
     p.v += clamp(vMax - p.v, -(avoiding ? brake : 2 * brake) * dt, (avoiding ? PED_ESCAPE_ACCEL : PED_ACCEL) * dt);
     const movement = Math.min(p.v * dt, room);
@@ -497,6 +564,7 @@ function createPedestrianSystem(initialNetwork, { player, nearEdges, nearSignals
     for (const p of peds) if (p.placed) avoidPlayer(p);
     meet(dt);
     gatherCurbs();
+    gatherLines();
     for (let i = 0; i < NUM_PEDS; i++) {
       const p = peds[i];
       if (!p.placed) continue;
