@@ -30,7 +30,7 @@ jobs:
           # Citywide data (tiles, city, facade atlases) lives on Cloudflare R2, not in the Pages artifact (1 GB limit).
           # Override with the repository variable CPH_DATA_URL; bump the vN segment after republishing the data
           # (tools/hosting/upload_r2.py --version vN).
-          CPH_DATA_URL: ${{ vars.CPH_DATA_URL || 'https://pub-74be4ee48611455badf5e844894d286f.r2.dev/v1' }}
+          CPH_DATA_URL: ${{ vars.CPH_DATA_URL || 'https://pub-74be4ee48611455badf5e844894d286f.r2.dev/v2' }}
         run: |
           set -euo pipefail
           mkdir -p _site
