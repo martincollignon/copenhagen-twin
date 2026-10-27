@@ -16,6 +16,9 @@ hundred content-hashed files (measured on boot + Rådhuspladsen + Nyhavn + Frede
                          --groups single puts every layer in t/
     a/<hash>.pack        a tile's facade atlases, ordered by a quadtree over the building centroids and cut into chunks of at most
                          --chunk bytes (one chunk = one HTTP Range request; a host without Range serves the whole file, at most ~6 MB)
+    x/<hash>.pack        a tile's detail-override meshes (GLB), chunked like the atlases (--override-chunk); the tile's `overrides` layer
+                         (a near-ring layer, so in its detail pack) names them. Sources: --overrides DIR (default: every set under
+                         ~/.local/share/cph-twin/overrides, docs/detail-overrides.md); --no-overrides leaves them out
 
 Container: "CPHPACK1", u32 LE header length, JSON header { format: 'cph-pack/1', entries: [{ name, type, enc, offset, length, size }],
 chunks? }, payloads. JSON and binary entries are gzip'd inside the pack (the host need not set Content-Encoding), webp is stored.
@@ -29,6 +32,8 @@ upload_r2.py). GCS is read over REST with an ADC token (`gcloud auth application
 import argparse, base64, concurrent.futures as cf, gzip, hashlib, json, os, re, subprocess, sys, threading, time, urllib.parse, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(ROOT, 'tools/overrides'))
+import publish as overrides_publish  # noqa: E402
 GCS_BUCKET, GCS_PREFIX = 'lun-integrations-dev-cph-twin', 'skraafoto/tex-look/'
 MAGIC = b'CPHPACK1'
 PACK_FORMAT, MANIFEST_FORMAT = 'cph-pack/1', 'cph-packs/1'
@@ -292,15 +297,31 @@ def main():
     ap.add_argument('--tiles', default='', help='comma separated tile ids (default: every tile of the index)')
     ap.add_argument('--workers', type=int, default=os.cpu_count() or 8)
     ap.add_argument('--fallback', default=None, help='base-relative unpacked tile directory the client may fall back to (e.g. tiles)')
+    ap.add_argument('--overrides', action='append', default=None, help='a detail-override source set directory (repeatable; default: every set under ~/.local/share/cph-twin/overrides)')
+    ap.add_argument('--no-overrides', action='store_true', help='publish no detail overrides')
+    ap.add_argument('--override-chunk', type=int, default=2 << 20, help='override mesh chunk cap in bytes (one Range request each)')
     a = ap.parse_args()
     t0 = time.time()
     out = a.out or os.path.join(ROOT, '.context/packs', time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()))
     os.makedirs(out, exist_ok=True)
     tiles_dir, city_dir = os.path.join(a.data, 'tiles'), os.path.join(a.data, 'city')
     index = json.load(open(os.path.join(tiles_dir, 'index.json')))
+    for t in index['tiles'].values():  # a local install (tools/overrides/publish.py) is not a source here: the sets are
+        t.get('layers', {}).pop('overrides', None)
     post_p = os.path.join(city_dir, 'post.json')
     post = json.load(open(post_p)) if os.path.exists(post_p) else None
     tids = sorted(a.tiles.split(',')) if a.tiles else sorted(index['tiles'])
+
+    # detail overrides: per tile the `overrides` layer (JSON, written into the patched index) and its mesh pack
+    ov_dirs = [] if a.no_overrides else ([os.path.expanduser(d) for d in a.overrides] if a.overrides else [str(d) for d in overrides_publish.default_sets()])
+    ov_payloads, ov_sets = {}, []
+    if ov_dirs:
+        ob, oattr, ov_sets = overrides_publish.load_sets(ov_dirs, log=log)
+        errs = overrides_publish.check(ob)
+        if errs:
+            raise SystemExit('override sets have problems:\n' + '\n'.join(errs[:20]))
+        ov_payloads = {t: v for t, v in overrides_publish.tile_payloads(ob, oattr, generated=index.get('generated')).items() if t in index['tiles']}
+        log(f'overrides: {len(ob)} buildings from {[s["name"] for s in ov_sets]} on {len(ov_payloads)} tiles')
     rings = ring_layers()
     core = list(dict.fromkeys(rings['mid'] + ['lod2.bin']))
     detail = [l for l in rings['near'] if l not in core]
@@ -317,7 +338,7 @@ def main():
             for k in keys:
                 if isinstance(post.get(sec, {}).get(k), str):
                     city_names.append(post[sec][k])
-    city_files = [('tiles/index.json', 'json', open(os.path.join(tiles_dir, 'index.json'), 'rb').read(), True)]
+    city_files = [('tiles/index.json', 'json', None, True)]  # the index goes in last (the override layers patch it below)
     for n in dict.fromkeys(city_names):
         p = os.path.join(city_dir, n)
         if os.path.exists(p):
@@ -325,11 +346,6 @@ def main():
         else:
             log(f'warning: data/city/{n} is named by the index but missing locally')
     files_map = {}
-    body, _ = encode_pack(city_files)
-    cname = w.put('c', body)
-    for f in city_files:
-        files_map[f[0]] = cname
-    log(f'city pack {cname}: {len(city_files)} files, {len(body) / 1e6:.1f} MB')
     streets = index.get('city', {}).get('streets')
     if streets and os.path.exists(os.path.join(city_dir, os.path.basename(streets))):
         body, _ = encode_pack([(f'city/{os.path.basename(streets)}', 'json', open(os.path.join(city_dir, os.path.basename(streets)), 'rb').read(), True)])
@@ -345,7 +361,7 @@ def main():
                 wanted |= {bid.replace(':', '_') + '.webp' for bid, b in json.load(open(p))['buildings'].items() if b.get('atlas')}
         atlases = AtlasSource(a.atlas_cache, wanted, offline=a.offline)
 
-    tiles_out = {tid: [None] * (len(groups) + 1) for tid in tids}
+    tiles_out = {tid: [None] * (len(groups) + 2) for tid in tids}  # groups..., atlas pack, override mesh pack
     unknown, missing_total, atlas_idx = set(), [0], {}
     lock = threading.Lock()
 
@@ -362,6 +378,31 @@ def main():
             list(ex.map(atlas, tids))
         log(f'  atlas packs: {len(atlas_idx)} tiles ({w.bytes / 1e6:.0f} MB so far)')
 
+    # 1b. override mesh packs, one per tile, and the tile's `overrides` layer (with the pack's index) into the index
+    ov_layer = {}
+    for tid in tids:
+        if tid not in ov_payloads:
+            continue
+        payload, meshes = ov_payloads[tid]
+        b = index['tiles'][tid]['local']
+        items = [(c[0], c[1], len(data), (rel, data)) for rel, data, c in meshes]
+        chunks = quadtree_chunks(items, b, a.override_chunk)
+        files, spans = [], []
+        for c in chunks:
+            spans.append((len(files), len(c)))
+            files += [(rel, 'bin', data, True) for _, _, _, (rel, data) in c]
+        body, header = encode_pack(files, spans)
+        name = w.put('x', body)
+        tiles_out[tid][len(groups) + 1] = name
+        pack = {'file': name, 'size': len(body), 'chunks': header['chunks'], 'entries': {}}
+        for ci, (s0, n) in enumerate(spans):
+            for e in header['entries'][s0:s0 + n]:
+                pack['entries'][e['name']] = [ci, e['offset'], e['length'], e['enc'], e['size']]
+        ov_layer[tid] = json.dumps({**payload, 'pack': pack}, separators=(',', ':'), ensure_ascii=False).encode()
+        index['tiles'][tid].setdefault('layers', {})['overrides'] = len(ov_layer[tid])
+    if ov_layer:
+        log(f'  override packs: {len(ov_layer)} tiles ({w.bytes / 1e6:.0f} MB so far)')
+
     # 2. layer packs per group, one per block of N x N tiles (--core-block / --detail-block): entries '<tile>/<layer>'
     def tile_entries(tid, g, gi):
         tdir = os.path.join(tiles_dir, tid)
@@ -371,6 +412,9 @@ def main():
         fs = []
         for n in g['layers']:
             if n not in names:
+                continue
+            if n == 'overrides':
+                fs.append((f'{tid}/{n}', 'json', ov_layer[tid], True))
                 continue
             fn = n if n.endswith('.bin') else f'{n}.json'
             p = os.path.join(tdir, fn)
@@ -410,6 +454,15 @@ def main():
     for row in tiles_out.values():
         while row and row[-1] is None:
             row.pop()
+    # the city pack: the index as the tiles are packed (with the `overrides` layer sizes) and the city files
+    raw_index = open(os.path.join(tiles_dir, 'index.json'), 'rb').read()
+    index_bytes = raw_index if not ov_layer else json.dumps(index, separators=(',', ':')).encode()
+    city_files[0] = ('tiles/index.json', 'json', index_bytes, True)
+    body, _ = encode_pack(city_files)
+    cname = w.put('c', body)
+    for f in city_files:
+        files_map[f[0]] = cname
+    log(f'city pack {cname}: {len(city_files)} files, {len(body) / 1e6:.1f} MB')
     if unknown:
         raise SystemExit(f'layers in no group (add them to js/tile-rings.js RING_LAYERS): {sorted(unknown)}')
 
@@ -419,6 +472,8 @@ def main():
         'source': {'tiles': index.get('generated'), 'post': (post or {}).get('generated'), 'version': index.get('version')},
         'groups': groups,
         'atlasIndex': 'atlas.index',
+        'overrides': {'format': 'cph-detail/1', 'sets': [{k: v for k, v in st.items() if k != 'dir'} for st in ov_sets], 'tiles': sorted(ov_layer),
+                      'meshSlot': len(groups) + 1} if ov_layer else None,
         'files': files_map,
         'tiles': tiles_out,
     }

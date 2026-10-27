@@ -236,6 +236,7 @@ export function createPackClient({ base, fetchImpl = globalThis.fetch, cacheByte
  */
 export function createAtlasSource({ base, fetchImpl = globalThis.fetch, cacheBytes = 48 * 1024 * 1024, stats = packStats, range = true } = {}) {
   const atlases = new Map(); // stem -> { file, chunk, offset, length }
+  const named = new Map(); // base-relative path -> { file, chunk, offset, length, enc, size } (the override meshes: js/detail-overrides.js)
   const files = new Map(); // file -> { size, chunks }
   const lru = createLru(cacheBytes);
   const shared = createShared();
@@ -294,13 +295,33 @@ export function createAtlasSource({ base, fetchImpl = globalThis.fetch, cacheByt
   return {
     get rangeOk() { return rangeOk; },
     lru,
+    /**
+     * A chunked pack's index: { file, size, chunks, atlases?: { stem: [chunk, offset, length] }, entries?: { path: [chunk, offset, length, enc, size] } }.
+     * `atlases` are facade atlases (blob() by file name), `entries` any other file by its base-relative path (bytes(); gzip'd ones inflated).
+     */
     register(index) {
-      if (!index?.file || !index.atlases) return;
+      if (!index?.file || !(index.atlases || index.entries)) return;
       files.set(index.file, { size: index.size, chunks: index.chunks || [[0, index.size]] });
-      for (const [stem, [c, offset, length]] of Object.entries(index.atlases)) atlases.set(stem, { file: index.file, chunk: c, offset, length });
+      for (const [stem, [c, offset, length]] of Object.entries(index.atlases || {})) atlases.set(stem, { file: index.file, chunk: c, offset, length });
+      for (const [path, [c, offset, length, enc, size]] of Object.entries(index.entries || {})) named.set(path, { file: index.file, chunk: c, offset, length, enc, size });
     },
     has: (rel) => atlases.has(stemOf(rel)),
+    hasFile: (path) => named.has(String(path).replace(/^\/+/, '')),
     get count() { return atlases.size; },
+    /** A registered file's decoded bytes (one Range request per chunk, shared and cached like the atlases); a file not registered is a 404. */
+    async bytes(path, signal) {
+      const a = named.get(String(path).replace(/^\/+/, ''));
+      if (!a) throw httpError(404, path);
+      const { bytes, start } = await chunk(a.file, a.chunk, signal);
+      const from = a.offset - start;
+      if (from < 0 || from + a.length > bytes.byteLength) throw corruptError(path);
+      const raw = bytes.subarray(from, from + a.length);
+      if (a.enc !== 'gzip') return raw.slice();
+      let out;
+      try { out = await gunzip(raw); } catch { throw corruptError(path); }
+      if (a.size !== undefined && out.byteLength !== a.size) throw corruptError(path);
+      return out;
+    },
     /** The atlas as a Blob; a file the packs do not hold is a 404 (no request is made). */
     async blob(rel, signal) {
       const a = atlases.get(stemOf(rel));

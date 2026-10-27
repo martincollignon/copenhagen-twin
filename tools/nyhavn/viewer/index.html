@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="A source-linked, photo-textured reconstruction of Nyhavn with Roofer geometry, rectified facades and mapped canal context.">
+  <link rel="icon" href="data:,">
+  <title>Nyhavn — photo-textured model v2</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="importmap">
+    {"imports":{"three":"./vendor/three.module.js"}}
+  </script>
+  <script type="module" src="./main.js"></script>
+</head>
+<body>
+  <div class="application">
+    <header class="topbar">
+      <div class="title-block">
+        <p class="location">Copenhagen · Denmark</p>
+        <h1>Nyhavn · photo reconstruction</h1>
+      </div>
+      <div class="mode-switch" role="tablist" aria-label="View mode">
+        <button id="scene-mode" class="mode-button is-active" role="tab" aria-selected="true">3D model</button>
+        <button id="photo-mode" class="mode-button" role="tab" aria-selected="false">Photo alignment</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section id="scene-panel" class="scene-panel" aria-label="Orbitable 3D model">
+        <canvas id="model-canvas" aria-label="Interactive 3D Nyhavn model"></canvas>
+        <div class="scene-tag">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span id="scene-status">Loading source geometry…</span>
+        </div>
+        <div class="scene-controls">
+          <label class="preset-control" for="camera-preset">
+            <span>View</span>
+            <select id="camera-preset" aria-label="Camera preset"></select>
+          </label>
+          <label class="toggle">
+            <input id="show-inferred" type="checkbox" checked>
+            <span class="toggle-mark" aria-hidden="true"></span>
+            <span>Inferred shell</span>
+          </label>
+          <label class="toggle">
+            <input id="show-facade-photos" type="checkbox" checked>
+            <span class="toggle-mark" aria-hidden="true"></span>
+            <span>Facade photos</span>
+          </label>
+          <button id="reset-camera" class="quiet-button" type="button">Reset</button>
+        </div>
+      </section>
+
+      <section id="photo-panel" class="photo-panel" aria-label="Calibrated Skråfoto comparison" hidden>
+        <div class="photo-toolbar">
+          <div class="field-group">
+            <label for="camera-select">Camera record</label>
+            <select id="camera-select"></select>
+          </div>
+          <label class="opacity-control" for="overlay-opacity">
+            <span>Overlay</span>
+            <input id="overlay-opacity" type="range" min="15" max="100" value="90">
+          </label>
+          <label class="toggle photo-inferred-toggle">
+            <input id="show-inferred-photo" type="checkbox" checked>
+            <span class="toggle-mark" aria-hidden="true"></span>
+            <span>Inferred shell</span>
+          </label>
+          <label class="toggle edge-toggle">
+            <input id="edge-only" type="checkbox" checked>
+            <span class="toggle-mark" aria-hidden="true"></span>
+            <span>Edges only</span>
+          </label>
+        </div>
+        <div class="photo-stage">
+          <img id="source-image" alt="Cropped calibrated Skråfoto view of Nyhavn">
+          <canvas id="projection-canvas" aria-label="Model outline projected into the selected calibrated camera image"></canvas>
+          <div id="photo-empty" class="photo-empty" hidden>Choose a camera record to show the photo crop.</div>
+        </div>
+        <div class="photo-caption">
+          <div>
+            <strong id="photo-label">Calibrated camera crop</strong>
+            <span id="photo-detail">The model lines use the delivered camera record and crop offsets.</span>
+          </div>
+          <details class="camera-record">
+            <summary>Camera details</summary>
+            <pre id="camera-json"></pre>
+          </details>
+        </div>
+      </section>
+
+      <aside class="side-panel">
+        <div class="summary">
+          <p class="section-label">Reconstruction</p>
+          <div class="stat-line"><strong id="building-count">—</strong><span>building envelopes</span></div>
+          <div class="stat-line"><strong id="fit-count">—</strong><span>Roofer fits · inferred shells</span></div>
+          <div class="stat-line"><strong id="roof-count">—</strong><span>Roofer roof triangles</span></div>
+          <div class="stat-line"><strong id="facade-count">—</strong><span>photo · modeled · unavailable fronts</span></div>
+          <div class="stat-line"><strong id="detail-count">—</strong><span>openings · dormers · chimneys · signs</span></div>
+          <div class="stat-line"><strong id="area-value">—</strong><span>footprint area</span></div>
+        </div>
+
+        <div class="selection" aria-live="polite">
+          <p class="section-label">Selected surface</p>
+          <h2 id="selection-name">Nothing selected</h2>
+          <p id="selection-address" class="selection-address">Move over a facade or roof to inspect its source and confidence.</p>
+          <dl id="selection-meta" class="metadata"></dl>
+        </div>
+
+        <div class="legend">
+          <p class="section-label">Source confidence</p>
+          <div class="legend-row"><span class="swatch observed"></span><span>Roofer fit / calibrated camera evidence</span></div>
+          <div class="legend-row"><span class="swatch inferred"></span><span>Inferred dimensions and context</span></div>
+          <div class="legend-row"><span class="swatch photo"></span><span>Street or aerial photo appearance</span></div>
+        </div>
+        <div class="source-note">
+          <p class="section-label">Evidence used</p>
+          <p>Roofer roof/wall surfaces fitted to 2019 DHM point clouds · KK footprints · calibrated 2025 Skråfoto · licensed 2018 and 2022 street references · OSM water boundary.</p>
+          <p class="limitation">Photo sampling density is not position accuracy; Roofer fits are not tied to survey control. Five hero front walls use photo-traced openings, reveals, cornices and storefront details with inferred dimensions; remaining usable edges keep source photo appearance. Red 11 uses subtle inferred brick coursing. Five hero roofs use a source-sampled clay tile material and photo-traced dormers or chimneys. Red 11 has a localized inferred source-vertex roof correction. Quay profiles and paving appearance are inferred from mapped shoreline and nearby terrain. Nineteen fallback envelopes retain flat inferred roof caps where no accepted Roofer mesh was available.</p>
+          <p class="credit">Street references: Jenny Andersson / News Øresund, 2022, CC BY 2.0; Liberaler Humanist, 2018, CC BY-SA 3.0. Source records: <code>sources/street-reference/sources.json</code>. OSM © OpenStreetMap contributors, ODbL.</p>
+        </div>
+      </aside>
+    </main>
+    <footer class="footer">
+      <span>Roofer mesh · local ENU · EPSG:25832 / DVR90</span>
+      <span>Photo textures embedded in GLB · sources remain local</span>
+    </footer>
+  </div>
+</body>
+</html>

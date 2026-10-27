@@ -70,7 +70,7 @@ def kind(url):
     head = rel.split('/')[0]
     if rel == 'manifest.json':
         return 'manifest'
-    if head in ('c', 't', 'd', 'a'):
+    if head in ('c', 't', 'd', 'a', 'x'):
         return f'pack-{head}'
     if head == 'tiles':
         return 'tiles/index' if rel.endswith('index.json') else 'tiles/layer'

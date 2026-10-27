@@ -197,6 +197,17 @@ A pack is `CPHPACK1`, a u32 header length, a JSON header (entry name, type, enco
 
 **Bucket setup** (done, personal account, wrangler with `XDG_CONFIG_HOME=~/.config/wrangler-personal`): `wrangler r2 bucket create cph-twin-data`, `wrangler r2 bucket dev-url enable cph-twin-data`, `wrangler r2 bucket cors set cph-twin-data --file tools/hosting/cors.json` (GET/HEAD from https://martincollignon.github.io and localhost:8000/8080/3000/5173). The old unpacked layout on the previous account (`.../v3`, `tools/hosting/upload_r2.py` through the ingest Worker) still works with `?data=` but is no longer the default.
 
+## Detail overrides
+
+Hand-guided or semi-automatic building reconstructions can take the place of generated buildings in the live twin. Nyhavn is the first: the five photo-traced fronts and roofs of Nyhavn 9–17, with their openings, roof windows and chimneys (`tools/nyhavn`, PR #15). The other 92 Roofer-fitted Nyhavn buildings convert too (`--select all`), but they are not published: there, the generated building with the same Roofer roof and the same Skråfoto source is at least as good. The format (`cph-detail/1`: per-tile layer, compact GLBs, parametric openings, cornices, dormers and chimneys), the mapping to GeoDanmark ids, the engine rules and the licences are in [docs/detail-overrides.md](docs/detail-overrides.md). The near ring draws the overrides. Mid and far keep the generated building with its measured tones. `?overrides=0` switches them off.
+
+```sh
+python3 tools/overrides/nyhavn.py                 # PR #15's model-v2 + detail-v3 -> ~/.local/share/cph-twin/overrides/nyhavn
+python3 tools/overrides/publish.py install        # into the local unpacked ./data (uninstall to remove)
+python3 tools/hosting/build_packs.py --offline    # packs every set under ~/.local/share/cph-twin/overrides (--no-overrides to skip)
+uv run --with playwright --with pillow python tools/shoot-overrides.py --data <base>   # Nyhavn before / after, fps, memory
+```
+
 ## Licence and attributions
 
 The project code is available under the [MIT License](LICENSE).
@@ -208,6 +219,7 @@ The data bundle `data/cph-geodata.json` is a derived database and carries the li
 - © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), available under the Open Database License (ODbL). The OSM-derived parts of the bundle, and anything derived from them, stay under the ODbL (attribution, share-alike).
 - Indeholder data fra Klimadatastyrelsen / GeoDanmark (Bygning), BBR og Københavns Kommune (kbhkort, CC BY 4.0 / Open Data DK licens).
 - Facade photos use Skråfoto 2023 and 2025 from Styrelsen for Dataforsyning og Infrastruktur (retrieved October 2026); the processed atlases are derived from those photos. [Terms for free geographic data](https://dataforsyningen.dk/asset/PDF/rettigheder_vilkaar/Vilk%C3%A5r%20for%20frie%20geografiske%20data%20og%20CC%20BY%204_0%20licens.pdf).
+- Nyhavn detail models (`overrides/nyhavn`, docs/detail-overrides.md): roofs and walls fitted with Roofer to DHM Punktsky 2019, and roof and facade photos from Skråfoto 2025 (Indeholder data fra Klimadatastyrelsen / Styrelsen for Dataforsyning og Infrastruktur). Footprints are GeoDanmark Bygning. The openings, roof windows, chimneys and colours of Nyhavn 9–17 are traced from [a 2022 photo by Jenny Andersson / News Øresund](https://commons.wikimedia.org/wiki/File:Nyhavn_9-17_(Copenhagen)_01.jpg) (CC BY 2.0). Dimensions were measured on [a 2018 photo by Liberaler Humanist](https://commons.wikimedia.org/wiki/File:Nyhavn_9,11,13,15_and_17_with_boats,_K%C3%B8benhavn.jpg) (CC BY-SA 3.0), used as a reference only: none of its pixels are published.
 - Københavns Kommune open data: trae_basis, cykelsti, cykelstativ, trafiksignal_oversigt, fortovsmatrikel, parkregister, and for `data/cph-surfaces.json` dp_belaegninger, afmaerkning_total, blaa_cykelfelt (plus OSM squares, ODbL).
 
 The map and facade sources are credited in the loading screen and their data files. Third-party data and dependencies retain their respective licences.
