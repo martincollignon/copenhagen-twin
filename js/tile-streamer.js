@@ -75,12 +75,16 @@ export function createTileStreamer({ store, data, layers, cfg, interval = 200, o
   const ready = (id) => missingFor(id, wanted.get(id).ring).length === 0;
 
   // ---------------------------------------------------------------------------------------------------- fetching
+  // the request a layer is served by: one per layer unpacked, one per pack (several layers) packed (js/data-packs.js)
+  const requestKey = (id, name) => (store.requestKey ? store.requestKey(id, name) : `${id}/${name}`);
+  const inflightRequests = () => new Set([...fetching.values()].map((f) => f.request));
+
   function startFetch(id, name) {
     const key = `${id}/${name}`;
-    if (fetching.has(key)) return;
-    if (!store.hasLayer(id, name)) { data.setLayer(id, name, null); return; } // the tile has no such layer: settled
+    if (fetching.has(key)) return false;
+    if (!store.hasLayer(id, name)) { data.setLayer(id, name, null); return false; } // the tile has no such layer: settled
     const controller = new AbortController();
-    fetching.set(key, { id, layer: name, controller });
+    fetching.set(key, { id, layer: name, controller, request: requestKey(id, name) });
     store.fetchLayer(id, name, controller.signal).then((payload) => {
       fetching.delete(key);
       if (controller.signal.aborted) return;
@@ -97,10 +101,12 @@ export function createTileStreamer({ store, data, layers, cfg, interval = 200, o
       onError(error);
       pump();
     });
+    return true;
   }
 
   function fetchMissing() {
-    if (fetching.size >= cfg.maxConcurrent) return;
+    const requests = inflightRequests();
+    if (requests.size >= cfg.maxConcurrent) return;
     // nearest tiles first, the near ring before the mid ring; context layers inherit the priority of the tile that needs them
     const want = [];
     const seen = new Set();
@@ -116,9 +122,11 @@ export function createTileStreamer({ store, data, layers, cfg, interval = 200, o
       for (const n of neighbourIds(id, exists)) for (const name of CONTEXT_LAYERS[w.ring]) add(n, name, w);
     }
     want.sort((a, b) => a.rank - b.rank);
+    // at most cfg.maxConcurrent requests in flight; a layer whose request is already running (another layer of the same pack) joins it
     for (const { id, name } of want) {
-      if (fetching.size >= cfg.maxConcurrent) break;
-      startFetch(id, name);
+      const request = requestKey(id, name);
+      if (!requests.has(request) && requests.size >= cfg.maxConcurrent) continue;
+      if (startFetch(id, name)) requests.add(request);
     }
   }
 

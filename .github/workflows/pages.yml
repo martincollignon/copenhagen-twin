@@ -27,16 +27,16 @@ jobs:
         uses: actions/configure-pages@v5
       - name: Stage site files
         env:
-          # Citywide data (tiles, city, facade atlases) lives on Cloudflare R2, not in the Pages artifact (1 GB limit).
-          # Override with the repository variable CPH_DATA_URL; bump the vN segment after republishing the data
-          # (tools/hosting/upload_r2.py --version vN).
-          CPH_DATA_URL: ${{ vars.CPH_DATA_URL || 'https://pub-74be4ee48611455badf5e844894d286f.r2.dev/v3' }}
+          # Citywide data (tiles, city, facade atlases) lives on Cloudflare R2, not in the Pages artifact (1 GB limit), packed
+          # (tools/hosting/build_packs.py, upload_packs.py): manifest.json (no-cache) + content-hashed packs, so republishing only
+          # replaces the manifest and no version prefix is needed. Override with the repository variable CPH_DATA_URL.
+          CPH_DATA_URL: ${{ vars.CPH_DATA_URL || 'https://pub-d3c994d177d048d5b64ecfc3df496b48.r2.dev' }}
         run: |
           set -euo pipefail
           mkdir -p _site/data
           cp index.html _site/
           cp -R css js _site/
-          # The citywide boot reads everything through js/data-config.js (R2). The monolithic district files under ./data
+          # The citywide boot reads everything through js/data-config.js (R2, packed). The monolithic district files under ./data
           # are what the engine falls back to when the tile index is unreachable (or ?debug=notiles): keep publishing the
           # tracked JSON documents and the district LoD2 roofs (small). The facade atlases (data/tex-look) come from R2.
           cp data/*.json _site/data/

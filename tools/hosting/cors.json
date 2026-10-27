@@ -14,7 +14,7 @@
         "methods": ["GET", "HEAD"],
         "headers": ["*"]
       },
-      "exposeHeaders": ["Content-Length", "Content-Type", "ETag"],
+      "exposeHeaders": ["Content-Length", "Content-Type", "ETag", "Content-Range", "Accept-Ranges"],
       "maxAgeSeconds": 86400
     }
   ]
