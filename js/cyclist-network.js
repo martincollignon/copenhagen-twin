@@ -15,7 +15,7 @@
 // stop at red at signalised junctions and use the early green of signal-plan.js.
 
 import { bikePhase } from './signal-plan.js';
-import { carriagewayWidth, cycleStrips, slicePts } from './road-width-cph.js';
+import { carriagewayWidth, cycleStrips, movingHalfWidth, slicePts } from './road-width-cph.js';
 import { bikeBanned, bikeCarriageway, hasContraflow, stripCoverage, stripDirection } from './bike-direction.js';
 
 export const CYCLE_STRIP = { kerb: 0.18, width: 2.2 };
@@ -24,6 +24,7 @@ const SNAP = 5; // lane ends within this many metres share a junction
 const SIGNAL_REACH = 24; // a lane ending this near a signalised junction obeys its bike lights
 const STOP_BEFORE = 1.5; // metres short of the junction centre the stop line stands
 const HALF = 0.9; // half the length of a bicycle with rider
+const PARKED_CAR_DEPTH = 1.95 + 0.12; // m a parallel-parked car takes from the kerb (js/placement-cph.js CAR.w + KERB_GAP)
 
 // ---- geometry -----------------------------------------------------------------------------------------------------
 function rightNormals(pts) {
@@ -154,7 +155,11 @@ export function buildCyclistNetwork(geo, signalNodes = []) {
     // directions join up with the tracks round the corner
     if (hasContraflow(r) && !bikeBanned(r)) {
       const cov = stripCoverage(r, strips);
-      const edge = Math.max(0.8, hw - 0.85);
+      // ridden 0.85 m off the kerb, unless the street has room to park there (js/placement-cph.js puts parked cars between the moving
+      // strip and the kerb): then just inside the parked cars' inner side
+      const parkingInner = hw - PARKED_CAR_DEPTH;
+      const parks = parkingInner >= movingHalfWidth(r) + 0.05;
+      const edge = Math.max(0.8, parks ? parkingInner - 0.45 : hw - 0.85);
       if (!cov.back) lane(reversed(offsetLine(r.pts, -edge)), 'contra', r, -1, -1, 1.5);
       if (!cov.fwd) lane(offsetLine(r.pts, edge), 'shared', r, 1, 1, 1.5);
     }

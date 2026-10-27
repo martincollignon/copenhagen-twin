@@ -12,12 +12,14 @@
 // An item that cannot be placed is moved the shortest way that works, or dropped; everything dropped or moved is in the report.
 // Frame: x east, z south; `yaw` is the direction an item faces: model +z -> (sin yaw, cos yaw).
 
-import { carriagewayWidth, movingHalfWidth } from './road-width-cph.js';
+import { carriagewayWidth, movingHalfWidth, VEHICLE_HALF } from './road-width-cph.js';
 import { hash2, treeDimensions } from './street-furniture-data.js';
 
 const VEHICULAR = new Set(['primary', 'secondary', 'residential', 'service']);
 const CAR = { w: 1.95, d: 4.7, slack: 0.3 }; // the parked-car box (a sedan is 1.9 x 4.6, an SUV 1.95 x 4.7; +0.3 m of slack along the row)
 const MARGIN = 0.5; // m added to a prop's footprint when it is tested against the (0.5 m) zone raster
+const BUS_HALF = 1.32; // m: half a bus (2.55 m) and a few cm
+const BUS_STREETS = new Set(['primary', 'secondary']);
 const KERB_GAP = 0.12; // m between a parked car's side and the carriageway edge
 const LANE_GAP = 0.05;
 
@@ -81,7 +83,11 @@ export function createRoadIndex(geo, cell = 24) {
   const roads = [];
   for (const r of geo.roads || []) {
     if (!VEHICULAR.has(r.class) || !r.pts || r.pts.length < 4 || r.drop) continue;
-    const rec = { r, hw: carriagewayWidth(r) / 2, mv: movingHalfWidth(r) };
+    // a parked car keeps clear of the widest vehicle that drives past it: buses run on the primary and secondary streets
+    // (js/traffic.js keeps them to the 'ave' edges), 2.55 m wide where the moving strip is sized for a 1.9 m car
+    const hw = carriagewayWidth(r) / 2;
+    const mv = Math.min(hw, movingHalfWidth(r) + (BUS_STREETS.has(r.class) ? BUS_HALF - VEHICLE_HALF : 0));
+    const rec = { r, hw, mv };
     roads.push(rec);
     for (let i = 0; i + 3 < r.pts.length; i += 2) {
       const ax = r.pts[i];

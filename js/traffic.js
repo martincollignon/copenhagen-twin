@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { CAR_BODY_TYPES, fleetRandom, fleetVehicle } from './vehicle-fleet.js';
 import { buildRoadNetwork } from './road-network.js';
 import { createPedestrianSystem } from './pedestrian-system.js';
-import { createCityCollisions } from './city-collisions.js';
+import { createCityCollisions, createCollisionActor } from './city-collisions.js';
 import { signalOffset, vehiclePhase, walkPhase } from './signal-plan.js';
 import { cityUniforms, createContactShadowMaterial, createCarFlareMaterial } from './tsl-materials.js';
 import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
@@ -34,6 +34,10 @@ import {
 const NUM_CARS = 120;
 const NUM_BUSES = 12;
 const JAM_WAIT = 100; // s
+// How long (s) a vehicle may stand held inside a solid (a junction curve cutting a building corner, a lane under a parked car)
+// before it is placed afresh: its lane cannot take it out, so it would stay wedged until JAM_WAIT
+const PINNED_WAIT = 3;
+const PINNED_DEPTH = 0.1; // m of overlap with a solid that counts as wedged (a graze along a parked car does not)
 
 // Intelligent Driver Model: max acceleration, comfortable braking, time headway, standstill gap; and the sideways
 // acceleration drivers accept in bends, which sets how fast they take each turn or lane shift
@@ -274,7 +278,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
   const localCollisionStage = createCityCollisions();
   const vehicleCollisionActors = vehicles.map((v, collisionIndex) => {
     const spec = v.bus ? v.spec : BODY_SPECS[v.bodyType];
-    const actor = {
+    const actor = createCollisionActor({
       entity: v,
       kind: v.bus ? 'bus' : 'car',
       collisionIndex,
@@ -302,6 +306,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
         this.heading = Math.atan2(v.tx, v.tz) - v.nose + v.yawOffset;
         return v;
       },
+      onStaticContact(collider, nx, nz, incoming, depth) { if (depth > PINNED_DEPTH) v.wedgedAt = updates; },
       onContact(other, nx, nz, speed) {
         applyVehicleImpact(v, actor, other, nx, nz, speed);
         if (speed > 2.2) reportCollision(v, other.entity || other, (v.x + other.x) * 0.5,
@@ -311,10 +316,10 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
           spawnCollisionSparks(x, groundAt(x, z) + 0.56, z, nx, nz, speed);
         }
       }
-    };
+    });
     return actor;
   });
-  const pedestrianCollisionActors = pedestrianSystem.peds.map((p) => ({
+  const pedestrianCollisionActors = pedestrianSystem.peds.map((p) => createCollisionActor({
     entity: p,
     kind: 'pedestrian',
     mode: 'person',
@@ -340,11 +345,16 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
       p.x += dx;
       p.z += dz;
       return p;
-    }
+    },
+    // js/pedestrian-system.js stops stepping aside / drifting back for a moment after a solid pushed this person
+    onStaticContact() { p.staticContacts = (p.staticContacts || 0) + 1; }
   }));
   const frameCollisionActors = [];
   let collisionPhase = null;
   function setCollisionPhase(phase) { collisionPhase = typeof phase === 'function' ? phase : null; }
+  // (x, z, heading, spec) -> false where a vehicle placed there would stand in a solid (js/city-collisions.js clearOfStatics)
+  let spawnClear = null;
+  function setSpawnClear(fn) { spawnClear = typeof fn === 'function' ? fn : null; }
   function applyVehicleImpact(v, actor, other, nx, nz, impactSpeed) {
     if (!(impactSpeed > 0.5)) return 0;
     const ownMass = Math.max(1, Number.isFinite(actor.mass) ? actor.mass : 1250);
@@ -445,7 +455,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     }
     return frameCollisionActors;
   }
-  const activePlayerCollisionActor = {
+  const activePlayerCollisionActor = createCollisionActor({
     kind: 'player', mode: 'person', radius: 0.32, mass: 72,
     _wasPlaced: false,
     getVelocity(out) {
@@ -481,9 +491,9 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
       const e = this.entity;
       e.position.x += dx; e.position.z += dz;
       e.mesh?.position?.copy(e.position);
-      return { x: e.position.x, z: e.position.z };
+      return e.position;
     }
-  };
+  });
 
   // Add vehicle contact shadows last + pre-allocated Clustered SpotLight / PointLight pools
   group.add(carShadowInst, busShadowInst);
@@ -1219,6 +1229,14 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     }
     v.acc = Math.max(-9, (v.speed - speed) / dt); // as driven, for the body to pitch with: none standing still
     v.wait = v.speed < 0.5 ? v.wait + dt : 0;
+    // held in a solid in the last collision pass and not getting anywhere: wedged
+    v.wedged = v.wedgedAt >= updates - 1 && v.speed < 0.5 ? (v.wedged || 0) + dt : 0;
+    if (v.wedged > PINNED_WAIT) {
+      v.wedged = 0;
+      jamRetired++;
+      retire(v);
+      return;
+    }
     // Copenhagen's short junction-to-junction links gridlock when full: a vehicle held for JAM_WAIT seconds (out of sight,
     // else twice that) leaves the road and is placed afresh, as a driver turning off the map would
     if (v.wait > (hasView && visible(v.x, v.z, 8) ? 2 * JAM_WAIT : JAM_WAIT)) {
@@ -1376,6 +1394,9 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
       if (d < rMin || d > rMax || (protectView && nearView(x, z, v.half + 4, VEHICLE_SPAWN_DISTANCE))) continue;
       if (player.active && Math.hypot(x - player.x, z - player.z) < 25) continue;
       if (!laneClear(e.occ[lane], s, v.half + 8)) continue;
+      // never in a parked car, a pole or a wall (the streamed tiles' solids may sit on a lane the road graph runs along); `typeof`:
+      // the unit tests lift this function out of its closure
+      if (typeof spawnClear === 'function' && !spawnClear(x, z, Math.atan2(e.dx, e.dz), v.bus ? v.spec : BODY_SPECS[v.bodyType])) continue;
       place(v, e, lane, s);
       return true;
     }
@@ -1799,6 +1820,7 @@ function createTrafficSystem(scene, signalIntersections, options = {}) {
     update,
     setCollisionListener,
     setCollisionPhase,
+    setSpawnClear,
     cars,
     buses,
     peds: pedestrianSystem.peds,

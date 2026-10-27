@@ -36,12 +36,12 @@ import { createTilePool } from './tile-pool.js';
 import { makeRoadJob } from './road-compute.js';
 import { makeFurnitureJob } from './furniture-compute.js';
 import { createAgentRegion, createLaneIndex } from './agent-region.js';
-import { buildRoadNetwork } from './road-network.js';
+import { buildRoadNetwork, dropCoveredServiceLinks } from './road-network.js';
 import { buildCyclistNetworkFor } from './cyclists.js';
 import { loadFarLayer } from './far-lod.js';
 import { applyPlainGround } from './ground-shader-cph.js';
 import { BODY_SPECS } from './actor-models.js';
-import { createCityCollisions } from './city-collisions.js';
+import { createCityCollisions, createCollisionActor } from './city-collisions.js';
 import { buildStaticColliders, createStaticIndex, createTiledStaticIndex } from './static-colliders.js';
 
 // js/world.js
@@ -282,7 +282,7 @@ function attachCollisionPhase(traffic, cyclists, { stage = null } = {}) {
   const playerActor = (entity, mode) => {
     let actor = playerActorByEntity.get(entity);
     if (!actor) {
-      actor = {
+      actor = createCollisionActor({
         entity, kind: 'player', mode, radius: 0.32, mass: 72,
         x: 0, y: 0, z: 0, prevX: 0, prevY: 0, prevZ: 0, _wasPlaced: false,
         getVelocity(out) {
@@ -306,9 +306,9 @@ function attachCollisionPhase(traffic, cyclists, { stage = null } = {}) {
           entity.position.x += dx;
           entity.position.z += dz;
           entity.mesh?.position?.copy(entity.position);
-          return { x: entity.position.x, z: entity.position.z };
+          return entity.position;
         }
-      };
+      });
       playerActorByEntity.set(entity, actor);
     }
     actor.entity = entity;
@@ -362,8 +362,11 @@ async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null, lakes
   walk ||= createWalkSpace(geo, lakesDoc);
   let cyclists = null;
   const bikeLaneNear = (x, z, r) => !!cyclists && cyclists.network.lanes.some((l) => l.src && nearLane(l, x, z, r));
+  let lineStage = null; // the collision stage, once the world has it: walking lines step round the furniture it knows
   const traffic = createTrafficSystem(scene, geo.points?.signals || [], {
-    roadGraph: geo.roadGraph,
+    obstruction: (ax, az, bx, bz) => lineStage ? lineStage.obstructedLength(ax, az, bx, bz) : 0,
+    // no vehicle drives a service lane through a footprint (a gateway the twin draws as solid wall)
+    roadGraph: dropCoveredServiceLinks(geo.roadGraph, walk.inBuilding),
     walkable: walk.walkable,
     onSidewalk: walk.onSidewalk,
     blockAt: walk.blockAt,
@@ -396,7 +399,7 @@ async function buildCphTraffic(scene, geo, { markInit, surfacesDoc = null, lakes
     cyclists: cyclists.riders,
     cyclistSystem: cyclists,
     signalNodes,
-    setCollisionStage: collide.setStage,
+    setCollisionStage: (stage) => { lineStage = stage || null; collide.setStage(stage); },
     attachControllerManager: collide.attachControllerManager
   });
   return { surfaces, traffic, heads, walk };
@@ -553,6 +556,7 @@ async function buildWorld(scene, { markInit = () => {}, debug = '', geoUrl = CPH
   });
   const collisionStage = createCityCollisions({ staticIndex: createStaticIndex(colliders), groundHeight });
   traffic?.traffic.setCollisionStage(collisionStage);
+  traffic?.traffic.setSpawnClear?.((x, z, heading, spec) => collisionStage.clearOfStatics(x, z, { heading, mode: 'car', spec }));
 
   return {
     colliders,
@@ -868,6 +872,8 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
     const bikeLaneNear = (x, z, r) => !!laneIndex && laneIndex.near(x, z, r);
     const networkOptions = {
       walkable: walk.walkable, onSidewalk: walk.onSidewalk, blockAt: walk.blockAt,
+      // walking lines step round the near tiles' furniture (bike racks, trees, benches)
+      obstruction: (ax, az, bx, bz) => collisionStage.obstructedLength(ax, az, bx, bz),
       // pedestrians walk outside the cycle track beside a carriageway
       extraOffset: (e, sign) => {
         const mx = e.sx + e.dx * e.len * 0.5 + e.rx * sign * (e.half + 1.4);
@@ -885,7 +891,7 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
       roadsOf: (id) => data.roadsOf(id),
       ready: (id) => data.has(id, 'roads') && data.has(id, 'streets'),
       stages: {
-        network: (sub, signals) => buildRoadNetwork(signals, { roadGraph: sub, ...networkOptions }),
+        network: (sub, signals) => buildRoadNetwork(signals, { roadGraph: dropCoveredServiceLinks(sub, walk.inBuilding), ...networkOptions }),
         cyclists: (g, ctx) => buildCyclistNetworkFor(g, ctx.network.nodes.filter((n) => n.signal)),
         apply: (ctx) => {
           const signalNodes = ctx.network.nodes.filter((n) => n.signal);
@@ -897,6 +903,7 @@ async function buildStreamedWorld(scene, store, { markInit, debug, water, treeDa
             // one collision stage for cars, buses, pedestrians, cyclists and the player against the near tiles' solids (as the district)
             const cyclistsNow = cyclists;
             collide = attachCollisionPhase(system, cyclistsNow, { stage: collisionStage });
+            system.setSpawnClear((x, z, heading, spec) => collisionStage.clearOfStatics(x, z, { heading, mode: 'car', spec }));
             collide.attachControllerManager(controllerManager);
             const trafficUpdate = system.update;
             system.update = (dt, elapsed, focusPos, playerEntity, activeMode, camera) => {

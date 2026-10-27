@@ -1,6 +1,6 @@
 // Small, lazily connected sidewalk tracks. Junctions only connect points on the same curb island;
 // crossing the roadway is a separate, signal-controlled track owned by traffic.js.
-function createPedestrianRoutes({ walkable, extraOffset = null }, blockAt) {
+function createPedestrianRoutes({ walkable, extraOffset = null, obstruction = null }, blockAt) {
   const sidewalks = new Map(), crossings = new Map(), junctions = new Map(), connections = new WeakMap();
   const point = (track, end) => ({ x: track.ax + track.ux * track.len * end, z: track.az + track.uz * track.len * end });
   const segment = (a, b, extra = {}) => {
@@ -21,20 +21,40 @@ function createPedestrianRoutes({ walkable, extraOffset = null }, blockAt) {
     return true;
   }
 
+  // A walking line that runs through street furniture (bike racks, trees, benches, parked cars: `obstruction(a, b)` is how many
+  // metres of it the static colliders block) moves sideways to the clearest of these shifts, keeping LINE_SPACING to the other.
+  const SHIFTS = [0, -0.5, 0.5, -1, 1];
+  const LINE_SPACING = 0.9;
   function along(e) {
     if (sidewalks.has(e)) return sidewalks.get(e);
     const result = [];
     sidewalks.set(e, result);
     // Two walking lines on each side leave room for people to pass or stop together.
     for (const sign of [-1, 1]) {
-      for (const inset of [1.7, 2.8]) {
-        const off = sign * (e.half + inset + (extraOffset ? extraOffset(e, sign) : 0));
+      const extra = extraOffset ? extraOffset(e, sign) : 0;
+      const line = (inset) => {
+        const off = sign * (e.half + inset + extra);
         const a = { x: e.sx + e.rx * off, z: e.sz + e.rz * off };
         const b = { x: a.x + e.dx * e.len, z: a.z + e.dz * e.len };
         const block = blockAt(a.x, a.z);
-        if (!block || blockAt(b.x, b.z) !== block || !clear(a, b, block)) continue;
-        result.push(segment(a, b, { edge: e, from: e.from, to: e.to, block }));
+        if (!block || blockAt(b.x, b.z) !== block || !clear(a, b, block)) return null;
+        return { inset, a, b, block, blocked: obstruction ? obstruction(a.x, a.z, b.x, b.z) : 0 };
+      };
+      const chosen = [];
+      for (const inset of [1.7, 2.8]) {
+        let best = null;
+        for (const shift of SHIFTS) {
+          const at = inset + shift;
+          if (at < 1.1 || chosen.some((c) => Math.abs(c.inset - at) < LINE_SPACING)) continue;
+          const candidate = line(at);
+          if (shift === 0 && !candidate) break; // the line itself is not walkable (a wall, the water): no line here, as before
+          if (candidate && (!best || candidate.blocked < best.blocked)) best = candidate;
+          if (best && best.blocked === 0 || !obstruction) break;
+        }
+        if (best) chosen.push(best);
       }
+      chosen.sort((p, q) => p.inset - q.inset);
+      for (const c of chosen) result.push(segment(c.a, c.b, { edge: e, from: e.from, to: e.to, block: c.block }));
     }
     return result;
   }

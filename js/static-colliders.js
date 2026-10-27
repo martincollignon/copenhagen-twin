@@ -170,10 +170,13 @@ export function buildStaticColliders(geo, { furniturePlan = null, carSpecs = {},
         Math.max(2.2, numberOr(tree.crown?.base, 3.2)));
     });
     appendPlaced(colliders, plan.lamps, (lamp, index) => {
-      if (lamp.mount === 'wire' || lamp.bracket) return null;
+      // as js/street-furniture-cph.js draws them: a lamp hanging from its wire has no pole; a mast stands on its own pole, and a
+      // wire lamp without wire geometry (`bracket`) stands on a 6.2 m tube pole
+      if (lamp.mount !== 'mast' && lamp.wire) return null;
       const y = numberOr(lamp.y, groundAt(groundHeight, lamp.x, lamp.z));
-      return circleCollider(`lamp:${index}`, 'lamp', lamp.x, y, lamp.z, lamp.pole === 'kbh' ? 0.19 : lamp.pole === 'park' ? 0.11 : 0.12,
-        Math.max(1.2, numberOr(lamp.poleH, 3)));
+      const mast = lamp.mount === 'mast';
+      return circleCollider(`lamp:${index}`, 'lamp', lamp.x, y, lamp.z, mast && lamp.pole === 'kbh' ? 0.19 : mast && lamp.pole === 'park' ? 0.11 : 0.12,
+        mast ? Math.max(1.2, numberOr(lamp.poleH, 3)) : 6.2);
     });
     appendPlaced(colliders, plan.cars, (car, index) => {
       const spec = carSpecs?.[car.body] || {};
@@ -235,58 +238,112 @@ export function buildStaticColliders(geo, { furniturePlan = null, carSpecs = {},
   return colliders;
 }
 
-/** 16 m uniform grid. query() clears and reuses `out`, returning only nearby broad-phase records in build order. */
+// A grid cell's key as one small integer (15 bits per axis: a 16 m grid wraps after 524 km, and a far cell that aliases a near one
+// only adds candidates the bounds test drops). Number keys below 2^30 stay V8 small integers: no string or heap number per lookup.
+const cellKey = (ix, iz) => ((ix & 0x7fff) << 15) | (iz & 0x7fff);
+
+/**
+ * 16 m uniform grid. query() clears and reuses `out`, returning only nearby broad-phase records in build order. The cells hold build
+ * positions, so a query dedupes with a stamp per record and orders with a numeric sort: it allocates nothing once warm.
+ */
 export function createStaticIndex(colliders) {
-  const cells = new Map();
-  const seen = new WeakMap();
-  const orderOf = new WeakMap();
-  const key = (ix, iz) => `${ix}:${iz}`;
-  for (let order = 0; order < (colliders || []).length; order++) {
-    const collider = colliders[order];
-    orderOf.set(collider, order);
-    for (let ix = Math.floor(collider.minX / INDEX_CELL); ix <= Math.floor(collider.maxX / INDEX_CELL); ix++) {
-      for (let iz = Math.floor(collider.minZ / INDEX_CELL); iz <= Math.floor(collider.maxZ / INDEX_CELL); iz++) {
-        const k = key(ix, iz);
-        let list = cells.get(k);
-        if (!list) cells.set(k, (list = []));
-        list.push(collider);
-      }
-    }
-  }
-  let stamp = 0;
+  const grid = buildGrid(colliders || []);
   return {
+    grid,
     query(x, z, radius, out = []) {
       out.length = 0;
-      const current = ++stamp;
-      const minX = Math.floor((x - radius) / INDEX_CELL), maxX = Math.floor((x + radius) / INDEX_CELL);
-      const minZ = Math.floor((z - radius) / INDEX_CELL), maxZ = Math.floor((z + radius) / INDEX_CELL);
-      for (let ix = minX; ix <= maxX; ix++) {
-        for (let iz = minZ; iz <= maxZ; iz++) {
-          const list = cells.get(key(ix, iz));
-          if (!list) continue;
-          for (const collider of list) {
-            if (seen.get(collider) === current) continue;
-            seen.set(collider, current);
-            if (collider.maxX < x - radius || collider.minX > x + radius || collider.maxZ < z - radius || collider.minZ > z + radius) continue;
-            out.push(collider);
-          }
-        }
-      }
-      if (out.length > 1) out.sort((a, b) => orderOf.get(a) - orderOf.get(b));
+      gridQuery(grid, x, z, radius, out);
       return out;
     }
   };
 }
 
+function buildGrid(list) {
+  const cells = new Map();
+  for (let order = 0; order < list.length; order++) {
+    const collider = list[order];
+    for (let ix = Math.floor(collider.minX / INDEX_CELL); ix <= Math.floor(collider.maxX / INDEX_CELL); ix++) {
+      for (let iz = Math.floor(collider.minZ / INDEX_CELL); iz <= Math.floor(collider.maxZ / INDEX_CELL); iz++) {
+        const k = cellKey(ix, iz);
+        let cell = cells.get(k);
+        if (!cell) cells.set(k, (cell = []));
+        cell.push(order);
+      }
+    }
+  }
+  return { list, cells, seen: new Uint32Array(list.length), found: new Int32Array(64), stamp: 0 };
+}
+
+/** Appends the grid's records whose bounds come within `radius` of (x, z) to `out`, in build order. One function for every grid. */
+function gridQuery(grid, x, z, radius, out) {
+  const { list, cells, seen } = grid;
+  let found = grid.found;
+  let stamp = (grid.stamp + 1) >>> 0;
+  if (stamp === 0) { seen.fill(0); stamp = 1; }
+  grid.stamp = stamp;
+  const x0 = x - radius, x1 = x + radius, z0 = z - radius, z1 = z + radius;
+  const minX = Math.floor(x0 / INDEX_CELL), maxX = Math.floor(x1 / INDEX_CELL);
+  const minZ = Math.floor(z0 / INDEX_CELL), maxZ = Math.floor(z1 / INDEX_CELL);
+  let n = 0, sources = 0;
+  for (let ix = minX; ix <= maxX; ix++) {
+    for (let iz = minZ; iz <= maxZ; iz++) {
+      const cell = cells.get(cellKey(ix, iz));
+      if (!cell) continue;
+      const before = n;
+      for (let k = 0; k < cell.length; k++) {
+        const order = cell[k];
+        if (seen[order] === stamp) continue;
+        seen[order] = stamp;
+        const collider = list[order];
+        if (collider.maxX < x0 || collider.minX > x1 || collider.maxZ < z0 || collider.minZ > z1) continue;
+        if (n === found.length) { const grown = new Int32Array(n * 2); grown.set(found); grid.found = found = grown; }
+        found[n++] = order;
+      }
+      if (n > before) sources++;
+    }
+  }
+  if (sources > 1) {
+    // one cell's records are already in build order; several cells' are merged by position (insertion sort: a few dozen, mostly
+    // in order already, and no typed-array view per query)
+    for (let i = 1; i < n; i++) {
+      const v = found[i];
+      let j = i - 1;
+      while (j >= 0 && found[j] > v) { found[j + 1] = found[j]; j--; }
+      found[j + 1] = v;
+    }
+  }
+  for (let i = 0; i < n; i++) out.push(list[found[i]]);
+}
+
 /**
  * The static index of a streamed city: one createStaticIndex per tile part (a tile's buildings, its placed furniture), set when the
- * part streams in and dropped when it goes, behind the same query(). Parts are skipped by their bounds first, so a query costs one
- * bounds test per resident part plus the grid lookups of the parts it touches.
+ * part streams in and dropped when it goes, behind the same query(). A coarse 128 m grid over the parts' bounds picks the few parts
+ * near a query, so its cost does not grow with the resident ring. `version` changes whenever a part comes or goes (the collision
+ * stage uses it to know a resting agent's surroundings are unchanged).
  */
 export function createTiledStaticIndex() {
   const parts = new Map(); // key -> { index, colliders, minX, minZ, maxX, maxZ, count }
-  const scratch = [];
+  let list = []; // the parts in insertion order
+  // a coarse grid over the parts' bounds, so a query bounds-tests only the few parts around it (a citywide near ring holds dozens)
+  const PART_CELL = 128;
+  const partCells = new Map(); // cell key -> parts (in insertion order)
   let colliderCount = 0;
+  let version = 0;
+  const reindex = () => {
+    list = [...parts.values()];
+    partCells.clear();
+    for (const part of list) {
+      for (let ix = Math.floor(part.minX / PART_CELL); ix <= Math.floor(part.maxX / PART_CELL); ix++) {
+        for (let iz = Math.floor(part.minZ / PART_CELL); iz <= Math.floor(part.maxZ / PART_CELL); iz++) {
+          const k = cellKey(ix, iz);
+          let cell = partCells.get(k);
+          if (!cell) partCells.set(k, (cell = []));
+          cell.push(part);
+        }
+      }
+    }
+  };
+  let stamp = 0;
   return {
     set(key, colliders) {
       this.remove(key);
@@ -298,27 +355,56 @@ export function createTiledStaticIndex() {
         if (c.maxX > maxX) maxX = c.maxX;
         if (c.maxZ > maxZ) maxZ = c.maxZ;
       }
-      parts.set(key, { index: createStaticIndex(colliders), colliders, minX, minZ, maxX, maxZ, count: colliders.length });
+      parts.set(key, { index: createStaticIndex(colliders), colliders, minX, minZ, maxX, maxZ, count: colliders.length, seen: 0 });
       colliderCount += colliders.length;
+      version++;
+      reindex();
     },
     remove(key) {
       const part = parts.get(key);
       if (!part) return;
       colliderCount -= part.count;
       parts.delete(key);
+      version++;
+      reindex();
     },
     query(x, z, radius, out = []) {
       out.length = 0;
-      for (const part of parts.values()) {
-        if (part.maxX < x - radius || part.minX > x + radius || part.maxZ < z - radius || part.minZ > z + radius) continue;
-        part.index.query(x, z, radius, scratch);
-        for (let i = 0; i < scratch.length; i++) out.push(scratch[i]);
+      const x0 = x - radius, x1 = x + radius, z0 = z - radius, z1 = z + radius;
+      const cx0 = Math.floor(x0 / PART_CELL), cx1 = Math.floor(x1 / PART_CELL);
+      const cz0 = Math.floor(z0 / PART_CELL), cz1 = Math.floor(z1 / PART_CELL);
+      if (cx0 === cx1 && cz0 === cz1) {
+        // the usual case: one coarse cell, its parts already in insertion order
+        const cell = partCells.get(cellKey(cx0, cz0));
+        if (cell) {
+          for (let p = 0; p < cell.length; p++) {
+            const part = cell[p];
+            if (part.maxX < x0 || part.minX > x1 || part.maxZ < z0 || part.minZ > z1) continue;
+            gridQuery(part.index.grid, x, z, radius, out);
+          }
+        }
+        return out;
+      }
+      // a query across coarse cells: each part once, in insertion order
+      stamp++;
+      for (let ix = cx0; ix <= cx1; ix++) {
+        for (let iz = cz0; iz <= cz1; iz++) {
+          const cell = partCells.get(cellKey(ix, iz));
+          if (cell) for (const part of cell) part.seen = stamp;
+        }
+      }
+      for (let p = 0; p < list.length; p++) {
+        const part = list[p];
+        if (part.seen !== stamp) continue;
+        if (part.maxX < x0 || part.minX > x1 || part.maxZ < z0 || part.minZ > z1) continue;
+        gridQuery(part.index.grid, x, z, radius, out);
       }
       return out;
     },
     /** Every resident collider (a fresh array: for tools and checks, not per frame). */
-    all() { return [...parts.values()].flatMap((part) => part.colliders); },
+    all() { return list.flatMap((part) => part.colliders); },
     get parts() { return parts.size; },
-    get size() { return colliderCount; }
+    get size() { return colliderCount; },
+    get version() { return version; }
   };
 }
