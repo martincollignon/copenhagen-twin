@@ -1,6 +1,6 @@
 # Detail overrides (`cph-detail/1`)
 
-A detail override puts a hand-guided or semi-automatic building reconstruction in the place of the generated building, in the live twin. Nyhavn (PR #15, `tools/nyhavn`) is the first content. Measured window layouts from the Skråfoto atlas window masks, and LiDAR dormers and chimneys, are meant to use the same format later, through its parametric part.
+A detail override puts a hand-guided or semi-automatic building reconstruction in the place of the generated building, in the live twin. Nyhavn (PR #15, `tools/nyhavn`) is the first content. LiDAR dormers and chimneys are meant to use the same format later, through its parametric part. Measured window layouts went to their own tile layer instead (`windows`, docs/facade-layout.md): the facade shader draws them on the generated wall, which takes no geometry and no draw calls, so they do not need the detail-override mesh path.
 
 Version: `cph-detail/1` (the tile layer) and `cph-detail-source/1` (a source set on disk). A change that an older engine would misread gets a new number. The engine ignores a layer whose `format` it does not know, and the tile keeps its generated buildings.
 

@@ -2,11 +2,12 @@
 // Pure (no three.js) geometry for the Copenhagen real buildings: polygon rings with holes extruded from `ground` to
 // `eave`, a flat roof with a low parapet or (only for plain quadrilaterals) a hipped cap, and the per-vertex facade
 // frame the wallAttr facade shaders read (tsl-materials.js facadeCell):
-//   facadeUV   (u, v)       metres along the wall from its start, metres above the building's ground
-//   facadeWall (len, floor_h, ground_floor_h, bay_w)
+//   facadeUV   (u, v, column mask bits 0-15, bits 16-31)  metres along the wall from its start, metres above the building's ground;
+//              the mask words of a measured window layout (js/facade-layout.js layoutWords, 0 otherwise)
+//   facadeWall (len, floor_h, ground_floor_h, bay_w)  (a measured layout's storey pitch, ground-floor height and column pitch)
 //   facadeBldg (hash 0..1, WALL_KINDS of the ground floor, style code = material + 4 * era, integer seed)
-//   facadeWindow (frame palette, division type + 4 if a physical cornice is present, frame width m, reveal depth m)
-//   facadeTop  metres from the ground to the top of the wall (cornice placement)
+//   facadeWindow (frame palette + 4 * (division type + 4 if a physical cornice is present), ground-floor bay mask, frame width m, reveal m)
+//   facadeTop  (metres from the ground to the top of the wall (cornice placement), measured grid start u0, sill/head word, rows/cols word)
 //   facadeTone (r, g, b linear, window width / bay width)
 // Frame (docs/cph-geodata-schema.md): x east, z south, y up. Rings are CCW seen from above (in x / -z), holes CW, so
 // the outward normal of the wall p0 -> p1 (direction d) is (-d.z, 0, d.x) and u grows along d.
@@ -17,6 +18,7 @@ import { facadeStyle, windowStyle } from './facade-style.js';
 import { classifyWalls, doorSummary } from './groundfloor.js';
 import { appendBuildingDetails, selectDetailEdges } from './building-details.js';
 import { placeDoors } from './entrances.js';
+import { measuredEdges, layoutWords, snapToBay } from './facade-layout.js';
 
 const PARAPET_H = 0.45;
 const PARAPET_T = 0.22;
@@ -292,6 +294,20 @@ function addBuilding(acc, b, opts = {}) {
   // Observed wall tone per cleaned edge (ring/edge keyed in the data, matched by geometry); `opts.observed === false` keeps the preset
   const mapping = lite || opts.observed === false ? null : mapObservedEdges(b, rings);
   const buildingTone = lite ? (opts.observed === false ? tone : observedBuildingTone(b)) : mapping?.hasObserved ? mapping.buildingTone : tone;
+  // Measured window grids (the tile's `windows` layer) per cleaned edge; real entrance doors on such a wall move to its nearest bay
+  const measured = lite || opts.layouts === false ? null : measuredEdges(b, rings, mapping);
+  if (measured) {
+    for (const d of doors) {
+      const m = measured[d.edgeNo];
+      const snap = snapToBay(m, d.along);
+      if (!snap) continue;
+      d.x += d.tx * (snap.u - d.along);
+      d.z += d.tz * (snap.u - d.along);
+      d.along = snap.u;
+      if (m.gm !== null && snap.bay < 53) m.gm += Math.floor(m.gm / 2 ** snap.bay) % 2 ? 0 : 2 ** snap.bay;
+      d.snapped = true;
+    }
+  }
   const edgeTone = (k) => (mapping?.hasObserved ? mapping.edges[k].tone : tone);
   const quadOf = []; // cleaned edge -> its opts.quads entry (the roofer pieces above its eave join it)
   let edgeNo = -1;
@@ -325,15 +341,17 @@ function addBuilding(acc, b, opts = {}) {
         w.index.push(base, base + 1, base + 2, base, base + 2, base + 3);
         continue;
       }
+      const m = measured?.[edgeNo] || null;
+      const lw = layoutWords(m);
       for (const [p, u, y, v] of corners) {
         w.position.push(p[0], y, p[1]);
         w.normal.push(nx, 0, nz);
-        w.facadeUV.push(u, v);
-        w.facadeWall.push(len, floorH, groundH, bayW);
+        w.facadeUV.push(u, v, lw.uv[0], lw.uv[1]);
+        w.facadeWall.push(len, m ? m.f : floorH, m ? m.g : groundH, m ? m.p : bayW);
         w.facadeBldg.push((idHash % 1000) / 1000, wallKind, styleCode, idHash % 997);
-        w.facadeTone.push(wt[0], wt[1], wt[2], Math.min(Math.max(windowW / bayW, 0.12), 0.85));
-        w.facadeTop.push(v1);
-        w.facadeWindow.push(windows.frame, windows.type, windows.frameWidth, windows.reveal);
+        w.facadeTone.push(wt[0], wt[1], wt[2], m ? Math.min(Math.max(m.w / m.p, 0.12), 0.92) : Math.min(Math.max(windowW / bayW, 0.12), 0.85));
+        w.facadeTop.push(v1, lw.top[0], lw.top[1], lw.top[2]);
+        w.facadeWindow.push(windows.frame + 4 * windows.type, lw.ground, windows.frameWidth, windows.reveal);
       }
       w.index.push(base, base + 1, base + 2, base, base + 2, base + 3);
     }
@@ -374,11 +392,11 @@ function addBuilding(acc, b, opts = {}) {
       for (const q of tri) {
         w.position.push(q[0], q[1], q[2]);
         w.normal.push(fx, fy, fz);
-        w.facadeUV.push((q[0] - org[0]) * tx + (q[2] - org[1]) * tz, q[1] - ground);
+        w.facadeUV.push((q[0] - org[0]) * tx + (q[2] - org[1]) * tz, q[1] - ground, 0, 0);
         w.facadeWall.push(e0 ? Math.hypot(dxw, dzw) : 10, floorH, groundH, bayW);
         w.facadeBldg.push((idHash % 1000) / 1000, WALL_KIND.blank, styleCode, idHash % 997);
-        w.facadeWindow.push(windows.frame, windows.type, windows.frameWidth, windows.reveal);
-        w.facadeTop.push(1e4); // roofer gables / step walls: no cornice
+        w.facadeWindow.push(windows.frame + 4 * windows.type, 65535, windows.frameWidth, windows.reveal);
+        w.facadeTop.push(1e4, 0, 0, 0); // roofer gables / step walls: no cornice, no measured grid
         const pt = edge >= 0 ? edgeTone(edge) : buildingTone;
         w.facadeTone.push(pt[0], pt[1], pt[2], Math.min(Math.max(windowW / bayW, 0.12), 0.85));
       }
@@ -397,12 +415,12 @@ function addBuilding(acc, b, opts = {}) {
     const selected = opts.streetEdges || selectDetailEdges(rings, wallKinds);
     appendBuildingDetails(acc.roof, acc.detailParts, b, rings,
       lod?.tops || Array(rings.reduce((n, r) => n + r.length, 0)).fill(eave), selected, roofTriangles, buildingTone,
-      wallKinds ? { wallKinds, groundH, bayW, tone: (idHash % 1000) / 1000 } : null);
+      wallKinds ? { wallKinds, groundH, bayW, tone: (idHash % 1000) / 1000, measured } : null);
     for (const part of acc.detailParts.slice(partStart)) {
       if (part.kind !== 'cornice') continue;
       for (const edge of part.edges) {
         const base = edgeVertices[edge];
-        for (let v = base; v < base + 4; v++) w.facadeWindow[v * 4 + 1] = windows.type + 4;
+        for (let v = base; v < base + 4; v++) w.facadeWindow[v * 4] = windows.frame + 4 * (windows.type + 4);
       }
     }
   }
@@ -410,7 +428,7 @@ function addBuilding(acc, b, opts = {}) {
 
   wallAcc.wallRanges.push({ id: b.id, start: wallStart, end: w.index.length });
   acc.roofRanges.push({ id: b.id, start: roofStart, end: acc.roof.index.length });
-  return { wallTriangles: (w.index.length - wallStart) / 3, roofTriangles: (acc.roof.index.length - roofStart) / 3, detailTriangles, mapping, wallKinds, style, layout: { floorH, groundH, seed: idHash % 997 }, doors, doorInfo: wallKinds ? doorSummary(wallKinds, doors) : null };
+  return { wallTriangles: (w.index.length - wallStart) / 3, roofTriangles: (acc.roof.index.length - roofStart) / 3, detailTriangles, mapping, wallKinds, style, layout: { floorH, groundH, seed: idHash % 997, measured: measured ? measured.filter(Boolean).length : 0 }, doors, doorInfo: wallKinds ? doorSummary(wallKinds, doors) : null };
 }
 
 /** The roofer roof surfaces with flat per-triangle normals (a pitched roof is faceted). */

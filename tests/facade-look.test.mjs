@@ -198,7 +198,7 @@ test('ground floor kinds reach the wall vertices (facadeBldg.y) and the style co
   assert.ok(kinds.has(KIND.shop) && kinds.has(KIND.rear) && kinds.has(KIND.lotLine));
   assert.equal(added.style.code, MAT.brick + 4 * ERA.historic);
   assert.equal(acc.wall.facadeBldg[2], added.style.code);
-  assert.equal(acc.wall.facadeTop.length, acc.wall.position.length / 3);
+  assert.equal(acc.wall.facadeTop.length, acc.wall.position.length / 3 * 4); // (top, measured grid start, sill/head, rows/cols)
   assert.equal(acc.wall.facadeTop[0], 12);
 });
 

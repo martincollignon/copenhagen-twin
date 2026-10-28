@@ -45,12 +45,12 @@ function wallGeometry(wall) {
   if (wall.color) {
     g.setAttribute('color', new THREE.BufferAttribute(wall.color, 3));
   } else {
-    g.setAttribute('facadeUV', new THREE.BufferAttribute(wall.facadeUV, 2));
+    g.setAttribute('facadeUV', new THREE.BufferAttribute(wall.facadeUV, 4));
     g.setAttribute('facadeWall', new THREE.BufferAttribute(wall.facadeWall, 4));
     g.setAttribute('facadeBldg', new THREE.BufferAttribute(wall.facadeBldg, 4));
     g.setAttribute('facadeTone', new THREE.BufferAttribute(wall.facadeTone, 4));
     g.setAttribute('facadeWindow', new THREE.BufferAttribute(wall.facadeWindow, 4));
-    g.setAttribute('facadeTop', new THREE.BufferAttribute(wall.facadeTop, 1));
+    g.setAttribute('facadeTop', new THREE.BufferAttribute(wall.facadeTop, 4));
   }
   g.setIndex(new THREE.BufferAttribute(wall.index, 1));
   g.computeBoundingSphere();

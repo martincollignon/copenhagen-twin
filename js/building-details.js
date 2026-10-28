@@ -309,9 +309,10 @@ function plinthOutline(building, ring, selected, height, layout) {
     points.push(p); mask.push(selected[i]); edgeHeights.push(h);
     if (!selected[i] || (kind !== KIND.entry && kind !== KIND.shop)) continue;
     const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
-    const pier = Math.min(FACADE_CORNER_PIER, len * 0.2);
-    const bays = Math.max(1, Math.floor((len - 2 * pier) / layout.bayW + 0.5));
-    const bay = (len - 2 * pier) / bays;
+    const m = layout.measured?.[i]; // a measured window grid (js/facade-layout.js): the shader's bays are its columns
+    const pier = m ? m.u0 : Math.min(FACADE_CORNER_PIER, len * 0.2);
+    const bays = m ? m.n : Math.max(1, Math.floor((len - 2 * pier) / layout.bayW + 0.5));
+    const bay = m ? m.p : (len - 2 * pier) / bays;
     const door = Math.min(Math.floor(layout.tone * bays), bays - 1);
     for (const [u, keep] of [[0.21, false], [0.79, true]]) {
       const t = (pier + (door + u) * bay) / len;
