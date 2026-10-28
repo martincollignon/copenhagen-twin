@@ -325,6 +325,13 @@ def fit_strip(rgba: np.ndarray, len_m: float, h_m: float, eave_m: float | None =
     nc = int(math.floor((len_m - (first_c + ww / 2)) / p + 0.1 * ww / p)) + 1
     if nr < 1 or nc < 1:
         return None, "empty_grid"
+    # washed-out or smeared texels (the fill where the photo did not see the wall, burnt-out highlights): flat over ~0.8 m. They
+    # count as unobserved, so the grid is not cut back where the photo shows nothing
+    gl = rgba[..., :3].astype(np.float32).mean(2) / 255.0
+    kf = (max(3, int(round(0.8 / sy))), max(3, int(round(0.8 / sx))))
+    m1 = ndi.uniform_filter(gl, kf)
+    flat = np.sqrt(np.maximum(ndi.uniform_filter(gl * gl, kf) - m1 * m1, 0)) < FLAT_STD
+    seen = valid & ~flat
     # cell presence: mean deviation in the cell's window vs the wall level between windows
     cells = np.zeros((nr, nc))
     obs_c = np.zeros((nr, nc), bool)
@@ -339,7 +346,7 @@ def fit_strip(rgba: np.ndarray, len_m: float, h_m: float, eave_m: float | None =
             if len(rr) < 2 or len(cc) < 2:
                 continue
             blk = F[np.ix_(rr, cc)]
-            vv = valid[np.ix_(rr, cc)]
+            vv = seen[np.ix_(rr, cc)]
             if vv.mean() < 0.5:
                 continue
             obs_c[r, c] = True
@@ -349,14 +356,31 @@ def fit_strip(rgba: np.ndarray, len_m: float, h_m: float, eave_m: float | None =
     hi = float(np.percentile(cells[obs_c], 75))
     thr = max(base + 0.45 * (hi - base), base * 1.3 + 0.03)  # relative to the strip, and an absolute margin over the wall
     on = (cells > thr) & obs_c
-    col_on = (on.sum(0) >= np.maximum(1, np.ceil(obs_c.sum(0) * 0.5))) & (obs_c.sum(0) > 0)
-    row_on = (on.sum(1) >= np.maximum(1, np.ceil(obs_c.sum(1) * 0.4))) & (obs_c.sum(1) > 0)
-    # unobserved columns / rows follow their neighbours' majority (the photo did not see them, the grid continues)
-    col_on |= (obs_c.sum(0) == 0) & (col_on.mean() > 0.6)
-    row_on |= (obs_c.sum(1) == 0) & (row_on.mean() > 0.6)
-    while nr > 1 and not row_on[nr - 1]:
+    # A column or a top row is left out only where the photo shows blank wall: its whole bay (or the whole row band) mostly seen and
+    # about as smooth as the wall between the windows. Window groups at another spacing (the comb's cells fall between their
+    # windows) or an unobserved / washed-out band keep the grid, so the wall is never drawn blanker than the guess it replaces.
+    blank_thr = base + BLANK_FRAC * (hi - base)
+    band_rows = np.zeros(ph, bool)
+    for r in range(nr):
+        band_rows |= np.abs(ys - (first_r + r * f)) < wh / 2
+
+    def confirmed_blank(rows_m, cols_m):
+        region = seen[np.ix_(rows_m, cols_m)]
+        if region.size == 0 or region.mean() < 0.5:
+            return False
+        return float(F[np.ix_(rows_m, cols_m)][region].mean()) < blank_thr
+
+    rows_idx = np.flatnonzero(band_rows)
+    col_on = np.ones(nc, bool)
+    for c in range(nc):
+        if on[:, c].any():
+            continue
+        col_on[c] = not confirmed_blank(rows_idx, np.flatnonzero(np.abs(xs - (first_c + c * p)) < p / 2))
+    cols_all = np.arange(pw)
+    while nr > 1 and not on[nr - 1].any() and confirmed_blank(np.flatnonzero(np.abs(ys - (first_r + (nr - 1) * f)) < wh / 2), cols_all):
         nr -= 1
-    row_on, on, obs_c = row_on[:nr], on[:nr], obs_c[:nr]
+    on, obs_c = on[:nr], obs_c[:nr]
+    row_on = on.sum(1) > 0
     n_on = int(on.sum())
     win_w = ww + 2 * FRAME_M
     win_h = wh + 2 * FRAME_V
@@ -419,6 +443,8 @@ def fit_strip(rgba: np.ndarray, len_m: float, h_m: float, eave_m: float | None =
     return lay, None
 
 
+FLAT_STD = 0.02  # sRGB luminance std over ~0.8 m under which a texel counts as washed out / smeared (unobserved)
+BLANK_FRAC = 0.25  # a bay or row band is blank wall when its deviation is within this share of the window contrast of the wall level
 FRAME_M = 0.08  # the blob is the glazing; the opening adds the pale frame around it
 FRAME_V = 0.2  # vertically: sill and head below / above the glazing (calibrated on the Nyhavn fronts: the band fit sees the panes, ~25 % short)
 

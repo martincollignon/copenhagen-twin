@@ -505,12 +505,18 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0, wallAttr
     const maskBit = (word, i) => mod(floor(floor(word.add(0.5)).div(exp2(i))), 2.0);
     const bi = clamp(bayIdx, 0.0, 31.0);
     const colOn = mix(maskBit(mix(fuv.z, fuv.w, step(15.5, bi)), mod(bi, 16.0)), float(1.0), step(31.5, bayIdx));
-    const groundOn = mix(maskBit(fwin.y, clamp(bayIdx, 0.0, 15.0)), float(1.0), step(15.5, bayIdx));
     const outside = float(1.0).sub(step(0.0, bayIdx).mul(step(bayIdx, bays.sub(0.5))));
+    const groundOn = mix(maskBit(fwin.y, clamp(bayIdx, 0.0, 15.0)), float(1.0), max(step(15.5, bayIdx), outside));
+    // Beyond the measured columns (the strip covers only part of the cleaned edge, or a sliver at a wall end) the grid carries on at
+    // the measured pitch: whole bays between the corner piers get windows, never a blank stretch the guessed grid would have filled
+    const bayStart = start.add(bayIdx.mul(bayWidth));
+    const inPiers = step(pier, bayStart).mul(step(bayStart.add(bayWidth), len.sub(pier)));
+    const blindOutside = outside.mul(float(1.0).sub(inPiers));
     const storey = floor(mix(fuv.y.div(fwall.z), float(1.0).add(fuv.y.sub(fwall.z).div(fwall.y)), step(fwall.z, fuv.y)));
     const onGround = float(1.0).sub(step(0.5, storey));
     const aboveRows = step(mRows.add(0.5), storey);
-    measuredSolid = measured.mul(max(outside, mix(max(float(1.0).sub(colOn), aboveRows), float(1.0).sub(groundOn), onGround)));
+    const colOnAll = max(colOn, outside); // columns outside the measured span are windowed (see blindOutside for the wall ends)
+    measuredSolid = measured.mul(max(blindOutside, mix(max(float(1.0).sub(colOnAll), aboveRows), float(1.0).sub(groundOn), onGround)));
     uCoord = gridU.mul(bayWidth);
     wallS = s;
     wallW = len;

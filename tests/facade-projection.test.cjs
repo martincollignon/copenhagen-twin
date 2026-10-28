@@ -294,3 +294,16 @@ test('wallAttr: a measured window grid (js/facade-layout.js) replaces the guesse
   assert.equal(other.measured.values[0], 0);
   assert.equal(other.measuredSolid.values[0], 0);
 });
+
+test('wallAttr: beyond the measured columns the grid carries on at the measured pitch between the corner piers (no blank stretch)', () => {
+  // the strip's grid ends after 3 columns on a 20 m wall: bays 3 and 4 lie inside the piers and get windows, a bay crossing the pier stays wall
+  const b = rectangle(0);
+  const lay = { u0: 1.5, p: 3.2, n: 3, w: 1.2, cm: 0b111, g: 4.4, f: 3.1, rows: 3, sill: 0.9, head: 2.5, conf: 0.9 };
+  b.observed = { walls: [{ ring: 0, edge: 0, tone: [0.7, 0.6, 0.5], conf: 'observed' }], atlas: { walls: [{ ring: 0, edge: 0, len_m: 20 }] }, layout: { '0:0': lay } };
+  const vtx = wallsOf(b)[0][0];
+  const solid = (u, v) => evalWall(attributes({ ...vtx, facadeUV: [u, v, vtx.facadeUV[2], vtx.facadeUV[3]] }), new Node(vtx.normal), 0.9).measuredSolid.values[0];
+  assert.equal(solid(1.5 + 3.2 * 3.5, 6), 0, 'bay 3 (outside the measured span, inside the piers): windows');
+  assert.equal(solid(1.5 + 3.2 * 4.5, 6), 0, 'bay 4: windows');
+  assert.equal(solid(1.5 + 3.2 * 5.5, 6), 1, 'bay 5 crosses the pier: wall');
+  assert.equal(solid(1.5 + 3.2 * 3.5, 2), 0, 'its ground-floor bay is open');
+});

@@ -9,6 +9,9 @@
              red: below the confidence cutoff; yellow: ground-floor bays), in chunks of six, for a hand check
     stats    coverage of the data/tiles/*/windows.json layers: buildings and walls with a layout, the share of photographed wall area
              they cover, bytes
+    regress  walls whose measured layout draws less upper-storey window area than the guessed grid it replaces (< 80 %) although the
+             photo does not confirm blank wall in every region it leaves out (blind column bays, bays beyond the measured columns,
+             storeys above the last row): the regressions the fallback rules must prevent
 
     uv run --with pillow --with numpy --with scipy python tools/cph-geodata/facade_layout_check.py nyhavn [--out docs/windows/nyhavn.jpg]
     uv run --with pillow --with numpy --with scipy python tools/cph-geodata/facade_layout_check.py sheet --seed 11 --n 30 --out docs/windows/sheet
@@ -230,18 +233,149 @@ def cmd_stats(a):
         Path(a.out).write_text(json.dumps(st, indent=1))
 
 
+# ------------------------------------------------------------------------------------------------------------------- regressions
+CORNER_PIER = 0.9  # js/facade-style.js FACADE_CORNER_PIER
+WINDOW_RATIO_Y = 0.64  # js/facade-style.js WINDOW.ratioY
+
+
+def guessed_area(b, len_m, top):
+    """Upper-storey window area (m2) of the engine's guessed grid on a wall (js/building-geometry.js + facadeCell)."""
+    f = b.get("facade") or {}
+    ground_h = f.get("ground_floor_h") or f.get("floor_h") or 3.0
+    nominal = f.get("floor_h") or 3.0
+    upper = max(top - ground_h, 0.0)
+    floor_h = upper / max(1, round(upper / nominal)) if upper > nominal * 0.5 else nominal
+    rows = int(round(upper / floor_h)) if upper > nominal * 0.5 else 0
+    bay_w = f.get("bay_w") or 3.0
+    pier = min(CORNER_PIER, len_m * 0.2)
+    inner = len_m - 2 * pier
+    bays = max(1, round(inner / bay_w))
+    bw = inner / bays
+    ww = min(max((f.get("window_w") or 1.2) / bay_w, 0.12), 0.85) * bw
+    return rows * bays * ww * WINDOW_RATIO_Y * floor_h
+
+
+def wall_regression(strip, w, lay, b, extended):
+    """(drawn area, guessed area, regressed?) of one measured wall. `extended`: the engine continues the grid beyond the measured
+    columns (this PR's fix); else the wall beyond them is blank (the first version)."""
+    len_m, h_m = w["len_m"], w["h_m"]
+    top = min(h_m, w.get("eave_m") or h_m)
+    ph, pw = strip.shape[:2]
+    sx, sy = len_m / pw, h_m / ph
+    F, valid = FLY.deviation_map(strip, sx, sy)
+    F = __import__("scipy.ndimage", fromlist=["x"]).grey_closing(F, size=(max(2, int(round(0.3 / sy))), max(2, int(round(0.3 / sx))))) * valid
+    gl = strip[..., :3].astype(np.float32).mean(2) / 255.0
+    from scipy import ndimage as ndi
+    kf = (max(3, int(round(0.8 / sy))), max(3, int(round(0.8 / sx))))
+    m1 = ndi.uniform_filter(gl, kf)
+    seen = valid & ~(np.sqrt(np.maximum(ndi.uniform_filter(gl * gl, kf) - m1 * m1, 0)) < FLY.FLAT_STD)
+    ys = h_m - (np.arange(ph) + 0.5) * sy
+    xs = (np.arange(pw) + 0.5) * sx
+    p, n, ww, f, g, sill, head = lay["p"], lay["n"], lay["w"], lay["f"], lay["g"], lay["sill"], lay["head"]
+    wh = head - sill
+    centres = [lay["u0"] + (c + 0.5) * p for c in range(n)]
+    upper = (ys > g) & (ys < top)
+    near_col = np.zeros(pw, bool)
+    for uc in centres:
+        near_col |= np.abs(xs - uc) < ww / 2
+    sel = seen & upper[:, None] & ~near_col[None, :]
+    base = float(np.median(F[sel])) if sel.any() else 0.0
+    cellv = []
+    for r in range(lay["rows"]):
+        rr = np.abs(ys - (g + r * f + sill + wh / 2)) < wh / 2
+        for c, uc in enumerate(centres):
+            if (lay["cm"] >> c) & 1:
+                m = seen & rr[:, None] & (np.abs(xs - uc) < ww / 2)[None, :]
+                if m.any():
+                    cellv.append(float(F[m].mean()))
+    hi = float(np.percentile(cellv, 75)) if cellv else base + 0.1
+    thr = base + FLY.BLANK_FRAC * (hi - base)
+
+    def blank(rows_m, cols_m):
+        m = seen & rows_m[:, None] & cols_m[None, :]
+        region = rows_m[:, None] & cols_m[None, :]
+        if region.sum() == 0 or m.sum() < 0.5 * region.sum():
+            return False
+        return float(F[m].mean()) < thr
+
+    band = np.zeros(ph, bool)
+    for r in range(lay["rows"]):
+        band |= np.abs(ys - (g + r * f + sill + wh / 2)) < wh / 2
+    pier = min(CORNER_PIER, len_m * 0.2)
+    cols = []  # (centre, drawn?) of every bay that lies on the wall
+    for c in range(-int(len_m / p) - 2, n + int(len_m / p) + 2):
+        uc = lay["u0"] + (c + 0.5) * p
+        if 0 <= c < n:
+            if uc - ww / 2 < 0 or uc + ww / 2 > len_m:
+                continue
+            cols.append((uc, bool((lay["cm"] >> c) & 1) if c < 32 else True))
+        elif uc - p / 2 >= pier and uc + p / 2 <= len_m - pier:
+            cols.append((uc, extended))
+    rows = sum(1 for r in range(lay["rows"]) if g + r * f + head <= top + 0.05)
+    drawn = rows * sum(1 for _, on in cols if on) * ww * wh
+    dropped = [blank(band, np.abs(xs - uc) < p / 2) for uc, on in cols if not on]
+    r = lay["rows"]
+    while g + r * f + head <= top - 0.4:  # storeys above the last measured row
+        dropped.append(blank(np.abs(ys - (g + r * f + sill + wh / 2)) < wh / 2, np.ones(pw, bool)))
+        r += 1
+    guess = guessed_area(b, len_m, top)
+    return drawn, guess, drawn < 0.8 * guess and not all(dropped)
+
+
+def _regress_tile(args):
+    tid, layer_path, extended = args
+    if not Path(layer_path).exists():
+        return []
+    lays = json.loads(Path(layer_path).read_text())["buildings"]
+    app = json.loads((ROOT / "data/tiles" / tid / "appearance.json").read_text())["buildings"]
+    recs = {b["id"]: b for b in json.loads((ROOT / "data/tiles" / tid / "buildings.json").read_text())["buildings"]}
+    out = []
+    for bid, walls in lays.items():
+        at = app.get(bid, {}).get("atlas")
+        if not at or bid not in recs:
+            continue
+        for key, lay in walls.items():
+            ring, edge = key.split(":")
+            w, strip = strip_of(at, ring, edge)
+            if w is None:
+                continue
+            drawn, guess, reg = wall_regression(strip, w, lay, recs[bid], extended)
+            out.append((tid, bid, key, round(drawn, 1), round(guess, 1), reg))
+    return out
+
+
+def cmd_regress(a):
+    from concurrent.futures import ProcessPoolExecutor
+    layer_dir = Path(a.layers) if a.layers else None
+    tids = sorted(p.name for p in (ROOT / "data/tiles").iterdir() if (p / "appearance.json").exists())
+    jobs = [(t, str(layer_dir / f"{t}.json") if layer_dir else str(ROOT / "data/tiles" / t / FLY.LAYER_FILE), not a.blank_beyond) for t in tids]
+    rows = []
+    with ProcessPoolExecutor(a.workers) as ex:
+        for r in ex.map(_regress_tile, jobs, chunksize=2):
+            rows += r
+    reg = [r for r in rows if r[5]]
+    summary = {"walls": len(rows), "regressed": len(reg), "share": round(len(reg) / max(len(rows), 1), 4),
+               "drawnArea": round(sum(r[3] for r in rows)), "guessedArea": round(sum(r[4] for r in rows)), "examples": reg[:15]}
+    print(json.dumps(summary, indent=1))
+    if a.out:
+        Path(a.out).write_text(json.dumps({**summary, "regressedWalls": reg}, indent=0))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["nyhavn", "sheet", "stats"])
+    ap.add_argument("cmd", choices=["nyhavn", "sheet", "stats", "regress"])
     ap.add_argument("--out", default="")
     ap.add_argument("--seed", type=int, default=11)
     ap.add_argument("--n", type=int, default=30)
     ap.add_argument("--min-h", type=float, default=7.0)
     ap.add_argument("--min-len", type=float, default=6.0)
+    ap.add_argument("--layers", default="", help="regress: a directory of <tile>.json layer files to check (default: data/tiles/*/windows.json)")
+    ap.add_argument("--blank-beyond", action="store_true", help="regress: the engine leaves the wall beyond the measured columns blank (first version)")
+    ap.add_argument("--workers", type=int, default=12)
     a = ap.parse_args(argv)
     if a.cmd == "sheet" and not a.out:
         a.out = str(ROOT / ".context/windows-sheet")
-    {"nyhavn": cmd_nyhavn, "sheet": cmd_sheet, "stats": cmd_stats}[a.cmd](a)
+    {"nyhavn": cmd_nyhavn, "sheet": cmd_sheet, "stats": cmd_stats, "regress": cmd_regress}[a.cmd](a)
 
 
 if __name__ == "__main__":
