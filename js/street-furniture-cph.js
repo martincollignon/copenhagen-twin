@@ -8,6 +8,7 @@ import * as G from './street-furniture-geometry.js';
 import * as T from './tree-geometry-cph.js';
 import { treeDayOfYear } from './tree-season.js';
 import { TREE_LOD, TREE_CAPACITY, treeCapacities, originalTreeBudget, selectTreeDraws } from './tree-budget.js';
+import { createStaticInstanceCache } from './static-instance-cache.js';
 import { resolveGenus } from './tree-species-cph.js';
 import { alignLakeFurniture } from './lake-furniture-cph.js';
 import { buildPoolWindow, encodePoolWindow, haloSize, lampPhotometry, realIntensity, selectRealLights } from './night-lights-cph.js';
@@ -32,9 +33,22 @@ const WARM_FRAMES = 4; // while the shaders warm up, every mesh draws a degenera
 
 const lin = (srgb) => new THREE.Color().setRGB(srgb[0], srgb[1], srgb[2], THREE.SRGBColorSpace);
 
+function updateInstanceRange(attribute, count, start = 0) {
+  if (!count) return;
+  let from = start * attribute.itemSize, end = (start + count) * attribute.itemSize;
+  // Keep changes pending from frames when this batch did not render.
+  for (const range of attribute.updateRanges) {
+    from = Math.min(from, range.start);
+    end = Math.max(end, range.start + range.count);
+  }
+  attribute.clearUpdateRanges();
+  attribute.addUpdateRange(from, end - from);
+  attribute.needsUpdate = true;
+}
+
 /** One InstancedMesh with a write cursor. `paint` (cars): the geometry carries instanced paintColor/carState attributes. */
 class MeshSet {
-  constructor(name, geometry, material, capacity, { colored = false, tinted = false, cast = false, receive = true, paint = false, seasonal = false, parent = null } = {}) {
+  constructor(name, geometry, material, capacity, { colored = false, tinted = false, cast = false, receive = true, paint = false, seasonal = false, billboard = false, parent = null } = {}) {
     this.name = name;
     this.capacity = Math.max(1, capacity);
     this.paint = paint;
@@ -60,11 +74,34 @@ class MeshSet {
     } else this.tints = null;
     this.matrices = this.mesh.instanceMatrix.array;
     this.n = 0;
+    if (seasonal) {
+      this.trees = [];
+      this.treeCache = createStaticInstanceCache((t, slot) => {
+        this.n = slot;
+        if (billboard) this.put(t.x, t.y, t.z, t.yaw, t.crownR * 2, t.height, t.crownR * 2);
+        else this.put(t.x, t.y, t.z, t.yaw, t.sxz, t.sy, t.sxz);
+        this.putSeason(slot, t.season);
+        this.touch(slot);
+      }, (from, to) => {
+        this.matrices.copyWithin(to * 16, from * 16, (from + 1) * 16);
+        this.season.early.array.copyWithin(to * 4, from * 4, (from + 1) * 4);
+        this.season.late.array.copyWithin(to * 4, from * 4, (from + 1) * 4);
+        this.touch(to);
+      });
+    }
     if (parent) parent.add(this.mesh);
   }
 
   begin() {
     this.n = 0;
+    if (this.trees) this.trees.length = 0;
+    this.dirtyStart = Infinity;
+    this.dirtyEnd = 0;
+  }
+
+  touch(slot) {
+    this.dirtyStart = Math.min(this.dirtyStart, slot);
+    this.dirtyEnd = Math.max(this.dirtyEnd, slot + 1);
   }
 
   full() {
@@ -106,6 +143,7 @@ class MeshSet {
   }
 
   end(warm) {
+    if (this.treeCache) this.n = this.treeCache.sync(this.trees);
     if (this.n === 0 && warm) {
       composeYaw(this.matrices, 0, 0, -50, 0, 0, 0.001, 0.001, 0.001);
       this.mesh.count = 1;
@@ -113,16 +151,18 @@ class MeshSet {
       this.mesh.count = this.n;
     }
     this.mesh.visible = this.mesh.count > 0;
-    this.mesh.instanceMatrix.needsUpdate = true;
+    const start = this.treeCache ? this.dirtyStart : 0;
+    const count = this.treeCache ? (start === Infinity ? 0 : this.dirtyEnd - start) : this.mesh.count;
+    updateInstanceRange(this.mesh.instanceMatrix, count, start);
     if (this.season) {
-      this.season.early.needsUpdate = true;
-      this.season.late.needsUpdate = true;
+      updateInstanceRange(this.season.early, count, start);
+      updateInstanceRange(this.season.late, count, start);
     }
-    if (this.colors && this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    if (this.tints) this.mesh.geometry.attributes.bikePaint.needsUpdate = true;
+    if (this.colors && this.mesh.instanceColor) updateInstanceRange(this.mesh.instanceColor, this.mesh.count);
+    if (this.tints) updateInstanceRange(this.mesh.geometry.attributes.bikePaint, this.mesh.count);
     if (this.paint) {
-      this.mesh.geometry.attributes.paintColor.needsUpdate = true;
-      this.mesh.geometry.attributes.carState.needsUpdate = true;
+      updateInstanceRange(this.mesh.geometry.attributes.paintColor, this.mesh.count);
+      updateInstanceRange(this.mesh.geometry.attributes.carState, this.mesh.count);
     }
   }
 }
@@ -209,7 +249,7 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     if (treeNear.has(genus)) return;
     treeNear.set(genus, mk(`trees-near-${genus}`, T.buildNearTree(genus, treeDay, { variation: true }), treeMat, count(n, 260), { seasonal: true, cast: false }));
     treeMid.set(genus, mk(`trees-mid-${genus}`, T.buildMidTree(genus, treeDay, { variation: true }), treeMat, count(n, 900), { seasonal: true, cast: false }));
-    treeFar.set(genus, mk(`trees-far-${genus}`, T.buildBillboard(bill.cellOf.get(genus)), billMat, count(n, 4000), { seasonal: true, receive: false }));
+    treeFar.set(genus, mk(`trees-far-${genus}`, T.buildBillboard(bill.cellOf.get(genus)), billMat, count(n, 4000), { seasonal: true, billboard: true, receive: false }));
     treeCosts[genus] = {}; fullTreeCosts[genus] = {};
     for (const [lod, group] of [['near', treeNear], ['mid', treeMid], ['far', treeFar]]) {
       const geometry = group.get(genus).mesh.geometry;
@@ -446,13 +486,7 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     const submitted = selectTreeDraws(candidates, treeCosts, treeCaps, budget);
     for (const { tree: t, distance: d, lod } of submitted.selected) {
       const set = (lod === 'far' ? treeFar : lod === 'near' ? treeNear : treeMid).get(t.genus);
-      let slot;
-      if (lod === 'far') {
-        slot = set.put(t.x, t.y, t.z, t.yaw, t.crownR * 2.0, t.height, t.crownR * 2.0);
-      } else {
-        slot = set.put(t.x, t.y, t.z, t.yaw, t.sxz, t.sy, t.sxz);
-      }
-      set.putSeason(slot, t.season);
+      set.trees.push(t);
       const density = t.season.density;
       if (d <= 90 && density > 0 && treeShadow.n < budget.shadows) {
         const width = 0.9 * Math.sqrt(density);
@@ -560,8 +594,8 @@ export function createStreetFurniture(scene, doc, { groundHeight = null, seed = 
     for (const s of sets) s.end(warm && s !== litter && !s.name.startsWith('trees-'));
     halos.count = haloN;
     halos.visible = haloN > 0;
-    haloGeo.attributes.haloPos.needsUpdate = true;
-    haloGeo.attributes.haloCol.needsUpdate = true;
+    updateInstanceRange(haloGeo.attributes.haloPos, haloN);
+    updateInstanceRange(haloGeo.attributes.haloCol, haloN);
     if (on > 0.01) {
       // clustered pools: every lantern around the camera splatted into one illuminance raster (js/night-lights-cph.js)
       poolData = buildPoolWindow(allLamps, cx, cz, { size: POOL.size, cell: POOL.cell, target: poolData?.data });

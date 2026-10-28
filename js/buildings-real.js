@@ -19,7 +19,7 @@ import { nextFrame } from './yield-frame.js';
 import { createHeroCache } from './hero-cache.js';
 import { dataUrl, heroesEnabled } from './data-config.js';
 import { getAtlasSource } from './data-packs.js';
-import { batchBuildingCells, updateBuildingCellVisibility } from './building-batches.js';
+import { batchBuildingCells, batchBuildingCellsAsync, updateBuildingCellVisibility } from './building-batches.js';
 import { admitOverrides } from './detail-overrides.js';
 import { loadOverrideMesh, disposeOverride, detailsMesh, registerOverridePack } from './override-meshes.js';
 
@@ -313,6 +313,7 @@ function createTexManager(root, candidates, { fetchImpl = globalThis.fetch, budg
     const material = createPhotoMaterial(texture, { hasMask, tone: c.tone, brick: c.brick, layout: c.layout });
     const mesh = new THREE.Mesh(g, material);
     mesh.name = `wall-photos-${c.id}`;
+    mesh.userData.photoOverlay = true;
     mesh.receiveShadow = true;
     mesh.renderOrder = 2;
     mesh.raycast = () => {}; // picking uses the extruded walls underneath
@@ -489,7 +490,14 @@ function createBuildingMaterials() {
  *             every building it covers (they are not built at all); one that fails to load falls back to the generated building with its
  *             parametric details
  */
-async function buildRealBuildings(scene, geo, { heroLoader = loadHeroCached, withInfoPanel = true, lod2 = null, tex = texRequested(), observed = true, terrain = null, venues = null, entrances = undefined, shared = null, context = null, doors: wantDoors = true, slice = null, lite = false, compute = null, photoBudget = null, overrides = null } = {}) {
+async function buildRealBuildings(scene, geo, { heroLoader = loadHeroCached, withInfoPanel = true, lod2 = null, tex = texRequested(), observed = true, terrain = null, venues = null, entrances = undefined, shared = null, context = null, doors: wantDoors = true, slice = null, lite = false, compute = null, photoBudget = null, overrides = null, signal = null } = {}) {
+  const abortBuild = () => { throw Object.assign(new Error('Building tile build aborted'), { name: 'AbortError' }); };
+  const checkpoint = async () => {
+    if (signal?.aborted) abortBuild();
+    if (slice) await slice();
+    if (signal?.aborted) abortBuild();
+  };
+  if (signal?.aborted) abortBuild();
   const buildings = geo.buildings || [];
   const heroIds = new Set((geo.heroes || []).map((h) => h.building_id));
   const byId = new Map(buildings.map((b) => [b.id, b]));
@@ -511,304 +519,355 @@ async function buildRealBuildings(scene, geo, { heroLoader = loadHeroCached, wit
   }
   const ovSignal = overrides?.signal || null;
   if (ovShown.size) registerOverridePack(ovLayer);
-  const ovLoads = [...ovShown.values()].map((e) => loadOverrideMesh(e, { signal: ovSignal }).then((group) => ({ e, group }), (error) => ({ e, error })));
+  const disposedOverrideGroups = new Set();
+  const pendingOverrideGroups = new Set();
+  let buildFailed = false;
+  const releaseOverride = (group) => {
+    if (!group || disposedOverrideGroups.has(group)) return;
+    disposedOverrideGroups.add(group);
+    disposeOverride(group);
+  };
+  const ovLoads = [...ovShown.values()].map((e) => loadOverrideMesh(e, { signal: ovSignal }).then((group) => {
+    if (buildFailed || ovSignal?.aborted) {
+      releaseOverride(group);
+      return { e, error: Object.assign(new Error('Building tile build aborted'), { name: 'AbortError' }) };
+    }
+    pendingOverrideGroups.add(group);
+    return { e, group };
+  }, (error) => ({ e, error })));
   const skipIds = new Set([...heroIds, ...ovCovered]); // built from a model instead of the footprint
 
   const root = new THREE.Group();
   root.name = 'CopenhagenBuildings';
   scene.add(root);
-
   const { masonry, glass, roofMaterial, doorMaterial, liteWall, detailMaterial } = shared || createBuildingMaterials();
-  const wallMaterial = lite ? liteWall : masonry;
-
-  // LoD2 roofs (tools/lod2): every building with a measured roofer record gets its pitched roof; the rest keep the flat
-  // extrusion. The join is by building id, so the geodata compiler never needs to know about LoD2.
-  const lod2Records = new Map();
-  if (lod2) {
-    // Records are fetched per owning tile on first use (loadLod2: 1 km binaries, tile store: one lod2.bin per tile), all in parallel.
-    const wanted = buildings.filter((b) => !skipIds.has(b.id) && !b.footprintFix); // a footprint the street layout clipped no longer matches its roofer edges
-    const recs = await Promise.all(wanted.map((b) => lod2.ready(b.id)));
-    wanted.forEach((b, i) => { if (recs[i]) lod2Records.set(b.id, recs[i]); });
-  }
-
-  // The CPU half (quadtree cells, wall / roof arrays, placed doors, photo candidates) is pure data in, typed arrays out
-  // (js/building-compute.js): `compute` runs it in a Web Worker (js/building-pool.js); without one it runs here, a few buildings at a
-  // time between the `slice` waits.
-  const wantEntrances = !lite && wantDoors ? (entrances === undefined ? await loadEntrances() : entrances) : null;
-  const job = {
-    buildings, heroIds: [...skipIds], observed, doors: wantDoors && !lite, lite, wantQuads: !lite && !!tex, calibration: calibrationOn(),
-    // the neighbourhood the ground floor reads: footprints and the road lines only (the rest of a record stays here)
-    context: lite ? null : {
-      buildings: (context?.buildings || buildings).map((b) => ({ id: b.id, ring: b.ring, holes: b.holes })),
-      roads: (context?.roads || geo.roads || []).map((r) => ({ pts: r.pts, width: r.width, class: r.class, name: r.name }))
-    },
-    venues: !lite && wantDoors ? venues ?? (await loadVenues()) : [], entrances: wantEntrances, lod2: lod2Records,
-    lows: terrain && !terrain.flat ? new Map(buildings.map((b) => [b.id, groundLow(b, terrain)]).filter((e) => e[1] !== null)) : null
-  };
-  let result = compute ? await compute(job) : null;
-  if (!result) {
-    const gen = buildingSteps(job);
-    for (;;) {
-      const step = gen.next();
-      if (step.done) { result = step.value; break; }
-      if (slice) await slice();
-    }
-  }
-
-  const doorInfo = new Map(result.doorInfo); // building id -> { source: 'dar' | 'heuristic' | 'none', count, conf } for the info panel
-  const texCandidates = result.texCandidates;
-  const leaves = [];
-  const pickables = [];
-  let doorCount = result.stats.doors;
-  let triangles = result.stats.triangles;
-  const heightAt = terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null;
-
-  for (const leaf of result.leaves) {
-    if (slice) await slice();
-    const group = new THREE.Group();
-    group.name = 'buildings-cell';
-    if (leaf.wall) {
-      const wallMesh = new THREE.Mesh(wallGeometry(leaf.wall), wallMaterial);
-      wallMesh.userData.ranges = leaf.wallRanges;
-      wallMesh.castShadow = wallMesh.receiveShadow = true;
-      wallMesh.name = 'walls';
-      group.add(wallMesh);
-      pickables.push(wallMesh);
-    }
-    if (leaf.roof) {
-      const roofMesh = new THREE.Mesh(roofGeometry(leaf.roof), roofMaterial);
-      roofMesh.userData.ranges = leaf.roofRanges;
-      roofMesh.userData.detailRanges = leaf.detailParts;
-      roofMesh.castShadow = roofMesh.receiveShadow = true;
-      roofMesh.name = 'roofs';
-      group.add(roofMesh);
-      pickables.push(roofMesh);
-    }
-    if (leaf.doors.length) {
-      // doors stand on the terrain at the door (the compute step has none): built here, from the placed doors
-      const doorAcc = createDoorAccumulator();
-      for (const d of leaf.doors) addDoors(doorAcc, d.doors, { ground: d.ground, heightAt });
-      const doorMesh = makeDoorMesh(doorAcc, doorMaterial);
-      if (doorMesh) group.add(doorMesh);
-    }
-    group.userData.centre = leaf.centre;
-    group.userData.radius = leaf.radius;
-    root.add(group);
-    leaves.push(group);
-  }
-  if (result.glass) {
-    const mesh = new THREE.Mesh(wallGeometry(result.glass.wall), glass);
-    mesh.userData.ranges = result.glass.wallRanges;
-    mesh.castShadow = mesh.receiveShadow = true;
-    mesh.name = 'glass-walls';
-    root.add(mesh);
-    pickables.push(mesh);
-  }
-
   const heroGroups = [];
   const heroStatus = [];
-  await Promise.all((geo.heroes || []).map(async (hero) => {
-    try {
-      const group = await heroLoader(hero);
-      root.add(group);
-      heroGroups.push(group);
-      heroStatus.push({ id: hero.building_id, loaded: true, position: group.position.toArray() });
-    } catch (error) {
-      if (error?.code !== 'hero-disabled') console.warn(`[cph] hero ${hero.building_id} not loaded (run tools/link-heroes.sh); extruding its footprint instead:`, error?.message || error);
-      heroStatus.push({ id: hero.building_id, loaded: false, error: String(error?.message || error) });
-      const b = byId.get(hero.building_id);
-      if (b) heroIds.delete(hero.building_id);
-      if (b) extrudeAlone(b);
-    }
-  }));
-
-  /** One building extruded on its own (a hero or an override that did not load): walls, roof, doors, pickable. */
-  function extrudeAlone(b) {
-    skipIds.delete(b.id);
-    const acc = createAccumulator({ lite });
-    const ground = lite ? null : createGroundContext({ roads: context?.roads || geo.roads || [], buildings: context?.buildings || buildings, venues: job.venues, entrances: wantEntrances ? createEntranceIndex(wantEntrances) : null });
-    const added = addBuilding(acc, b, { ...(lite ? { lite: true } : { ground }), ...(terrain ? { terrain } : {}), ...(observed ? {} : { observed: false }) });
-    if (added?.doorInfo) doorInfo.set(b.id, added.doorInfo);
-    const heroDoors = createDoorAccumulator();
-    if (wantDoors && added?.doors?.length) doorCount += addDoors(heroDoors, added.doors, { ground: b.ground, heightAt: terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null });
-    const group = new THREE.Group();
-    const heroDoorMesh = makeDoorMesh(heroDoors, doorMaterial);
-    if (heroDoorMesh) group.add(heroDoorMesh);
-    const wm = new THREE.Mesh(wallGeometry(wallTyped(acc.wall)), wallMaterial);
-    wm.userData.ranges = acc.wallRanges;
-    const rm = new THREE.Mesh(roofGeometry(roofTyped(acc.roof)), roofMaterial);
-    rm.userData.ranges = acc.roofRanges;
-    rm.userData.detailRanges = acc.detailParts;
-    rm.name = 'roofs';
-    for (const m of [wm, rm]) { m.castShadow = m.receiveShadow = true; group.add(m); pickables.push(m); }
-    root.add(group);
-    leaves.push(Object.assign(group, {}));
-    group.userData.centre = ringCentre(b.ring);
-    group.userData.radius = 60;
-  }
-
-  // the override meshes: added a few per frame (their textures upload with the render that first draws them); one that failed is extruded
   const overrideGroups = [];
-  const ovStats = { shown: 0, failed: 0, refused: ovRefused.length, details: 0, textureBytes: 0, errors: [] };
-  const ovDetails = []; // [building record, details]: overrides whose mesh is not shown, and details-only entries
-  for (const e of ovRefused) if (e.details && byId.has(e.id)) ovDetails.push([byId.get(e.id), e.details]);
-  let added = 0;
-  for (const { e, group, error } of await Promise.all(ovLoads)) {
-    if (group && !ovSignal?.aborted) {
-      root.add(group);
-      overrideGroups.push(group);
-      ovStats.shown++;
-      ovStats.textureBytes += e.mesh.textureBytes || 0;
-      if (++added % 6 === 0) await nextFrame();
-      continue;
-    }
-    if (group) disposeOverride(group);
-    overrides?.budget?.release(e.id);
-    ovShown.delete(e.id);
-    if (error?.name === 'AbortError' || ovSignal?.aborted) continue; // the tile went away while it loaded
-    ovStats.failed++;
-    if (ovStats.errors.length < 4) ovStats.errors.push(`${e.id}: ${String(error?.message || error)}`);
-    console.warn(`[cph] override ${e.id} not loaded; extruding its footprint instead:`, error?.message || error);
-    for (const c of e.covers) {
-      const b = byId.get(c);
-      if (!b || !skipIds.has(c)) continue;
-      ovCovered.delete(c);
-      extrudeAlone(b);
-    }
-    if (e.details && byId.has(e.id)) ovDetails.push([byId.get(e.id), e.details]);
-  }
-  if (ovLayer) {
-    for (const e of ovLayer.entries.values()) {
-      if (!byId.has(e.id) || ovShown.has(e.id) || ovDetails.some(([b]) => b.id === e.id)) continue;
-      if (e.details && (e.mode === 'details' || ovMode === 'details')) ovDetails.push([byId.get(e.id), e.details]);
-    }
-    const dm = ovDetails.length ? detailsMesh(ovDetails, shared?.detailMaterial || detailMaterial) : null;
-    if (dm) { root.add(dm); ovStats.details = ovDetails.length; }
-  }
-
-  // one BatchedMesh per material and mesh kind over the quadtree cells (js/building-batches.js); a streamed tile batches its own cells
-  batchBuildingCells(root, leaves, pickables);
-
-  // the Irma sign only exists where its buildings are: a tile without them builds no neon materials
-  const neon = irmaNeonArtwork().some((art) => byId.has(art.buildingId)) ? createIrmaNeon(root, byId, lod2Records) : { group: null, panels: [], update() {}, stats: { panels: 0 } };
-  const texManager = tex ? createTexManager(root, texCandidates, { budget: photoBudget }) : null; // joins the shared budget itself
-  const raycaster = new THREE.Raycaster();
-  const ndc = new THREE.Vector2();
-  const panel = withInfoPanel && typeof document !== 'undefined' ? createInfoPanel() : null;
-  let pinned = null;
-  let camera = null;
-
-  /** Hides cells beyond STREAM_RADIUS (cheap: a few dozen cells). Called every frame with the camera position. */
-  function update(x, z, nightFactor = 0) {
-    neon.update(nightFactor);
-    if (texManager) texManager.update(camera ? camera.position.x : x, camera ? camera.position.z : z, performance.now(), camera?.position.y);
-    for (const g of leaves) {
-      const dx = g.userData.centre[0] - x;
-      const dz = g.userData.centre[1] - z;
-      updateBuildingCellVisibility(g, Math.hypot(dx, dz) - g.userData.radius < STREAM_RADIUS);
-    }
-  }
-
-  /** Building id under a normalised-device point, or null. */
-  function pick(ndcX, ndcY, cam = camera) {
-    if (!cam) return null;
-    ndc.set(ndcX, ndcY);
-    raycaster.setFromCamera(ndc, cam);
-    const targets = [...pickables.filter((m) => m.parent?.visible !== false), ...heroGroups, ...overrideGroups];
-    const hits = raycaster.intersectObjects(targets, true);
-    for (const hit of hits) {
-      let o = hit.object;
-      while (o && !o.userData.buildingId) o = o.parent;
-      if (o?.userData.buildingId) return { id: o.userData.buildingId, point: hit.point, distance: hit.distance };
-      const range = hit.object.userData.ranges && rangeAt(hit.object.userData.ranges, hit.faceIndex);
-      if (range) return { id: range.id, point: hit.point, distance: hit.distance, surface: rangeAt(hit.object.userData.detailRanges || [], hit.faceIndex) ? 'detail' : hit.object.name === 'roofs' ? 'roof' : 'wall' };
-    }
-    return null;
-  }
-
-  /** What the info panel shows for a building of this instance (null when it is not one of ours). */
-  function infoFor(id, hit = null) {
-    const b = byId.get(id);
-    if (!b) return null;
-    const info = describeBuilding(b, lod2?.entry(id));
-    info.doors = doorInfo.get(id) || null;
-    info.appearance = describeAppearance(b, hit?.surface || 'wall', hit?.point || null, { textured: !!texManager?.state.resident.has(id) });
-    const ov = ovShown.get(id);
-    if (ov) {
-      info.override = { set: ov.source?.set, confidence: ov.confidence, iou: ov.match?.iou, details: !!ov.details, attribution: (ov.attribution || []).map((k) => overrides?.layer?.attribution?.[k]?.licence ? `${k} (${overrides.layer.attribution[k].licence})` : k) };
-      info.appearance = null; // the generated appearance is not what is drawn
-    }
-    return info;
-  }
-
-  function showBuilding(id, isPinned = false, hit = null) {
-    if (!panel) return null;
-    const info = infoFor(id, hit);
-    if (info) panel.show(info, isPinned);
-    return info;
-  }
-
-  /** Frees the GPU side of this instance: geometries, the photo textures and (when not shared) the materials. */
-  function dispose() {
-    photoBudget?.remove(texManager);
-    texManager?.dispose();
-    for (const g of overrideGroups) disposeOverride(g);
-    for (const id of ovShown.keys()) overrides?.budget?.release(id);
-    overrideGroups.length = 0;
-    // hero glTFs own their materials and textures (loadHero builds them per load)
-    for (const g of heroGroups) {
-      if (g.userData.cached) continue; // the hero cache owns these
-      g.traverse((o) => {
-        const m = o.material;
-        if (!m) return;
-        for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap']) m[k]?.dispose?.();
-        m.dispose();
+  let texManager = null;
+  let panel = null;
+  const releaseHeroes = () => {
+    for (const group of heroGroups) {
+      if (group.userData.cached) continue; // the hero cache owns these
+      group.traverse((o) => {
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+          if (!m) continue;
+          for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap']) m[k]?.dispose?.();
+          m.dispose?.();
+        }
       });
     }
+  };
+
+  try {
+    const wallMaterial = lite ? liteWall : masonry;
+
+    // LoD2 roofs (tools/lod2): every building with a measured roofer record gets its pitched roof; the rest keep the flat
+    // extrusion. The join is by building id, so the geodata compiler never needs to know about LoD2.
+    const lod2Records = new Map();
+    if (lod2) {
+      // Records are fetched per owning tile on first use (loadLod2: 1 km binaries, tile store: one lod2.bin per tile), all in parallel.
+      const wanted = buildings.filter((b) => !skipIds.has(b.id) && !b.footprintFix); // a footprint the street layout clipped no longer matches its roofer edges
+      const recs = await Promise.all(wanted.map((b) => lod2.ready(b.id)));
+      if (signal?.aborted) abortBuild();
+      wanted.forEach((b, i) => { if (recs[i]) lod2Records.set(b.id, recs[i]); });
+    }
+
+    // The CPU half (quadtree cells, wall / roof arrays, placed doors, photo candidates) is pure data in, typed arrays out
+    // (js/building-compute.js): `compute` runs it in a Web Worker (js/building-pool.js); without one it runs here, a few buildings at a
+    // time between the `slice` waits.
+    const wantEntrances = !lite && wantDoors ? (entrances === undefined ? await loadEntrances() : entrances) : null;
+    if (signal?.aborted) abortBuild();
+    const job = {
+      buildings, heroIds: [...skipIds], observed, doors: wantDoors && !lite, lite, wantQuads: !lite && !!tex, calibration: calibrationOn(),
+      // the neighbourhood the ground floor reads: footprints and the road lines only (the rest of a record stays here)
+      context: lite ? null : {
+        buildings: (context?.buildings || buildings).map((b) => ({ id: b.id, ring: b.ring, holes: b.holes })),
+        roads: (context?.roads || geo.roads || []).map((r) => ({ pts: r.pts, width: r.width, class: r.class, name: r.name }))
+      },
+      venues: !lite && wantDoors ? venues ?? (await loadVenues()) : [], entrances: wantEntrances, lod2: lod2Records,
+      lows: terrain && !terrain.flat ? new Map(buildings.map((b) => [b.id, groundLow(b, terrain)]).filter((e) => e[1] !== null)) : null
+    };
+    if (signal?.aborted) abortBuild();
+    let result = compute ? await compute(job) : null;
+    if (signal?.aborted) abortBuild();
+    if (!result) {
+      const gen = buildingSteps(job);
+      for (;;) {
+        const step = gen.next();
+        if (step.done) { result = step.value; break; }
+        await checkpoint();
+      }
+    }
+
+    const doorInfo = new Map(result.doorInfo); // building id -> { source: 'dar' | 'heuristic' | 'none', count, conf } for the info panel
+    const texCandidates = result.texCandidates;
+    const leaves = [];
+    const pickables = [];
+    let doorCount = result.stats.doors;
+    let triangles = result.stats.triangles;
+    const heightAt = terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null;
+
+    for (const leaf of result.leaves) {
+      await checkpoint();
+      const group = new THREE.Group();
+      group.name = 'buildings-cell';
+      if (leaf.wall) {
+        const wallMesh = new THREE.Mesh(wallGeometry(leaf.wall), wallMaterial);
+        wallMesh.userData.ranges = leaf.wallRanges;
+        wallMesh.castShadow = wallMesh.receiveShadow = true;
+        wallMesh.name = 'walls';
+        group.add(wallMesh);
+        pickables.push(wallMesh);
+      }
+      if (leaf.roof) {
+        const roofMesh = new THREE.Mesh(roofGeometry(leaf.roof), roofMaterial);
+        roofMesh.userData.ranges = leaf.roofRanges;
+        roofMesh.userData.detailRanges = leaf.detailParts;
+        roofMesh.castShadow = roofMesh.receiveShadow = true;
+        roofMesh.name = 'roofs';
+        group.add(roofMesh);
+        pickables.push(roofMesh);
+      }
+      if (leaf.doors.length) {
+        // doors stand on the terrain at the door (the compute step has none): built here, from the placed doors
+        const doorAcc = createDoorAccumulator();
+        for (const d of leaf.doors) addDoors(doorAcc, d.doors, { ground: d.ground, heightAt });
+        const doorMesh = makeDoorMesh(doorAcc, doorMaterial);
+        if (doorMesh) group.add(doorMesh);
+      }
+      group.userData.centre = leaf.centre;
+      group.userData.radius = leaf.radius;
+      root.add(group);
+      leaves.push(group);
+    }
+    if (result.glass) {
+      const mesh = new THREE.Mesh(wallGeometry(result.glass.wall), glass);
+      mesh.userData.ranges = result.glass.wallRanges;
+      mesh.castShadow = mesh.receiveShadow = true;
+      mesh.name = 'glass-walls';
+      root.add(mesh);
+      pickables.push(mesh);
+    }
+
+    await Promise.all((geo.heroes || []).map(async (hero) => {
+      try {
+        const group = await heroLoader(hero);
+        root.add(group);
+        heroGroups.push(group);
+        heroStatus.push({ id: hero.building_id, loaded: true, position: group.position.toArray() });
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        if (error?.code !== 'hero-disabled') console.warn(`[cph] hero ${hero.building_id} not loaded (run tools/link-heroes.sh); extruding its footprint instead:`, error?.message || error);
+        heroStatus.push({ id: hero.building_id, loaded: false, error: String(error?.message || error) });
+        const b = byId.get(hero.building_id);
+        if (b) heroIds.delete(hero.building_id);
+        if (b) extrudeAlone(b);
+      }
+    }));
+    if (signal?.aborted) abortBuild();
+
+    /** One building extruded on its own (a hero or an override that did not load): walls, roof, doors, pickable. */
+    function extrudeAlone(b) {
+      skipIds.delete(b.id);
+      const acc = createAccumulator({ lite });
+      const ground = lite ? null : createGroundContext({ roads: context?.roads || geo.roads || [], buildings: context?.buildings || buildings, venues: job.venues, entrances: wantEntrances ? createEntranceIndex(wantEntrances) : null });
+      const added = addBuilding(acc, b, { ...(lite ? { lite: true } : { ground }), ...(terrain ? { terrain } : {}), ...(observed ? {} : { observed: false }) });
+      if (added?.doorInfo) doorInfo.set(b.id, added.doorInfo);
+      const heroDoors = createDoorAccumulator();
+      if (wantDoors && added?.doors?.length) doorCount += addDoors(heroDoors, added.doors, { ground: b.ground, heightAt: terrain && !terrain.flat ? (x, z) => terrain.heightAt(x, z) : null });
+      const group = new THREE.Group();
+      group.name = 'buildings-cell';
+      const heroDoorMesh = makeDoorMesh(heroDoors, doorMaterial);
+      if (heroDoorMesh) group.add(heroDoorMesh);
+      const wm = new THREE.Mesh(wallGeometry(wallTyped(acc.wall)), wallMaterial);
+      wm.userData.ranges = acc.wallRanges;
+      wm.name = 'walls';
+      const rm = new THREE.Mesh(roofGeometry(roofTyped(acc.roof)), roofMaterial);
+      rm.userData.ranges = acc.roofRanges;
+      rm.userData.detailRanges = acc.detailParts;
+      rm.name = 'roofs';
+      for (const m of [wm, rm]) { m.castShadow = m.receiveShadow = true; group.add(m); pickables.push(m); }
+      root.add(group);
+      leaves.push(Object.assign(group, {}));
+      group.userData.centre = ringCentre(b.ring);
+      group.userData.radius = 60;
+    }
+
+    // the override meshes: added a few per frame (their textures upload with the render that first draws them); one that failed is extruded
+    const ovStats = { shown: 0, failed: 0, refused: ovRefused.length, details: 0, textureBytes: 0, errors: [] };
+    const ovDetails = []; // [building record, details]: overrides whose mesh is not shown, and details-only entries
+    for (const e of ovRefused) if (e.details && byId.has(e.id)) ovDetails.push([byId.get(e.id), e.details]);
+    let added = 0;
+    const loadedOverrides = await Promise.all(ovLoads);
+    if (signal?.aborted) abortBuild();
+    for (const { e, group, error } of loadedOverrides) {
+      if (group && !ovSignal?.aborted) {
+        root.add(group);
+        overrideGroups.push(group);
+        pendingOverrideGroups.delete(group);
+        ovStats.shown++;
+        ovStats.textureBytes += e.mesh.textureBytes || 0;
+        if (++added % 6 === 0) { await nextFrame(); if (signal?.aborted) abortBuild(); }
+        continue;
+      }
+      if (group) {
+        pendingOverrideGroups.delete(group);
+        releaseOverride(group);
+      }
+      overrides?.budget?.release(e.id);
+      ovShown.delete(e.id);
+      if (error?.name === 'AbortError' || ovSignal?.aborted) continue; // the tile went away while it loaded
+      ovStats.failed++;
+      if (ovStats.errors.length < 4) ovStats.errors.push(`${e.id}: ${String(error?.message || error)}`);
+      console.warn(`[cph] override ${e.id} not loaded; extruding its footprint instead:`, error?.message || error);
+      for (const c of e.covers) {
+        const b = byId.get(c);
+        if (!b || !skipIds.has(c)) continue;
+        ovCovered.delete(c);
+        extrudeAlone(b);
+      }
+      if (e.details && byId.has(e.id)) ovDetails.push([byId.get(e.id), e.details]);
+    }
+    if (ovLayer) {
+      for (const e of ovLayer.entries.values()) {
+        if (!byId.has(e.id) || ovShown.has(e.id) || ovDetails.some(([b]) => b.id === e.id)) continue;
+        if (e.details && (e.mode === 'details' || ovMode === 'details')) ovDetails.push([byId.get(e.id), e.details]);
+      }
+      const dm = ovDetails.length ? detailsMesh(ovDetails, shared?.detailMaterial || detailMaterial) : null;
+      if (dm) { root.add(dm); ovStats.details = ovDetails.length; }
+    }
+
+    // one BatchedMesh per material and mesh kind over the quadtree cells (js/building-batches.js); a streamed tile batches its own cells
+    if (slice || signal) await batchBuildingCellsAsync(root, leaves, pickables, slice, signal);
+    else batchBuildingCells(root, leaves, pickables);
+
+    // the Irma sign only exists where its buildings are: a tile without them builds no neon materials
+    const neon = irmaNeonArtwork().some((art) => byId.has(art.buildingId)) ? createIrmaNeon(root, byId, lod2Records) : { group: null, panels: [], update() {}, stats: { panels: 0 } };
+    texManager = tex ? createTexManager(root, texCandidates, { budget: photoBudget }) : null; // joins the shared budget itself
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    panel = withInfoPanel && typeof document !== 'undefined' ? createInfoPanel() : null;
+    let pinned = null;
+    let camera = null;
+
+    /** Hides cells beyond STREAM_RADIUS (cheap: a few dozen cells). Called every frame with the camera position. */
+    function update(x, z, nightFactor = 0) {
+      neon.update(nightFactor);
+      if (texManager) texManager.update(camera ? camera.position.x : x, camera ? camera.position.z : z, performance.now(), camera?.position.y);
+      for (const g of leaves) {
+        const dx = g.userData.centre[0] - x;
+        const dz = g.userData.centre[1] - z;
+        updateBuildingCellVisibility(g, Math.hypot(dx, dz) - g.userData.radius < STREAM_RADIUS);
+      }
+    }
+
+    /** Building id under a normalised-device point, or null. */
+    function pick(ndcX, ndcY, cam = camera) {
+      if (!cam) return null;
+      ndc.set(ndcX, ndcY);
+      raycaster.setFromCamera(ndc, cam);
+      const targets = [...pickables.filter((m) => m.parent?.visible !== false), ...heroGroups, ...overrideGroups];
+      const hits = raycaster.intersectObjects(targets, true);
+      for (const hit of hits) {
+        let o = hit.object;
+        while (o && !o.userData.buildingId) o = o.parent;
+        if (o?.userData.buildingId) return { id: o.userData.buildingId, point: hit.point, distance: hit.distance };
+        const range = hit.object.userData.ranges && rangeAt(hit.object.userData.ranges, hit.faceIndex);
+        if (range) return { id: range.id, point: hit.point, distance: hit.distance, surface: rangeAt(hit.object.userData.detailRanges || [], hit.faceIndex) ? 'detail' : hit.object.name === 'roofs' ? 'roof' : 'wall' };
+      }
+      return null;
+    }
+
+    /** What the info panel shows for a building of this instance (null when it is not one of ours). */
+    function infoFor(id, hit = null) {
+      const b = byId.get(id);
+      if (!b) return null;
+      const info = describeBuilding(b, lod2?.entry(id));
+      info.doors = doorInfo.get(id) || null;
+      info.appearance = describeAppearance(b, hit?.surface || 'wall', hit?.point || null, { textured: !!texManager?.state.resident.has(id) });
+      const ov = ovShown.get(id);
+      if (ov) {
+        info.override = { set: ov.source?.set, confidence: ov.confidence, iou: ov.match?.iou, details: !!ov.details, attribution: (ov.attribution || []).map((k) => overrides?.layer?.attribution?.[k]?.licence ? `${k} (${overrides.layer.attribution[k].licence})` : k) };
+        info.appearance = null; // the generated appearance is not what is drawn
+      }
+      return info;
+    }
+
+    function showBuilding(id, isPinned = false, hit = null) {
+      if (!panel) return null;
+      const info = infoFor(id, hit);
+      if (info) panel.show(info, isPinned);
+      return info;
+    }
+
+    /** Frees the GPU side of this instance: geometries, the photo textures and (when not shared) the materials. */
+    function dispose() {
+      photoBudget?.remove(texManager);
+      texManager?.dispose();
+      for (const g of overrideGroups) releaseOverride(g);
+      for (const id of ovShown.keys()) overrides?.budget?.release(id);
+      overrideGroups.length = 0;
+      // hero glTFs own their materials and textures (loadHero builds them per load)
+      releaseHeroes();
+      disposeTree(root);
+      if (!shared) for (const m of [masonry, glass, roofMaterial, doorMaterial, liteWall, detailMaterial]) m.dispose();
+      panel?.element.remove();
+      root.clear();
+      leaves.length = 0;
+      pickables.length = 0;
+    }
+
+    /** Wires hover (throttled) and click-to-pin on the canvas. Dragging (orbit) does not pin. */
+    function attach({ camera: cam, domElement }) {
+      camera = cam;
+      let last = 0;
+      let down = null;
+      const toNdc = (e) => {
+        const r = domElement.getBoundingClientRect();
+        return [((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1)];
+      };
+      domElement.addEventListener('pointermove', (e) => {
+        if (pinned || e.buttons) return;
+        const now = performance.now();
+        if (now - last < 80) return;
+        last = now;
+        const hit = pick(...toNdc(e));
+        if (hit) showBuilding(hit.id, false, hit); else panel?.hide();
+      });
+      domElement.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
+      domElement.addEventListener('pointerup', (e) => {
+        if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
+        const hit = pick(...toNdc(e));
+        if (hit && hit.id !== pinned) { pinned = hit.id; showBuilding(hit.id, true, hit); } else { pinned = null; if (!hit) panel?.hide(); }
+      });
+    }
+
+    let meshCount = 0;
+    root.traverse((object) => { if (object.isMesh) meshCount++; });
+    const stats = {
+      tex: texManager ? { candidates: texCandidates.length } : null,
+      buildings: buildings.length - skipIds.size, heroes: heroStatus, cells: leaves.length, triangles, doors: doorCount, lod2: lod2Records.size, neon: neon.stats,
+      meshes: meshCount, overrides: ovStats
+    };
+
+    const setCamera = (cam) => { camera = cam; };
+
+    return { group: root, leaves, update, pick, attach, setCamera, showBuilding, infoFor, dispose, stats, byId, heroGroups, heroStatus, texManager, neon, overrideGroups, overrideIds: () => [...ovShown.keys()] };
+  } catch (error) {
+    buildFailed = true;
+    for (const group of pendingOverrideGroups) releaseOverride(group);
+    pendingOverrideGroups.clear();
+    for (const group of overrideGroups) releaseOverride(group);
+    for (const id of ovShown.keys()) overrides?.budget?.release(id);
+    photoBudget?.remove(texManager);
+    texManager?.dispose();
+    releaseHeroes();
     disposeTree(root);
     if (!shared) for (const m of [masonry, glass, roofMaterial, doorMaterial, liteWall, detailMaterial]) m.dispose();
     panel?.element.remove();
-    root.clear();
-    leaves.length = 0;
-    pickables.length = 0;
+    throw error;
   }
-
-  /** Wires hover (throttled) and click-to-pin on the canvas. Dragging (orbit) does not pin. */
-  function attach({ camera: cam, domElement }) {
-    camera = cam;
-    let last = 0;
-    let down = null;
-    const toNdc = (e) => {
-      const r = domElement.getBoundingClientRect();
-      return [((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1)];
-    };
-    domElement.addEventListener('pointermove', (e) => {
-      if (pinned || e.buttons) return;
-      const now = performance.now();
-      if (now - last < 80) return;
-      last = now;
-      const hit = pick(...toNdc(e));
-      if (hit) showBuilding(hit.id, false, hit); else panel?.hide();
-    });
-    domElement.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
-    domElement.addEventListener('pointerup', (e) => {
-      if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
-      const hit = pick(...toNdc(e));
-      if (hit && hit.id !== pinned) { pinned = hit.id; showBuilding(hit.id, true, hit); } else { pinned = null; if (!hit) panel?.hide(); }
-    });
-  }
-
-  let meshCount = 0;
-  root.traverse((object) => { if (object.isMesh) meshCount++; });
-  const stats = {
-    tex: texManager ? { candidates: texCandidates.length } : null,
-    buildings: buildings.length - skipIds.size, heroes: heroStatus, cells: leaves.length, triangles, doors: doorCount, lod2: lod2Records.size, neon: neon.stats,
-    meshes: meshCount, overrides: ovStats
-  };
-
-  const setCamera = (cam) => { camera = cam; };
-
-  return { group: root, leaves, update, pick, attach, setCamera, showBuilding, infoFor, dispose, stats, byId, heroGroups, heroStatus, texManager, neon, overrideGroups, overrideIds: () => [...ovShown.keys()] };
 }
 
 export { buildRealBuildings, createBuildingMaterials, createInfoPanel, loadHero, loadHeroCached, heroCache, describeBuilding, rangeAt, mergeByMaterial };

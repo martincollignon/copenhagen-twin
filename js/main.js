@@ -16,6 +16,7 @@ import { CameraSystem, CAMERA_PRESETS } from './cameras.js';
 import { LightingSystem } from './lighting.js';
 import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
 import { CityAudioSystem } from './audio-system.js';
+import { createPhotoDrawBudget, createPhotoRenderCallback } from './facade-lod.js';
 
 // js/main.js
 // Main entry point in Three.js WebGPURenderer & TSL (three.js dev, see index.html).
@@ -74,10 +75,10 @@ async function initApp() {
   }
 
   // 3. Build the city from the Copenhagen geodata
-  // Tile streaming: `?stream=<near radius in m>` overrides the default rings (near 750 m, mid 2500 m, js/tile-rings.js); the city
+  // Tile streaming: `?stream=<near radius in m>` overrides the default rings (near 750 m, mid 1250 m, js/tile-rings.js); the city
   // streams in around where the player was last seen (or the start point)
   const streamParam = Number(query.get('stream'));
-  const streamMid = Number(query.get('streammid')); // optional: the mid ring radius (default 10/3 of the near radius)
+  const streamMid = Number(query.get('streammid')); // optional override for a custom near ring
   let start = { x: 0, z: 0 };
   try {
     const saved = JSON.parse(localStorage.getItem('cph-player-state'));
@@ -621,12 +622,8 @@ async function initApp() {
     loadingStatus.textContent = 'Compiling Shaders & Render Pipelines...';
   }
 
-  // 6b. Shader pre-compilation behind the loading screen. compileAsync() builds the node graphs in slices and has the GPU
-  //     process compile the pipelines in parallel, but after every 8 ms slice it waits for a rendered frame, which
-  //     leaves the main thread idle about half the time while nothing else animates; several calls side by side keep
-  //     it busy (warm cache: 2.1 s instead of 4.0 s). (Rendering straight away compiled ~500 pipelines one after
-  //     another: ~25 s with a cold shader cache.)
-  const COMPILE_POOL = 16;
+  // 6b. compileAsync() uses shared renderer/shader-builder state. Keep calls sequential;
+  // each call already submits GPU pipeline compilation in parallel.
   const nextTask = () => (globalThis.scheduler?.yield ? globalThis.scheduler.yield() : new Promise((resolve) => setTimeout(resolve, 0)));
   async function precompileShaders() {
     // An empty frame first: it sets up the post-processing chain, which configures the scene pass's render target
@@ -671,8 +668,6 @@ async function initApp() {
     renderer.setRenderTarget(scenePass.renderTarget);
     renderer.setMRT(sceneMRT);
     const compile = async (object) => {
-      // Each compile starts in a task of its own: compileAsync() keeps one precompilation state on the renderer,
-      // which must not be mid-step for two of them in the same microtask checkpoint
       await nextTask();
       try {
         await renderer.compileAsync(object, cameraSystem.camera, scene);
@@ -680,20 +675,15 @@ async function initApp() {
         console.warn('[compile]', e); // the warm-up frame compiles it instead
       }
     };
-    let next = 0;
     let done = 0;
-    const worker = async () => {
-      while (next < jobs.length) {
-        const job = jobs[next++];
-        for (const object of job) await compile(object);
-        done++;
-        if (loadingStatus) {
-          loadingStatus.textContent = `Compiling Shaders & Render Pipelines... ${Math.round((done / jobs.length) * 100)}%`;
-        }
-        setLoadingProgress(done / jobs.length);
+    for (const job of jobs) {
+      for (const object of job) await compile(object);
+      done++;
+      if (loadingStatus) {
+        loadingStatus.textContent = `Compiling Shaders & Render Pipelines... ${Math.round((done / jobs.length) * 100)}%`;
       }
-    };
-    await Promise.all(Array.from({ length: COMPILE_POOL }, worker));
+      setLoadingProgress(done / jobs.length);
+    }
     renderer.setMRT(null);
     renderer.setRenderTarget(null);
     for (const o of culled) o.frustumCulled = true;
@@ -701,6 +691,11 @@ async function initApp() {
 
   await precompileShaders();
   markInit('compile');
+
+  // Spread cold photo shader work across frames; the procedural walls remain visible while an overlay waits.
+  const photoDrawBudget = createPhotoDrawBudget({ budgetMs: 4 });
+  const photoBudgetDisabled = (query.get('debug') || '').split(',').includes('nophotobudget');
+  renderer.setRenderObjectFunction(createPhotoRenderCallback(renderer, photoDrawBudget));
 
   // 6. Animation Loop
   let lastTime = performance.now();
@@ -716,6 +711,7 @@ async function initApp() {
   globalThis.__twin = { scene, renderer, cameraSystem, controllerManager, lightingSystem, world, aoEnabled, aoPass };
   // `?hooks` exposes the running twin to headless checks (tools/cph-m3-check.py): a free camera and the live systems
   if (new URLSearchParams(location.search).has('hooks')) {
+    Object.defineProperty(globalThis.__twin, 'shaderBudget', { get: () => photoDrawBudget.snapshot(), enumerable: true });
     const updateCamera = cameraSystem.update.bind(cameraSystem);
     Object.assign(globalThis.__twin, { THREE, trafficSystem, freeCam: null, frozen: false, stream: world.stream || null });
     cameraSystem.update = (dt, time) => {
@@ -735,6 +731,7 @@ async function initApp() {
   const frameProbe = new URLSearchParams(location.search).has('hooks') ? Object.assign([], { lastGeoms: 0, lastTex: 0 }) : null;
   if (frameProbe) globalThis.__twin.frameLog = frameProbe;
   renderer.setAnimationLoop((now) => {
+    photoDrawBudget.beginFrame({ unlimited: !warmedUp || photoBudgetDisabled });
     const rawDt = (now - lastTime) * 0.001;
     lastTime = now;
     const dt = Math.min(Math.max(rawDt, 0.001), 0.05);

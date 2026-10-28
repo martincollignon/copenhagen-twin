@@ -106,6 +106,35 @@ export function createOverrideBudget(p = OVERRIDE) {
   };
 }
 
+/** A build-local view of the shared budget: the same override id can hold separate capacity while two builds overlap. */
+export function createOverrideBudgetLease(budget) {
+  if (!budget) return null;
+  const held = new Map(); // build-local id -> unique key in the shared budget
+  return {
+    p: budget.p,
+    stats: budget.stats,
+    has: (id) => held.has(id),
+    reserve(id, n) {
+      if (held.has(id)) return true;
+      const key = {};
+      if (!budget.reserve(key, n)) return false;
+      held.set(id, key);
+      return true;
+    },
+    release(id) {
+      const key = held.get(id);
+      if (key === undefined) return;
+      held.delete(id);
+      budget.release(key);
+    },
+    releaseAll() {
+      for (const key of held.values()) budget.release(key);
+      held.clear();
+    },
+    memory: () => budget.memory()
+  };
+}
+
 /**
  * Which of a tile's mesh overrides to show, nearest first, from camera (x, z): those within p.maxDistance whose texture bytes the budget
  * still admits (it reserves them). Returns { show: [entry], refused: [entry] } (refused: too far or over budget; they keep the generated

@@ -1,8 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { buildRealBuildings, createBuildingMaterials, createInfoPanel } from './buildings-real.js';
 import { texRequested, createPhotoBudget } from './facade-lod.js';
-import { createSlicer } from './yield-frame.js';
-import { createOverrideBudget, overridesMode } from './detail-overrides.js';
+import { createSharedSlicer } from './yield-frame.js';
+import { createOverrideBudget, createOverrideBudgetLease, overridesMode } from './detail-overrides.js';
 
 // js/buildings-stream.js
 // The buildings of the streamed city: one buildRealBuildings() instance per tile (its own quadtree cells, photo manager and
@@ -19,22 +19,43 @@ export function createBuildingsLayer(scene, { terrain = null, lod2 = null, obser
   root.name = 'CopenhagenBuildings';
   scene.add(root);
   const shared = createBuildingMaterials();
+  const slice = createSharedSlicer(5);
   const photoBudget = tex ? createPhotoBudget() : null; // one residency plan for the photo walls of every tile
   const ovMode = overridesMode();
   const overrideBudget = ovMode === 'off' ? null : createOverrideBudget();
-  const tiles = new Map(); // id -> { instance, ring, token }
+  const tiles = new Map(); // id -> { active: { instance, holder, ring, overrideLease } | null, pending: build | null }
+  let pendingBuilds = 0;
+  let disposed = false;
+  let resourcesDisposed = false;
   let camera = null;
   let pinned = null;
   let panel = null;
   const owner = new Map(); // building id -> tile id (for the panel)
 
+  const activeTiles = () => [...tiles.values()].filter((tile) => tile.active);
+  const releaseLayerResources = () => {
+    if (!disposed || pendingBuilds || resourcesDisposed) return;
+    resourcesDisposed = true;
+    for (const material of Object.values(shared)) material.dispose();
+  };
+  const removeOwners = (id, instance) => {
+    for (const bid of instance?.byId.keys() || []) if (owner.get(bid) === id) owner.delete(bid);
+  };
+  const disposeActive = (id, active) => {
+    if (!active) return;
+    removeOwners(id, active.instance);
+    active.instance.dispose();
+    active.overrideLease?.releaseAll();
+    active.holder.removeFromParent();
+  };
+
   const totals = () => {
-    const t = { buildings: 0, cells: 0, triangles: 0, doors: 0, lod2: 0, meshes: 0, tiles: tiles.size, heroes: [] };
+    const resident = activeTiles();
+    const t = { buildings: 0, cells: 0, triangles: 0, doors: 0, lod2: 0, meshes: 0, tiles: resident.length, heroes: [] };
     const neon = { panels: 0 };
     const overrides = { mode: ovMode, shown: 0, failed: 0, refused: 0, details: 0, textureBytes: 0, errors: [], budget: overrideBudget?.memory() || null };
     let candidates = 0;
-    for (const { instance } of tiles.values()) {
-      if (!instance) continue;
+    for (const { active: { instance } } of resident) {
       const s = instance.stats;
       for (const k of ['buildings', 'cells', 'triangles', 'doors', 'lod2', 'meshes']) t[k] += s[k] || 0;
       for (const k of ['shown', 'failed', 'refused', 'details', 'textureBytes']) overrides[k] += s.overrides?.[k] || 0;
@@ -54,57 +75,87 @@ export function createBuildingsLayer(scene, { terrain = null, lod2 = null, obser
      * @param {'near'|'mid'} ring
      */
     async addTile(id, ctx, ring) {
-      this.removeTile(id);
-      const token = {};
+      if (disposed) return false;
+      let state = tiles.get(id);
+      if (!state) tiles.set(id, state = { active: null, pending: null });
+      if (state.pending) state.pending.controller?.abort();
       const controller = typeof AbortController === 'function' ? new AbortController() : null;
-      tiles.set(id, { instance: null, ring, token, controller });
+      const pending = { ring, controller, overrideLease: overrideBudget ? createOverrideBudgetLease(overrideBudget) : null, transferred: false };
+      state.pending = pending;
       const near = ring === 'near';
       const ovLayer = near && overrideBudget ? ctx.overrides : null;
       const holder = new THREE.Group();
       holder.name = `buildings-${id}`;
-      const instance = await buildRealBuildings(holder, ctx.buildingGeo, {
-        lod2, shared, terrain: terrain?.flat ? null : terrain, observed, withInfoPanel: false, slice: createSlicer(8), lite: lite && !near, photoBudget, compute: pool ? (job) => pool.run('buildings', job) : null,
-        context: { buildings: ctx.geo.buildings, roads: ctx.geo.roads },
-        tex: near ? tex : false, doors: near,
-        overrides: ovLayer ? { layer: ovLayer, budget: overrideBudget, mode: ovMode, signal: controller?.signal || null, camera: () => (camera ? { x: camera.position.x, z: camera.position.z } : null) } : null,
-        ...(near ? { entrances: ctx.entrances, venues: ctx.venues } : { entrances: null, venues: [] })
-      });
-      const current = tiles.get(id);
-      if (!current || current.token !== token) { instance.dispose(); return false; } // removed while it was building
-      current.instance = instance;
-      root.add(holder);
-      current.holder = holder;
-      for (const bid of instance.byId.keys()) owner.set(bid, id);
-      if (camera) instance.setCamera(camera);
-      return true;
+      pendingBuilds++;
+      try {
+        let instance;
+        try {
+          instance = await buildRealBuildings(holder, ctx.buildingGeo, {
+            lod2, shared, terrain: terrain?.flat ? null : terrain, observed, withInfoPanel: false, slice, lite: lite && !near, photoBudget, compute: pool ? (job) => pool.run('buildings', job) : null,
+            context: { buildings: ctx.geo.buildings, roads: ctx.geo.roads },
+            tex: near ? tex : false, doors: near, signal: controller?.signal || null,
+            overrides: ovLayer ? { layer: ovLayer, budget: pending.overrideLease, mode: ovMode, signal: controller?.signal || null, camera: () => (camera ? { x: camera.position.x, z: camera.position.z } : null) } : null,
+            ...(near ? { entrances: ctx.entrances, venues: ctx.venues } : { entrances: null, venues: [] })
+          });
+        } catch (error) {
+          const current = tiles.get(id);
+          if (disposed || current !== state || state.pending !== pending || controller?.signal.aborted) return false;
+          state.pending = null;
+          if (!state.active) tiles.delete(id);
+          throw error;
+        }
+
+        if (disposed || tiles.get(id) !== state || state.pending !== pending || controller?.signal.aborted) {
+          instance.dispose();
+          holder.removeFromParent();
+          return false;
+        }
+
+        const old = state.active;
+        root.add(holder);
+        removeOwners(id, old?.instance);
+        state.active = { instance, holder, ring, overrideLease: pending.overrideLease };
+        pending.transferred = true;
+        state.pending = null;
+        for (const bid of instance.byId.keys()) owner.set(bid, id);
+        if (camera) instance.setCamera(camera);
+        if (old) {
+          old.instance.dispose();
+          old.overrideLease?.releaseAll();
+          old.holder.removeFromParent();
+        }
+        return true;
+      } finally {
+        if (!pending.transferred) pending.overrideLease?.releaseAll();
+        pendingBuilds--;
+        releaseLayerResources();
+      }
     },
 
     removeTile(id) {
-      const t = tiles.get(id);
-      if (!t) return false;
+      const state = tiles.get(id);
+      if (!state) return false;
       tiles.delete(id);
-      t.controller?.abort(); // override meshes still loading for this tile
-      if (t.instance) {
-        for (const bid of t.instance.byId.keys()) if (owner.get(bid) === id) owner.delete(bid);
-        t.instance.dispose();
-      }
-      t.holder?.removeFromParent();
+      state.pending?.controller?.abort(); // abort superseded and removed builds, including their override loads
+      state.pending = null;
+      disposeActive(id, state.active);
       return true;
     },
 
-    has: (id) => !!tiles.get(id)?.instance,
-    ringOf: (id) => tiles.get(id)?.ring ?? null,
-    ids: () => [...tiles.keys()].filter((id) => tiles.get(id).instance),
+    has: (id) => !!tiles.get(id)?.active,
+    ringOf: (id) => tiles.get(id)?.active?.ring ?? null,
+    ids: () => [...tiles.entries()].filter(([, state]) => state.active).map(([id]) => id),
 
     update(x, z, night = 0) {
-      for (const { instance } of tiles.values()) instance?.update(x, z, night);
+      for (const { active } of tiles.values()) active?.instance.update(x, z, night);
       photoBudget?.update(camera ? camera.position.x : x, camera ? camera.position.z : z, performance.now(), camera?.position.y);
     },
 
     /** Nearest building under a normalised-device point over all tiles. */
     pick(ndcX, ndcY, cam = camera) {
       let best = null;
-      for (const { instance } of tiles.values()) {
+      for (const { active } of tiles.values()) {
+        const instance = active?.instance;
         const hit = instance?.pick(ndcX, ndcY, cam);
         if (hit && (!best || hit.distance < best.distance)) best = hit;
       }
@@ -112,16 +163,16 @@ export function createBuildingsLayer(scene, { terrain = null, lod2 = null, obser
     },
 
     showBuilding(id, isPinned = false, hit = null) {
-      const t = tiles.get(owner.get(id));
-      if (!t?.instance || !panel) return null;
-      const info = t.instance.infoFor(id, hit);
+      const active = tiles.get(owner.get(id))?.active;
+      if (!active || !panel) return null;
+      const info = active.instance.infoFor(id, hit);
       if (info) panel.show(info, isPinned);
       return info;
     },
 
     attach({ camera: cam, domElement }) {
       camera = cam;
-      for (const { instance } of tiles.values()) instance?.setCamera(cam);
+      for (const { active } of tiles.values()) active?.instance.setCamera(cam);
       if (typeof document === 'undefined' || !domElement) return;
       panel = createInfoPanel();
       let last = 0;
@@ -148,25 +199,25 @@ export function createBuildingsLayer(scene, { terrain = null, lod2 = null, obser
 
     get stats() { return totals(); },
     get photoBudget() { return photoBudget; },
-    get heroGroups() { return [...tiles.values()].flatMap((t) => t.instance?.heroGroups || []); },
-    get heroStatus() { return [...tiles.values()].flatMap((t) => t.instance?.heroStatus || []); },
+    get heroGroups() { return activeTiles().flatMap(({ active }) => active.instance.heroGroups || []); },
+    get heroStatus() { return activeTiles().flatMap(({ active }) => active.instance.heroStatus || []); },
     /** The override meshes shown in the resident tiles (js/detail-overrides.js), and their texture budget. */
-    get overrideGroups() { return [...tiles.values()].flatMap((t) => t.instance?.overrideGroups || []); },
+    get overrideGroups() { return activeTiles().flatMap(({ active }) => active.instance.overrideGroups || []); },
     get overrideBudget() { return overrideBudget; },
-    overrideIds: () => [...tiles.values()].flatMap((t) => t.instance?.overrideIds?.() || []),
+    overrideIds: () => activeTiles().flatMap(({ active }) => active.instance.overrideIds?.() || []),
     /** Every building of the resident tiles by id (a Map-like view). */
     byId: {
-      get: (id) => tiles.get(owner.get(id))?.instance?.byId.get(id),
+      get: (id) => tiles.get(owner.get(id))?.active?.instance.byId.get(id),
       has: (id) => owner.has(id),
       get size() { return owner.size; }
     },
     /** The photo managers of all tiles as one (counts only: the headless checks read `state`). */
     get texManager() {
       if (!tex) return null;
-      const sum = (f) => [...tiles.values()].reduce((n, t) => n + (f(t.instance?.texManager?.state) || 0), 0);
+      const sum = (f) => activeTiles().reduce((n, { active }) => n + (f(active.instance?.texManager?.state) || 0), 0);
       return {
         state: {
-          enabled: [...tiles.values()].some((t) => t.instance?.texManager?.state.enabled),
+          enabled: activeTiles().some(({ active }) => active.instance?.texManager?.state.enabled),
           resident: { size: sum((s) => s?.resident.size) },
           loaded: sum((s) => s?.loaded), look: sum((s) => s?.look), raw: sum((s) => s?.raw), failed: { size: sum((s) => s?.failed.size) }
         },
@@ -175,9 +226,16 @@ export function createBuildingsLayer(scene, { terrain = null, lod2 = null, obser
       };
     },
     dispose() {
-      for (const id of [...tiles.keys()]) api.removeTile(id);
+      if (disposed) return;
+      disposed = true;
+      for (const [id, state] of tiles) {
+        state.pending?.controller?.abort();
+        state.pending = null;
+        disposeActive(id, state.active);
+      }
+      tiles.clear();
       root.removeFromParent();
-      for (const m of Object.values(shared)) m.dispose();
+      releaseLayerResources();
     }
   };
   return api;

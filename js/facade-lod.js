@@ -32,6 +32,73 @@ const PHOTO = {
   concurrency: 2
 };
 
+/** Shares a small synchronous cold-photo draw budget across every pass in one animation frame. */
+function createPhotoDrawBudget({ now = () => performance.now(), budgetMs = 4 } = {}) {
+  const emptyContext = {};
+  const readiness = new WeakMap();
+  let coldMs = 0;
+  let frameDeferred = 0;
+  let frameAdmitted = 0;
+  let deferred = 0;
+  let admitted = 0;
+  let unlimited = true;
+
+  return {
+    beginFrame({ unlimited: allowAll = false } = {}) {
+      coldMs = 0;
+      frameDeferred = 0;
+      frameAdmitted = 0;
+      unlimited = allowAll;
+    },
+    render(object, context, draw) {
+      const material = object.material;
+      let record = readiness.get(object);
+      if (!record || record.material !== material || record.version !== material.version || record.geometry !== object.geometry) {
+        record = { material, version: material.version, geometry: object.geometry, cameras: new WeakMap() };
+        readiness.set(object, record);
+      }
+      const camera = context.camera ?? emptyContext;
+      const target = context.target ?? emptyContext;
+      const mrt = context.mrt ?? emptyContext;
+      let targets = record.cameras.get(camera);
+      let outputs = targets?.get(target);
+      if (outputs?.has(mrt)) return draw();
+      if (!unlimited && frameAdmitted > 0 && coldMs >= budgetMs) {
+        deferred++;
+        frameDeferred++;
+        return;
+      }
+
+      admitted++;
+      frameAdmitted++;
+      const started = now();
+      try {
+        const result = draw();
+        if (!targets) record.cameras.set(camera, (targets = new WeakMap()));
+        if (!outputs) targets.set(target, (outputs = new WeakSet()));
+        outputs.add(mrt);
+        return result;
+      } finally {
+        coldMs += Math.max(0, now() - started);
+      }
+    },
+    snapshot() {
+      return { deferred, admitted, lastFrame: { deferred: frameDeferred, admitted: frameAdmitted, coldCpuMs: coldMs }, budgetMs, unlimited };
+    }
+  };
+}
+
+/** Preserve the renderer callback while postponing only cold optional overlays. */
+function createPhotoRenderCallback(renderer, budget, delegate = renderer.getRenderObjectFunction() || renderer.renderObject) {
+  return function (...args) {
+    const object = args[0];
+    if (!object.userData.photoOverlay) return delegate.apply(renderer, args);
+    return budget.render(object, {
+      camera: args[2], target: renderer.getRenderTarget(), mrt: renderer.getMRT()
+    }, () => delegate.apply(renderer, args));
+  };
+}
+
 /** Scaled atlas dimensions for a maximum texture dimension, preserving the source aspect ratio. */
 function scaledTextureSize(size, maxDimension) {
   const [width, height] = size || [];
@@ -511,4 +578,4 @@ function createPhotoBudget({ interval = 350, select = selectPhotoSet, p = PHOTO 
   };
 }
 
-export { PHOTO, photoFade, texRequested, selectPhotoSet, wallDistance, densityScale, quantiseStep, pixelMetres, createPhotoBudget, applyPhotoPlan, makePhotoRoom, createPhotoStats, logPhoto, photoReservation, lookFile, estimateTextureBytes, scaledTextureSize };
+export { PHOTO, photoFade, texRequested, selectPhotoSet, wallDistance, densityScale, quantiseStep, pixelMetres, createPhotoBudget, createPhotoDrawBudget, createPhotoRenderCallback, applyPhotoPlan, makePhotoRoom, createPhotoStats, logPhoto, photoReservation, lookFile, estimateTextureBytes, scaledTextureSize };

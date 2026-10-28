@@ -11,7 +11,8 @@
 
 import { tileBoundsLocal, parseTileId, tileId } from './tile-grid.js';
 
-export const DEFAULT_STREAM = Object.freeze({ near: 750, mid: 2500, hysteresis: 250 });
+// Keep detailed roads and roofs local; the far layer already supplies the rest of the skyline.
+export const DEFAULT_STREAM = Object.freeze({ near: 750, mid: 1250, hysteresis: 250 });
 
 /** Layers (data/tiles/<id>/<layer>.json) a tile needs for what it is asked to be. `roads` and `streets` stream with the tile. */
 export const RING_LAYERS = Object.freeze({
@@ -24,7 +25,7 @@ export const CONTEXT_LAYERS = Object.freeze({
   mid: ['buildings', 'terrain', 'roads', 'streets']
 });
 
-/** ?stream=<near> -> a config. Mid defaults to 10/3 of near (750 -> 2500) and the hysteresis to a third of it, at most 250 m. */
+/** ?stream=<near> -> a config. Custom rings retain the 10/3 mid ratio; default mid is 1250 m. */
 export function streamConfig(opts = {}) {
   const near = Number.isFinite(opts.near) ? opts.near : DEFAULT_STREAM.near;
   const mid = Number.isFinite(opts.mid) ? opts.mid : near === DEFAULT_STREAM.near ? DEFAULT_STREAM.mid : Math.round((near * 10) / 3);
